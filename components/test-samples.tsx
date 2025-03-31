@@ -128,7 +128,7 @@ export function TestSamples({
       header: "ID",
       cell: ({ row }) => {
         const id = row.getValue("id") as number;
-        return <div className="text-right font-medium">#{id}</div>;
+        return <div className="text-left font-medium">#{id}</div>;
       },
     },
     {
