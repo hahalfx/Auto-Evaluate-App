@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import * as XLSX from "xlsx";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -47,6 +48,8 @@ export function TestSamples({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAddCustomSample = () => {
     if (!newSampleText.trim()) return;
@@ -60,6 +63,44 @@ export function TestSamples({
     onSamples([...samples, newSample]);
     setNewSampleText("");
     setIsDialogOpen(false);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setImportFile(e.target.files[0]);
+    }
+  };
+
+  const handleImportExcel = () => {
+    if (!importFile) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result;
+        const workbook = XLSX.read(data, { type: "array" });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json<{序号: number; 语料: string}>(firstSheet);
+
+        if (jsonData.length > 0) {
+          const newSamples = jsonData.map((row) => ({
+            id: -Date.now() - row.序号,
+            text: row.语料,
+            status: "未选择",
+          }));
+
+          onSamples([...samples, ...newSamples]);
+          setImportFile(null);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+          }
+        }
+        setIsDialogOpen(false);
+      } catch (error) {
+        setError("Excel文件解析失败");
+      }
+    };
+    reader.readAsArrayBuffer(importFile);
   };
 
   useEffect(() => {
@@ -234,9 +275,32 @@ export function TestSamples({
               <Button
                 onClick={handleAddCustomSample}
                 disabled={!newSampleText.trim()}
+                className="my-2"
               >
                 确认添加
               </Button>
+            </div>
+            <div className="border-t pt-4">
+              <p className="text-sm text-muted-foreground mb-2">或通过Excel导入</p>
+              <div className="flex gap-2">
+                <Input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleFileChange}
+                  ref={fileInputRef}
+                  className="cursor-pointer"
+                />
+                <Button
+                  onClick={handleImportExcel}
+                  disabled={!importFile}
+                  variant="outline"
+                >
+                  导入Excel
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                请确保Excel文件包含"序号"和"语料"列
+              </p>
             </div>
           </div>
         </DialogContent>
