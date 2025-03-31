@@ -75,7 +75,7 @@ export function LLMAnalysisInterface() {
   }, [selectedSample])
 
   return (
-    <div className="flex flex-col w-full h-screen">
+    <div className="flex flex-col w-full max-h-screen">
       {/* Header with logo and title */}
       <header className="bg-background p-3 flex items-center justify-between shadow-sm">
         <div className="flex-1"></div>
@@ -100,15 +100,25 @@ export function LLMAnalysisInterface() {
       <NavTabs />
 
       {/* Main content */}
-      <div className="flex flex-1 p-4 gap-4 h-dvh">
+      <div className="flex flex-1 p-4 gap-4">
         <div className="flex flex-col w-1/2 gap-4">
-          <TestSamples samples={samples} onSamples={setSamples} selectedSample={selectedSample} onSelectSample={setSelectedSample} />
+          <div className="flex-1 h-auto">
+          <TestSamples 
+            samples={samples} 
+            onSamples={setSamples} 
+            selectedSample={selectedSample} 
+            onSelectSample={setSelectedSample}
+            onDeleteSample={(id) => setSamples(samples.filter(s => s.id !== id))}
+          />
+          </div>
+          <div className="flex-1 h-auto">
           <MachineResponse
             value={machineResponse}
             onChange={setMachineResponse}
             onSubmit={handleAnalysis}
             isAnalyzing={loading}
           />
+          </div>
         </div>
         <div className="w-1/2">
           <AnalysisResults result={analysisResult} loading={loading} error={error} />

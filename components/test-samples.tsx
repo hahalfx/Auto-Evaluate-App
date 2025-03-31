@@ -33,6 +33,7 @@ interface TestSamplesProps {
   onSamples: (samples: TestSample[]) => void;
   selectedSample: number;
   onSelectSample: (id: number) => void;
+  onDeleteSample: (id: number) => void;
 }
 
 export function TestSamples({
@@ -40,6 +41,7 @@ export function TestSamples({
   onSamples,
   selectedSample,
   onSelectSample,
+  onDeleteSample,
 }: TestSamplesProps) {
   const [newSampleText, setNewSampleText] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -63,24 +65,6 @@ export function TestSamples({
   useEffect(() => {
     setLoading(false);
   }, []);
-
-  // useEffect(() => {
-  //   async function loadSamples() {
-  //     try {
-  //       setLoading(true)
-  //       const data = await fetchTestSamples()
-  //       setSamples(data)
-  //       setError(null)
-  //     } catch (err) {
-  //       setError("加载测试语料失败")
-  //       console.error(err)
-  //     } finally {
-  //       setLoading(false)
-  //     }
-  //   }
-
-  //   loadSamples()
-  // }, [])
 
   const columns: ColumnDef<TestSample>[] = [
     {
@@ -167,6 +151,18 @@ export function TestSamples({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem>查看详情</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm('确定要删除这条测试语料吗？')) {
+                    onDeleteSample(sample.id);
+                  }
+                }}
+                className="text-destructive focus:text-destructive"
+              >
+                删除
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -175,7 +171,7 @@ export function TestSamples({
   ];
 
   return (
-    <Card className="flex flex-col flex-1 shadow-sm rounded-lg h-dvh">
+    <Card className="flex flex-col flex-1 shadow-sm rounded-lg">
       <CardHeader className="bg-background p-3 flex flex-col space-y-2 border-b">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground">测试语料</h3>
