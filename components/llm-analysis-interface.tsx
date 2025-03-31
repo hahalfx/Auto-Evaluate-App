@@ -13,7 +13,7 @@ import { useToast } from "@/components/ui/use-toast"
 
 export function LLMAnalysisInterface() {
   const [samples, setSamples] = useState<TestSample[]>([])
-  const [selectedSample, setSelectedSample] = useState(3)
+  const [selectedSample, setSelectedSample] = useState()
   const [machineResponse, setMachineResponse] = useState("")
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -100,9 +100,9 @@ export function LLMAnalysisInterface() {
       <NavTabs />
 
       {/* Main content */}
-      <div className="flex flex-1 p-4 gap-4">
-        <div className="flex flex-col w-1/2 gap-4">
-          <div className="flex-1 h-auto">
+      <div className="flex flex-auto p-4 gap-4 h-dvh">
+        <div className="flex flex-col w-1/2 gap-4 h-full">
+          <div className="flex-auto">
           <TestSamples 
             samples={samples} 
             onSamples={setSamples} 
@@ -111,7 +111,7 @@ export function LLMAnalysisInterface() {
             onDeleteSample={(id) => setSamples(samples.filter(s => s.id !== id))}
           />
           </div>
-          <div className="flex-1 h-auto">
+          <div className="flex-auto h-full">
           <MachineResponse
             value={machineResponse}
             onChange={setMachineResponse}
@@ -120,7 +120,7 @@ export function LLMAnalysisInterface() {
           />
           </div>
         </div>
-        <div className="w-1/2">
+        <div className="w-1/2 flex-auto">
           <AnalysisResults result={analysisResult} loading={loading} error={error} />
         </div>
       </div>

@@ -10,7 +10,7 @@ import type { TestSample } from "@/types/api";
 import { fetchTestSamples } from "@/services/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ArrowUpDown, MoreHorizontal, Plus } from "lucide-react";
+import { ArrowUpDown, MoreHorizontal, Plus, Play } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -49,7 +49,16 @@ export function TestSamples({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [audioFiles, setAudioFiles] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // 动态获取音频文件列表
+    fetch('/api/audio-files')
+      .then(res => res.json())
+      .then(data => setAudioFiles(data.files))
+      .catch(err => console.error('获取音频文件失败:', err));
+  }, []);
 
   const handleAddCustomSample = () => {
     if (!newSampleText.trim()) return;
@@ -141,7 +150,7 @@ export function TestSamples({
         return (
           <div className="font-medium">
             {isSelected ? (
-              <span className="text-primary">已选择</span>
+              <span className="text-green-600">已选择</span>
             ) : (
               <span className="text-muted-foreground">未选择</span>
             )}
@@ -173,46 +182,85 @@ export function TestSamples({
       },
     },
     {
+      id: "play",
+      header: () => <div className="text-right w-full">播放</div>,
+      cell: ({ row }) => {
+        const sample = row.original;
+        const handlePlay = () => {
+          // 找到包含语料内容的文件名（忽略前面的数字）
+          const matchedFile = audioFiles.find(file => 
+            file.includes(sample.text) && /^\d+/.test(file)
+          );
+          
+          if (matchedFile) {
+            const audio = new Audio(`/audio/${matchedFile}`);
+            audio.play().catch(e => console.error("播放失败:", e));
+          } else {
+            console.warn(`未找到匹配的音频文件: ${sample.text}`);
+          }
+        };
+        
+        return (
+          <div className="flex items-center justify-end gap-2">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="w-8 h-8"
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePlay();
+              }}
+            >
+              <Play className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      },
+    },
+    {
       id: "actions",
+      header: () => <div className="text-right w-full">操作</div>,
       cell: ({ row }) => {
         const sample = row.original;
 
         return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">打开菜单</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>操作</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => onSelectSample(sample.id)}>
-                选择
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>查看详情</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirm('确定要删除这条测试语料吗？')) {
-                    onDeleteSample(sample.id);
-                  }
-                }}
-                className="text-destructive focus:text-destructive"
-              >
-                删除
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center justify-end gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="w-8 h-8 p-0">
+                  <span className="sr-only">打开菜单</span>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>操作</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => onSelectSample(sample.id)}>
+                  选择
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>查看详情</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm('确定要删除这条测试语料吗？')) {
+                      onDeleteSample(sample.id);
+                    }
+                  }}
+                  className="text-destructive focus:text-destructive"
+                >
+                  删除
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         );
       },
     },
   ];
 
   return (
-    <Card className="flex flex-col flex-1 shadow-sm rounded-lg">
+    <Card className="flex flex-col flex-1 shadow-sm rounded-lg h-full">
       <CardHeader className="bg-background p-3 flex flex-col space-y-2 border-b">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground">测试语料</h3>

@@ -32,7 +32,7 @@ export function MachineResponse({ value, onChange, onSubmit, isAnalyzing }: Mach
   }
 
   return (
-    <Card className="shadow-sm rounded-lg">
+    <Card className="shadow-sm rounded-lg h-full">
       <CardHeader className="bg-background p-3 flex-row items-center justify-between space-y-0 border-b">
         <h3 className="font-semibold text-foreground">被测车机响应</h3>
       </CardHeader>
