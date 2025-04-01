@@ -32,8 +32,8 @@ import {
 interface TestSamplesProps {
   samples: TestSample[];
   onSamples: (samples: TestSample[]) => void;
-  selectedSample: number;
-  onSelectSample: (id: number) => void;
+  selectedSample: number[];
+  onSelectSample: (id: number[]) => void;
   onDeleteSample: (id: number) => void;
 }
 
@@ -54,10 +54,10 @@ export function TestSamples({
 
   useEffect(() => {
     // 动态获取音频文件列表
-    fetch('/api/audio-files')
-      .then(res => res.json())
-      .then(data => setAudioFiles(data.files))
-      .catch(err => console.error('获取音频文件失败:', err));
+    fetch("/api/audio-files")
+      .then((res) => res.json())
+      .then((data) => setAudioFiles(data.files))
+      .catch((err) => console.error("获取音频文件失败:", err));
   }, []);
 
   const handleAddCustomSample = () => {
@@ -66,7 +66,6 @@ export function TestSamples({
     const newSample: TestSample = {
       id: -Date.now(), // 使用负时间戳确保唯一
       text: newSampleText,
-      status: "未选择",
     };
 
     onSamples([...samples, newSample]);
@@ -89,13 +88,15 @@ export function TestSamples({
         const data = e.target?.result;
         const workbook = XLSX.read(data, { type: "array" });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json<{序号: number; 语料: string}>(firstSheet);
+        const jsonData = XLSX.utils.sheet_to_json<{
+          序号: number;
+          语料: string;
+        }>(firstSheet);
 
         if (jsonData.length > 0) {
           const newSamples = jsonData.map((row) => ({
             id: -Date.now() - row.序号,
             text: row.语料,
-            status: "未选择",
           }));
 
           onSamples([...samples, ...newSamples]);
@@ -141,24 +142,6 @@ export function TestSamples({
       enableHiding: false,
     },
     {
-      accessorKey: "status",
-      header: "状态",
-      cell: ({ row }) => {
-        const id = row.original.id;
-        const isSelected = id === selectedSample;
-
-        return (
-          <div className="justify-start font-medium">
-            {isSelected ? (
-              <span className="text-green-600">已选择</span>
-            ) : (
-              <span className="text-muted-foreground">未选择</span>
-            )}
-          </div>
-        );
-      },
-    },
-    {
       accessorKey: "text",
       header: ({ column }) => {
         return (
@@ -188,23 +171,23 @@ export function TestSamples({
         const sample = row.original;
         const handlePlay = () => {
           // 找到包含语料内容的文件名（忽略前面的数字）
-          const matchedFile = audioFiles.find(file => 
-            file.includes(sample.text) && /^\d+/.test(file)
+          const matchedFile = audioFiles.find(
+            (file) => file.includes(sample.text) && /^\d+/.test(file)
           );
-          
+
           if (matchedFile) {
             const audio = new Audio(`/audio/${matchedFile}`);
-            audio.play().catch(e => console.error("播放失败:", e));
+            audio.play().catch((e) => console.error("播放失败:", e));
           } else {
             console.warn(`未找到匹配的音频文件: ${sample.text}`);
           }
         };
-        
+
         return (
           <div className="flex items-center justify-end gap-2">
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               className="w-8 h-8"
               onClick={(e) => {
                 e.stopPropagation();
@@ -234,7 +217,9 @@ export function TestSamples({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>操作</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => onSelectSample(sample.id)}>
+                <DropdownMenuItem
+                  onClick={() => onSelectSample([...selectedSample, sample.id])}
+                >
                   选择
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -243,7 +228,7 @@ export function TestSamples({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (confirm('确定要删除这条测试语料吗？')) {
+                    if (confirm("确定要删除这条测试语料吗？")) {
                       onDeleteSample(sample.id);
                     }
                   }}
@@ -296,9 +281,21 @@ export function TestSamples({
           <DataTable
             columns={columns}
             data={samples || []}
-            onRowClick={(row) => onSelectSample(row.id)}
+            onRowClick={(row) => {
+              // 如果行已经被选中，则取消选择；否则添加到选择中
+              if (selectedSample.includes(row.id)) {
+                onSelectSample(selectedSample.filter(id => id !== row.id));
+              } else {
+                onSelectSample([...selectedSample, row.id]);
+              }
+            }}
             selectedRowId={selectedSample}
             filterPlaceholder="搜索语音指令..."
+            onSelectRows={(selectedRows) => {
+              // Extract IDs from selected rows and update the selection state
+              const selectedIds = selectedRows.map(row => row.id as number);
+              onSelectSample(selectedIds);
+            }}
           />
         )}
       </CardContent>
@@ -329,7 +326,9 @@ export function TestSamples({
               </Button>
             </div>
             <div className="border-t pt-4">
-              <p className="text-sm text-muted-foreground mb-2">或通过Excel导入</p>
+              <p className="text-sm text-muted-foreground mb-2">
+                或通过Excel导入
+              </p>
               <div className="flex gap-2">
                 <Input
                   type="file"

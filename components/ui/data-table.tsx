@@ -26,8 +26,9 @@ interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
   onRowClick?: (row: TData) => void
-  selectedRowId?: number | string
+  selectedRowId?: number[] | string[]
   filterPlaceholder?: string
+  onSelectRows?: (selectedRows: TData[]) => void
 }
 
 export function DataTable<TData, TValue>({
@@ -36,12 +37,48 @@ export function DataTable<TData, TValue>({
   onRowClick,
   selectedRowId,
   filterPlaceholder = "搜索...",
+  onSelectRows,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [globalFilter, setGlobalFilter] = React.useState("")
+  
+  // Sync external selectedRowId with internal rowSelection
+  React.useEffect(() => {
+    const newRowSelection: RowSelectionState = {};
+    
+    // Find the rows that match the selectedRowId and select them
+    data.forEach((row, index) => {
+      const id = (row as any).id;
+      if (selectedRowId && Array.isArray(selectedRowId) && selectedRowId.some(selectedId => selectedId === id)) {
+        newRowSelection[index] = true;
+      } else {
+        newRowSelection[index] = false;
+      }
+    });
+    
+    setRowSelection(newRowSelection);
+  }, [selectedRowId, data]);
+  
+  // Handle row selection changes
+  const handleRowSelectionChange = (updaterOrValue: RowSelectionState | ((state: RowSelectionState) => RowSelectionState)) => {
+    // Handle both direct value and updater function
+    const newSelection = typeof updaterOrValue === 'function' 
+      ? updaterOrValue(rowSelection) 
+      : updaterOrValue;
+    
+    setRowSelection(newSelection);
+    
+    if (onSelectRows) {
+      const selectedRows = Object.keys(newSelection)
+        .filter(index => newSelection[index])
+        .map(index => data[parseInt(index)]);
+      
+      onSelectRows(selectedRows);
+    }
+  };
 
   const table = useReactTable({
     data,
@@ -57,7 +94,7 @@ export function DataTable<TData, TValue>({
     getSortedRowModel: getSortedRowModel(),
     onColumnFiltersChange: setColumnFilters,
     getFilteredRowModel: getFilteredRowModel(),
-    onRowSelectionChange: setRowSelection,
+    onRowSelectionChange: handleRowSelectionChange,
     onColumnVisibilityChange: setColumnVisibility,
     onGlobalFilterChange: setGlobalFilter,
     state: {
@@ -125,13 +162,7 @@ export function DataTable<TData, TValue>({
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  data-state={
-                    selectedRowId !== undefined && (row.original as any).id === selectedRowId
-                      ? "selected"
-                      : row.getIsSelected()
-                        ? "selected"
-                        : ""
-                  }
+                  data-state={row.getIsSelected() ? "selected" : ""}
                   onClick={() => onRowClick && onRowClick(row.original)}
                   className={onRowClick ? "cursor-pointer" : ""}
                 >
@@ -152,7 +183,7 @@ export function DataTable<TData, TValue>({
       </div>
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
-          {Object.keys(rowSelection).length} of {table.getFilteredRowModel().rows.length} 条记录已选择
+          {table.getFilteredSelectedRowModel().rows.length} of {table.getFilteredRowModel().rows.length} 条记录已选择
         </div>
         <div className="flex items-center space-x-2">
           <Button variant="outline" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>

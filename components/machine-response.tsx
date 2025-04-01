@@ -21,9 +21,16 @@ interface MachineResponseProps {
   onChange: (value: string) => void
   onSubmit: () => void
   isAnalyzing: boolean
+  currentSampleText?: string
 }
 
-export function MachineResponse({ value, onChange, onSubmit, isAnalyzing }: MachineResponseProps) {
+export function MachineResponse({ 
+  value, 
+  onChange, 
+  onSubmit, 
+  isAnalyzing,
+  currentSampleText
+}: MachineResponseProps) {
   const [isRecording, setIsRecording] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -423,8 +430,16 @@ export function MachineResponse({ value, onChange, onSubmit, isAnalyzing }: Mach
 
   return (
     <Card className="shadow-sm rounded-lg h-full">
-      <CardHeader className="bg-background p-3 flex-row items-center justify-between space-y-0 border-b">
-        <h3 className="font-semibold text-foreground">被测车机响应</h3>
+      <CardHeader className="bg-background p-3 flex-col space-y-2 border-b">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-foreground">被测车机响应</h3>
+        </div>
+        {currentSampleText && (
+          <div className="flex items-center">
+            <Badge variant="outline" className="bg-muted">当前测试指令</Badge>
+            <span className="ml-2 text-sm font-medium">{currentSampleText}</span>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="p-5">
         <div className="flex">

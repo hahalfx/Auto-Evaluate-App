@@ -29,7 +29,7 @@ export function AnalysisResults({ result, loading, error }: AnalysisResultsProps
       <CardHeader className="bg-background p-3 space-y-0 border-b">
         <h3 className="font-semibold text-foreground">结果判定和解析</h3>
       </CardHeader>
-      <CardContent className="flex-1 p-5">
+      <CardContent className="flex-1 p-5 overflow-auto">
           {/* 结果判定部分 - 始终显示标题 */}
           <div className="mb-6">
             <span className="font-bold text-primary flex items-center text-lg">
