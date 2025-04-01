@@ -1,5 +1,3 @@
-import MiniCssExtractPlugin from 'mini-css-extract-plugin'
-
 let userConfig = undefined
 try {
   userConfig = await import('./v0-user-next.config')
@@ -9,12 +7,6 @@ try {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.plugins.push(new MiniCssExtractPlugin())
-    }
-    return config
-  },
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -28,6 +20,12 @@ const nextConfig = {
     webpackBuildWorker: true,
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
+  },
+  // 显式声明环境变量
+  env: {
+    XUN_FEI_APPID: process.env.XUN_FEI_APPID,
+    XUN_FEI_API_SECRET: process.env.XUN_FEI_API_SECRET,
+    XUN_FEI_API_KEY: process.env.XUN_FEI_API_KEY,
   },
 }
 

@@ -13,7 +13,7 @@ import { useToast } from "@/components/ui/use-toast"
 
 export function LLMAnalysisInterface() {
   const [samples, setSamples] = useState<TestSample[]>([])
-  const [selectedSample, setSelectedSample] = useState()
+  const [selectedSample, setSelectedSample] = useState<number | undefined>(undefined)
   const [machineResponse, setMachineResponse] = useState("")
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -106,7 +106,7 @@ export function LLMAnalysisInterface() {
           <TestSamples 
             samples={samples} 
             onSamples={setSamples} 
-            selectedSample={selectedSample} 
+            selectedSample={selectedSample ?? -1} // Provide a default value when undefined
             onSelectSample={setSelectedSample}
             onDeleteSample={(id) => setSamples(samples.filter(s => s.id !== id))}
           />

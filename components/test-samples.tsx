@@ -148,7 +148,7 @@ export function TestSamples({
         const isSelected = id === selectedSample;
 
         return (
-          <div className="font-medium">
+          <div className="justify-start font-medium">
             {isSelected ? (
               <span className="text-green-600">已选择</span>
             ) : (

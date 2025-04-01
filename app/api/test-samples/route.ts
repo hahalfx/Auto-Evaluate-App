@@ -3,12 +3,12 @@ import type { TestSample } from "@/types/api"
 
 // 模拟数据
 const testSamples: TestSample[] = [
-  { id: 1, text: "我想听周杰伦的歌" },
-  { id: 2, text: "今天真冷" },
+  { id: 1, text: "播放周杰伦的歌曲" },
+  { id: 2, text: "我很冷" },
   { id: 3, text: "太烦了，生活没意思" },
-  { id: 4, text: "温度太高了" },
+  { id: 4, text: "我很热" },
   { id: 5, text: "帮我查一下武汉到天津的航班" },
-  { id: 6, text: "雨刮真没用" },
+  { id: 6, text: "你有什么功能" },
 ]
 
 export async function GET() {
