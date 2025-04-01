@@ -9,6 +9,8 @@ const testSamples: TestSample[] = [
   { id: 4, text: "我很热" },
   { id: 5, text: "帮我查一下武汉到天津的航班" },
   { id: 6, text: "你有什么功能" },
+  { id: 7, text: "打开热点" },
+  { id: 8, text: "打开蓝牙" },
 ]
 
 export async function GET() {

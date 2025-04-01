@@ -2,9 +2,12 @@ import {
   Card,
   CardHeader,
   CardContent,
+  CardFooter,
 } from "@/components/ui/card";
 
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import { Play, Loader2 } from "lucide-react";
 
 interface ProgressBarProps {
   progress: { 
@@ -12,12 +15,22 @@ interface ProgressBarProps {
     current: number;
     total: number;
   };
-  samplelength: number; 
+  samplelength: number;
+  onStartAutomatedTest: () => void;
+  isPlaying: boolean;
+  isRecording: boolean;
+  isAnalyzing: boolean;
+  disabled: boolean;
 }
 
 export function ProgressBar({
   progress, 
-  samplelength
+  samplelength,
+  onStartAutomatedTest,
+  isPlaying,
+  isRecording,
+  isAnalyzing,
+  disabled
 }: ProgressBarProps) {
   return (
     <Card className="shadow-sm rounded-lg h-full">
@@ -38,6 +51,17 @@ export function ProgressBar({
           </p>
         </div>
       </CardContent>
+      <CardFooter className="flex justify-center p-3 border-t">
+        <Button 
+          onClick={onStartAutomatedTest} 
+          disabled={disabled || isPlaying || isRecording || isAnalyzing || samplelength === 0} 
+          className="gap-2"
+          variant="default"
+        >
+          {isPlaying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+          开始自动化测试
+        </Button>
+      </CardFooter>
     </Card>
   );
 }

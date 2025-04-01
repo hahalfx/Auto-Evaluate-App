@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { ThemeToggle } from "./theme-toggle";
 import { NavTabs } from "./nav-tabs";
 import { TestSamples } from "./test-samples";
 import { AnalysisResults } from "./analysis-results";
-import { MachineResponse } from "./machine-response";
+import { MachineResponse, MachineResponseHandle } from "./machine-response";
 import { submitForAnalysis, fetchTestSamples } from "@/services/api";
 import type { AnalysisResult, TestSample } from "@/types/api";
 import { useToast } from "@/components/ui/use-toast";
@@ -30,6 +30,30 @@ export function LLMAnalysisInterface() {
     current: 0,
     total: 0,
   });
+  const [autoPlayNext, setAutoPlayNext] = useState(true);
+  const machineResponseRef = useRef<MachineResponseHandle>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+
+  // 监听MachineResponse组件的状态变化
+  useEffect(() => {
+    const checkMachineResponseState = () => {
+      if (machineResponseRef.current) {
+        setIsPlaying(machineResponseRef.current.isPlaying || false);
+        setIsRecording(machineResponseRef.current.isRecording || false);
+      }
+    };
+
+    // 初始检查
+    checkMachineResponseState();
+
+    // 设置定时器定期检查状态
+    const intervalId = setInterval(checkMachineResponseState, 500);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [machineResponseRef]);
 
   useEffect(() => {
     // 加载测试样本
@@ -40,9 +64,20 @@ export function LLMAnalysisInterface() {
     loadSamples();
   }, []);
 
+  // 处理开始自动化测试按钮点击
+  const handleStartAutomatedTest = () => {
+    if (machineResponseRef.current && machineResponseRef.current.playCurrentSampleAudio) {
+      console.log("开始自动化测试");
+      machineResponseRef.current.playCurrentSampleAudio();
+    }
+  };
+
   // 按照ID排序处理多个样本
-  const handleAnalysis = async () => {
-    if (!machineResponse.trim()) {
+  const handleAnalysis = async (overrideResponse?: string) => {
+    // 使用传入的响应或当前状态中的响应
+    const responseToSubmit = overrideResponse || machineResponse;
+    
+    if (!responseToSubmit.trim()) {
       toast({
         title: "请输入车机响应",
         description: "车机响应不能为空",
@@ -108,7 +143,7 @@ export function LLMAnalysisInterface() {
         throw new Error("未找到选中的测试样本");
       }
 
-      const result = await submitForAnalysis(sample.text, machineResponse);
+      const result = await submitForAnalysis(sample.text, responseToSubmit);
 
       // 保存结果到Map中
       const newResults = new Map(analysisResults);
@@ -141,13 +176,27 @@ export function LLMAnalysisInterface() {
       // 清空机器响应，准备下一条测试
       setMachineResponse("");
 
-      // 如果还有未测试的样本，提示用户输入下一条响应
+      // 如果还有未测试的样本，自动播放下一条语料
       if (newCompletedCount < totalCount) {
         // 获取下一个要测试的样本
         const nextSampleId = sortedSampleIds[newCompletedCount];
         const nextSample = samples.find((s) => s.id === nextSampleId);
 
-        if (nextSample) {
+        if (nextSample && autoPlayNext && machineResponseRef.current) {
+          // 短暂延迟后自动播放下一条语料
+          setTimeout(() => {
+            if (machineResponseRef.current && machineResponseRef.current.playCurrentSampleAudio) {
+              console.log("自动播放下一条语料:", nextSample.text);
+              machineResponseRef.current.playCurrentSampleAudio();
+            }
+          }, 1000);
+          
+          toast({
+            title: "自动播放下一条",
+            description: `正在处理指令: "${nextSample.text}"`,
+            variant: "default",
+          });
+        } else if (nextSample) {
           toast({
             title: "请输入下一条响应",
             description: `请为指令"${nextSample.text}"输入车机响应`,
@@ -351,6 +400,7 @@ export function LLMAnalysisInterface() {
           </div>
           <div className="flex-auto h-full">
             <MachineResponse
+              ref={machineResponseRef}
               value={machineResponse}
               onChange={setMachineResponse}
               onSubmit={handleAnalysis}
@@ -364,6 +414,11 @@ export function LLMAnalysisInterface() {
             <ProgressBar
               progress={taskProgress}
               samplelength={selectedSample.length}
+              onStartAutomatedTest={handleStartAutomatedTest}
+              isPlaying={isPlaying}
+              isRecording={isRecording}
+              isAnalyzing={loading}
+              disabled={selectedSample.length === 0}
             />
           </div>
           <div className="flex-1">
