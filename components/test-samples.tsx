@@ -301,7 +301,7 @@ export function TestSamples({
       </CardContent>
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogTrigger asChild>
-          <Button size="sm" className="flex mx-4 mb-2 gap-1">
+          <Button size="sm" className="flex mx-4 mb-4 gap-1">
             <Plus className="h-4 w-4" />
             添加自定义指令
           </Button>

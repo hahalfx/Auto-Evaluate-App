@@ -25,11 +25,11 @@ export function AnalysisResults({ result, loading, error }: AnalysisResultsProps
   }
 
   return (
-    <Card className="flex flex-col h-full shadow-sm rounded-lg overflow-auto">
+    <Card className="flex flex-1 h-full flex-col shadow-sm rounded-lg overflow-auto">
       <CardHeader className="bg-background p-3 space-y-0 border-b">
         <h3 className="font-semibold text-foreground">结果判定和解析</h3>
       </CardHeader>
-      <CardContent className="flex-1 p-5 overflow-auto">
+      <CardContent className="p-5 overflow-auto h-full">
           {/* 结果判定部分 - 始终显示标题 */}
           <div className="mb-6">
             <span className="font-bold text-primary flex items-center text-lg">
@@ -76,7 +76,7 @@ export function AnalysisResults({ result, loading, error }: AnalysisResultsProps
           </div>
 
           {/* 评估详情部分 - 始终显示标题 */}
-          <div className="mb-6">
+          <div className="">
             <span className="font-bold text-primary flex items-center text-lg mb-4">
               <div className="w-1.5 h-5 bg-primary mr-2 rounded-sm"></div>
               大模型评估详情

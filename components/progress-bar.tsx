@@ -51,11 +51,11 @@ export function ProgressBar({
           </p>
         </div>
       </CardContent>
-      <CardFooter className="flex justify-center p-3 border-t">
+      <CardFooter className="flex justify-center p-3">
         <Button 
           onClick={onStartAutomatedTest} 
           disabled={disabled || isPlaying || isRecording || isAnalyzing || samplelength === 0} 
-          className="gap-2"
+          className="gap-2 bg-blue-700 hover:bg-blue-500 w-full"
           variant="default"
         >
           {isPlaying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}

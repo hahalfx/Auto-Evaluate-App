@@ -45,6 +45,7 @@ export const MachineResponse = forwardRef<MachineResponseHandle, MachineResponse
     const recognitionStableTimerRef = useRef<NodeJS.Timeout | null>(null)
     const lastRecognitionTextRef = useRef<string>("")
     const stabilityCheckCountRef = useRef<number>(0)
+    const isSubmittingRef = useRef<boolean>(false) // 防止重复提交
     const { toast } = useToast()
 
     useEffect(() => {
@@ -443,19 +444,34 @@ export const MachineResponse = forwardRef<MachineResponseHandle, MachineResponse
     
     // 启动稳定性检查
     const startStabilityCheck = () => {
+      // 如果已经在提交中，不再启动新的稳定性检查
+      if (isSubmittingRef.current) {
+        return;
+      }
+      
       // 保存当前文本
       const currentText = resultTextRef.current;
       console.log("启动稳定性检查，当前文本:", currentText);
       
-      // 设置定时器，3秒后检查文本是否变化
+      // 清除之前的定时器
+      if (recognitionStableTimerRef.current) {
+        clearTimeout(recognitionStableTimerRef.current);
+      }
+      
+      // 设置定时器，2秒后检查文本是否变化
       recognitionStableTimerRef.current = setTimeout(() => {
-        // 如果3秒后文本没有变化，且不为空，认为识别结果已稳定
-        if (currentText === resultTextRef.current && currentText.trim() !== "") {
-          console.log("语音识别结果已稳定，3秒内无变化:", currentText);
+        // 如果2秒后文本没有变化，且不为空，认为识别结果已稳定
+        if (currentText === resultTextRef.current && currentText.trim() !== "" && !isSubmittingRef.current) {
+          console.log("语音识别结果已稳定，2秒内无变化:", currentText);
+          // 设置提交标志，防止重复提交
+          isSubmittingRef.current = true;
+          
           // 停止录音
           stopRecording();
+          
           // 确保UI中的文本已更新
           onChange(currentText);
+          
           // 自动提交分析
           if (currentSampleText && currentText) {
             console.log("自动提交分析:", { sample: currentSampleText, response: currentText });
@@ -464,11 +480,20 @@ export const MachineResponse = forwardRef<MachineResponseHandle, MachineResponse
               description: "自动停止录音并提交分析",
               variant: "default",
             });
+            
             // 直接将识别结果传递给onSubmit函数
             onSubmit(currentText);
+            
+            // 提交后重置标志（延迟重置，确保不会立即触发新的提交）
+            setTimeout(() => {
+              isSubmittingRef.current = false;
+            }, 2000);
+          } else {
+            // 如果没有提交，也需要重置标志
+            isSubmittingRef.current = false;
           }
         }
-      }, 3000); // 3秒检查一次
+      }, 2000); // 2秒检查一次
     }
 
     const handleVoiceRecognition = async () => {
@@ -477,6 +502,9 @@ export const MachineResponse = forwardRef<MachineResponseHandle, MachineResponse
         if (recognitionStableTimerRef.current) {
           clearTimeout(recognitionStableTimerRef.current);
         }
+        
+        // 重置提交标志
+        isSubmittingRef.current = false;
         
         resultTextRef.current = "" // 清空之前的结果
         lastRecognitionTextRef.current = "" // 清空上一次的识别结果
@@ -609,7 +637,7 @@ export const MachineResponse = forwardRef<MachineResponseHandle, MachineResponse
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex justify-end p-3 border-t">
+        <CardFooter className="flex justify-end pb-5">
           <Button onClick={() => onSubmit()} disabled={!value.trim() || isAnalyzing} className="gap-2">
             {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             测评

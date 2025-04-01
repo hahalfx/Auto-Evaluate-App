@@ -34,6 +34,7 @@ export function LLMAnalysisInterface() {
   const machineResponseRef = useRef<MachineResponseHandle>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const isPlayingNextRef = useRef<boolean>(false); // 防止重复播放下一条
 
   // 监听MachineResponse组件的状态变化
   useEffect(() => {
@@ -66,9 +67,21 @@ export function LLMAnalysisInterface() {
 
   // 处理开始自动化测试按钮点击
   const handleStartAutomatedTest = () => {
-    if (machineResponseRef.current && machineResponseRef.current.playCurrentSampleAudio) {
+    if (
+      machineResponseRef.current &&
+      machineResponseRef.current.playCurrentSampleAudio &&
+      !isPlayingNextRef.current
+    ) {
+      // 设置标志，防止重复播放
+      isPlayingNextRef.current = true;
+      
       console.log("开始自动化测试");
       machineResponseRef.current.playCurrentSampleAudio();
+      
+      // 播放后重置标志（延迟重置，确保不会立即触发新的播放）
+      setTimeout(() => {
+        isPlayingNextRef.current = false;
+      }, 2000);
     }
   };
 
@@ -76,7 +89,7 @@ export function LLMAnalysisInterface() {
   const handleAnalysis = async (overrideResponse?: string) => {
     // 使用传入的响应或当前状态中的响应
     const responseToSubmit = overrideResponse || machineResponse;
-    
+
     if (!responseToSubmit.trim()) {
       toast({
         title: "请输入车机响应",
@@ -182,15 +195,28 @@ export function LLMAnalysisInterface() {
         const nextSampleId = sortedSampleIds[newCompletedCount];
         const nextSample = samples.find((s) => s.id === nextSampleId);
 
-        if (nextSample && autoPlayNext && machineResponseRef.current) {
+        if (nextSample && autoPlayNext && machineResponseRef.current && !isPlayingNextRef.current) {
+          // 设置标志，防止重复播放
+          isPlayingNextRef.current = true;
+          
           // 短暂延迟后自动播放下一条语料
           setTimeout(() => {
-            if (machineResponseRef.current && machineResponseRef.current.playCurrentSampleAudio) {
+            if (
+              machineResponseRef.current &&
+              machineResponseRef.current.playCurrentSampleAudio
+            ) {
               console.log("自动播放下一条语料:", nextSample.text);
               machineResponseRef.current.playCurrentSampleAudio();
+              
+              // 播放后重置标志（延迟重置，确保不会立即触发新的播放）
+              setTimeout(() => {
+                isPlayingNextRef.current = false;
+              }, 2000);
+            } else {
+              isPlayingNextRef.current = false;
             }
-          }, 1000);
-          
+          }, 2000);
+
           toast({
             title: "自动播放下一条",
             description: `正在处理指令: "${nextSample.text}"`,
@@ -387,7 +413,7 @@ export function LLMAnalysisInterface() {
       {/* Main content */}
       <div className="flex flex-auto p-4 gap-4 h-dvh">
         <div className="flex flex-col w-1/2 gap-4 h-full">
-          <div className="flex-auto">
+          <div className="flex-none">
             <TestSamples
               samples={samples}
               onSamples={setSamples}
@@ -398,7 +424,7 @@ export function LLMAnalysisInterface() {
               }
             />
           </div>
-          <div className="flex-auto h-full">
+          <div className="flex-1 h-full">
             <MachineResponse
               ref={machineResponseRef}
               value={machineResponse}
@@ -421,9 +447,9 @@ export function LLMAnalysisInterface() {
               disabled={selectedSample.length === 0}
             />
           </div>
-          <div className="flex-1">
+          <div className="flex flex-col flex-1">
             {/* 添加结果导航按钮 */}
-            <div className="flex flex-auto items-center justify-between mb-2">
+            <div className="flex flex-none items-center justify-between mb-2">
               <div className="flex items-center space-x-2">
                 <Button
                   variant="outline"
@@ -456,7 +482,7 @@ export function LLMAnalysisInterface() {
               </div>
             </div>
 
-            <div className="flex-auto h-full overflow-auto">
+            <div className="flex-1 h-full overflow-auto">
               <AnalysisResults
                 result={getCurrentResult()}
                 loading={loading}
