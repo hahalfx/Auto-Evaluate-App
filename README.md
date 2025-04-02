@@ -30,6 +30,84 @@
   - XLSX: Excel文件导入导出
 - **类型系统**: TypeScript 5 严格类型检查
 
+## 系统架构图
+
+```mermaid
+flowchart TD
+    subgraph "前端 (Next.js)"
+        UI[用户界面组件]
+        Hooks[React Hooks]
+        Services[API服务层]
+    end
+    
+    subgraph "API路由 (Next.js API Routes)"
+        TestSamples[测试样本API]
+        AudioFiles[音频文件API]
+        Analysis[分析API]
+        XunfeiASR[讯飞语音识别API]
+    end
+    
+    subgraph "外部服务"
+        XunfeiCloud[讯飞云服务]
+        LLMService[大模型分析服务]
+    end
+    
+    UI --> Hooks
+    Hooks --> Services
+    Services --> TestSamples
+    Services --> AudioFiles
+    Services --> Analysis
+    Services --> XunfeiASR
+    XunfeiASR --> XunfeiCloud
+    Analysis --> LLMService
+```
+
+## 测试流程图
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant UI as 界面组件
+    participant Audio as 音频系统
+    participant ASR as 语音识别
+    participant API as 分析API
+    participant LLM as 大模型
+
+    User->>UI: 选择测试样本
+    User->>UI: 点击"开始自动化测试"
+    UI->>Audio: 播放测试指令音频
+    Audio-->>User: 播放完成
+    UI->>ASR: 自动开始录音
+    User-->>ASR: 车机响应语音
+    ASR->>UI: 实时转写文本
+    ASR->>UI: 检测到稳定结果
+    UI->>API: 提交分析请求
+    API->>LLM: 请求大模型分析
+    LLM-->>API: 返回分析结果
+    API-->>UI: 返回评分和建议
+    UI-->>User: 显示分析结果
+    UI->>Audio: 自动播放下一个样本
+```
+
+## 组件关系图
+
+```mermaid
+flowchart TD
+    App[App] --> LLMInterface[LLMAnalysisInterface]
+    
+    LLMInterface --> NavTabs[NavTabs]
+    LLMInterface --> TestSamples[TestSamples]
+    LLMInterface --> MachineResponse[MachineResponse]
+    LLMInterface --> ProgressBar[ProgressBar]
+    LLMInterface --> AnalysisResults[AnalysisResults]
+    
+    TestSamples --> DataTable[DataTable]
+    AnalysisResults --> ScoreDisplay[ScoreDisplay]
+    
+    MachineResponse -.-> |ref| LLMInterface
+    ProgressBar -.-> |props| LLMInterface
+```
+
 ## 技术实现细节
 
 ### 前端架构
@@ -168,6 +246,3 @@ npm run lint
 2. 添加完整的TypeScript类型定义
 3. 更新相关文档
 4. 提供必要的测试用例
-
-## 许可证
-MIT
