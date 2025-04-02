@@ -10,7 +10,6 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "语音交互大模型分析",
   description: "语音交互大模型分析系统",
-    generator: 'v0.dev'
 }
 
 export default function RootLayout({

@@ -51,7 +51,7 @@ export function ProgressBar({
           </p>
         </div>
       </CardContent>
-      <CardFooter className="flex justify-center p-3">
+      <CardFooter className="flex justify-center px-3 pb-3">
         <Button 
           onClick={onStartAutomatedTest} 
           disabled={disabled || isPlaying || isRecording || isAnalyzing || samplelength === 0} 

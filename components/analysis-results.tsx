@@ -145,40 +145,6 @@ export function AnalysisResults({ result, loading, error }: AnalysisResultsProps
               </div>
             )}
           </div>
-
-          {/* LLM分析部分 - 仅在有结果时显示
-          {result && result.llmAnalysis && (
-            <div className="mb-4">
-              <span className="font-bold text-primary flex items-center text-lg">
-                <div className="w-1.5 h-5 bg-primary mr-2 rounded-sm"></div>
-                {result.llmAnalysis.title || "大模型分析"}
-              </span>
-              <div className="mt-4 bg-muted/30 p-4 rounded-lg shadow-sm border">
-                <p className="mb-2 text-primary font-medium">情感表达：</p>
-                <p className="text-sm leading-relaxed">{result.llmAnalysis.content}</p>
-                <div className="mt-6 space-y-2 border-t pt-4">
-                  <p className="text-muted-foreground">——上下文理解{result.llmAnalysis.context ? "有" : "无"}。</p>
-                  <p className="text-muted-foreground">——多轮交互{result.llmAnalysis.multiRound ? "有" : "无"}。</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 加载中时显示LLM分析的骨架屏 */}
-          {/*loading && (
-            <div className="mb-4">
-              <span className="font-bold text-primary flex items-center text-lg">
-                <div className="w-1.5 h-5 bg-primary mr-2 rounded-sm"></div>
-                大模型分析
-              </span>
-              <div className="mt-4 bg-muted/30 p-4 rounded-lg shadow-sm border space-y-4">
-                <Skeleton className="h-4 w-1/4" />
-                <Skeleton className="h-20 w-full" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-full" />
-              </div>
-            </div>
-          )} */}
       </CardContent>
     </Card>
   )
