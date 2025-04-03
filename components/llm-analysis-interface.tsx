@@ -38,23 +38,11 @@ export function LLMAnalysisInterface() {
 
   // 监听MachineResponse组件的状态变化
   useEffect(() => {
-    const checkMachineResponseState = () => {
-      if (machineResponseRef.current) {
-        setIsPlaying(machineResponseRef.current.isPlaying || false);
-        setIsRecording(machineResponseRef.current.isRecording || false);
-      }
-    };
-
-    // 初始检查
-    checkMachineResponseState();
-
-    // 设置定时器定期检查状态
-    const intervalId = setInterval(checkMachineResponseState, 500);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [machineResponseRef]);
+    if (machineResponseRef.current) {
+      setIsPlaying(machineResponseRef.current.isPlaying || false);
+      setIsRecording(machineResponseRef.current.isRecording || false);
+    }
+  }, [machineResponseRef.current?.isPlaying, machineResponseRef.current?.isRecording]);
 
   useEffect(() => {
     // 加载测试样本
@@ -395,7 +383,7 @@ export function LLMAnalysisInterface() {
               alt="CNTARC Logo"
               width={200}
               height={32}
-              className="object-contain"
+              className="object-contain justify-center"
             />
           </div>
           <h1 className="text-2xl font-bold tracking-wide text-primary drop-shadow-sm">

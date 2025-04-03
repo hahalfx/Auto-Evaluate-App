@@ -11,15 +11,7 @@ export async function fetchTestSamples(): Promise<TestSample[]> {
     return await response.json()
   } catch (error) {
     console.error("Error fetching test samples:", error)
-    // 返回模拟数据作为fallback
-    return [
-      { id: 1, text: "我想听周杰伦的歌", status: "未选择" },
-      { id: 2, text: "今天真冷", status: "未选择" },
-      { id: 3, text: "太烦了，生活没意思", status: "已选择" },
-      { id: 4, text: "温度太高了", status: "未选择" },
-      { id: 5, text: "帮我查一下武汉到天津的航班", status: "未选择" },
-      { id: 6, text: "雨刮真没用", status: "未选择" },
-    ]
+    return []
   }
 }
 
