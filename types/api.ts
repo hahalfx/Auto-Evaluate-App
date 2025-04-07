@@ -3,6 +3,8 @@ export interface TestSample {
   id: number
   text: string
   status?: string
+  repeats?: number
+  result?: string
 }
 
 // 评估项目类型

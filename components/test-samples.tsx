@@ -10,7 +10,15 @@ import type { TestSample } from "@/types/api";
 import { fetchTestSamples } from "@/services/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ArrowUpDown, MoreHorizontal, Plus, Play } from "lucide-react";
+import {
+  ArrowUpDown,
+  MoreHorizontal,
+  Plus,
+  Play,
+  CircleX,
+  CircleCheck,
+  CircleDot,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -181,6 +189,36 @@ export function TestSamples({
             </Button>
           </div>
         );
+      },
+    },
+    {
+      accessorKey: "status",
+      header: "状态",
+      cell: ({ row }) => {
+        const status = row.getValue("status") as string;
+        return <div className="text-left font-medium">{status}</div>;
+      },
+    },
+    {
+      accessorKey: "result",
+      header: () => <div className="text-center w-full">测试结果</div>,
+      cell: ({ row }) => {
+        const result = row.getValue("result") as string;
+        {
+          return !result ? (
+            <div className="justify-items-center">
+              <CircleDot color="#ffc300" />
+            </div>
+          ) : result === "pass" ? (
+            <div className="justify-items-center">
+              <CircleCheck color="green" />
+            </div>
+          ) : (
+            <div className="justify-items-center">
+              <CircleX color="red" />
+            </div>
+          );
+        }
       },
     },
     {

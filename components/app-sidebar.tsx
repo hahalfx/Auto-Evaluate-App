@@ -1,4 +1,4 @@
-import { Calendar, Home, Inbox, Search, Settings } from "lucide-react";
+import { Calendar, Home, Inbox, Search, Settings, Brain } from "lucide-react";
 
 import {
   Sidebar,
@@ -23,21 +23,11 @@ const items = [
   {
     title: "语音交互大模型测试",
     url: "/llm-analysis",
-    icon: Inbox,
+    icon: Brain,
   },
   {
-    title: "Calendar",
-    url: "#",
-    icon: Calendar,
-  },
-  {
-    title: "Search",
-    url: "#",
-    icon: Search,
-  },
-  {
-    title: "Settings",
-    url: "#",
+    title: "应用设置",
+    url: "/settings",
     icon: Settings,
   },
 ];
@@ -56,8 +46,8 @@ export function AppSidebar() {
               className="object-contain justify-center"
             />
           </div>
-          <h1 className="text-base font-bold tracking-wide text-primary drop-shadow-sm justify-center">
-            语音交互大模型分析
+          <h1 className="text-xl font-bold tracking-wide text-primary drop-shadow-sm justify-center">
+            语音自动化验证工具
           </h1>
         </div>
       </SidebarHeader>
@@ -68,10 +58,10 @@ export function AppSidebar() {
             <SidebarMenu>
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
+                  <SidebarMenuButton  asChild>
                     <a href={item.url}>
                       <item.icon />
-                      <span className="text-sm">{item.title}</span>
+                      <span>{item.title}</span>
                     </a>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
