@@ -28,6 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 
 interface TestSamplesProps {
   samples: TestSample[];
@@ -49,16 +50,8 @@ export function TestSamples({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [audioFiles, setAudioFiles] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    // 动态获取音频文件列表
-    fetch("/api/audio-files")
-      .then((res) => res.json())
-      .then((data) => setAudioFiles(data.files))
-      .catch((err) => console.error("获取音频文件失败:", err));
-  }, []);
+  const { playMatchedAudio } = useAudioPlayer();
 
   const handleAddCustomSample = () => {
     if (!newSampleText.trim()) return;
@@ -170,17 +163,7 @@ export function TestSamples({
       cell: ({ row }) => {
         const sample = row.original;
         const handlePlay = () => {
-          // 找到包含语料内容的文件名（忽略前面的数字）
-          const matchedFile = audioFiles.find(
-            (file) => file.includes(sample.text) && /^\d+/.test(file)
-          );
-
-          if (matchedFile) {
-            const audio = new Audio(`/audio/${matchedFile}`);
-            audio.play().catch((e) => console.error("播放失败:", e));
-          } else {
-            console.warn(`未找到匹配的音频文件: ${sample.text}`);
-          }
+          playMatchedAudio(sample.text).catch(console.error);
         };
 
         return (
@@ -246,7 +229,7 @@ export function TestSamples({
 
   return (
     <Card className="flex flex-col flex-1 shadow-sm rounded-lg h-full">
-      <CardHeader className="bg-background p-3 flex flex-col space-y-2 border-b">
+      <CardHeader className="rounded-lg bg-background p-3 flex flex-col space-y-2 border-b">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground">测试语料</h3>
           <Badge variant="outline" className="bg-muted">
@@ -284,7 +267,7 @@ export function TestSamples({
             onRowClick={(row) => {
               // 如果行已经被选中，则取消选择；否则添加到选择中
               if (selectedSample.includes(row.id)) {
-                onSelectSample(selectedSample.filter(id => id !== row.id));
+                onSelectSample(selectedSample.filter((id) => id !== row.id));
               } else {
                 onSelectSample([...selectedSample, row.id]);
               }
@@ -293,7 +276,7 @@ export function TestSamples({
             filterPlaceholder="搜索语音指令..."
             onSelectRows={(selectedRows) => {
               // Extract IDs from selected rows and update the selection state
-              const selectedIds = selectedRows.map(row => row.id as number);
+              const selectedIds = selectedRows.map((row) => row.id as number);
               onSelectSample(selectedIds);
             }}
           />

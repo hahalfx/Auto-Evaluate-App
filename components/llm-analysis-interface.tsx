@@ -13,6 +13,15 @@ import { useToast } from "@/components/ui/use-toast";
 import { ProgressBar } from "./progress-bar";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { SidebarTrigger } from "./ui/sidebar";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 
 export function LLMAnalysisInterface() {
   const [samples, setSamples] = useState<TestSample[]>([]);
@@ -42,7 +51,10 @@ export function LLMAnalysisInterface() {
       setIsPlaying(machineResponseRef.current.isPlaying || false);
       setIsRecording(machineResponseRef.current.isRecording || false);
     }
-  }, [machineResponseRef.current?.isPlaying, machineResponseRef.current?.isRecording]);
+  }, [
+    machineResponseRef.current?.isPlaying,
+    machineResponseRef.current?.isRecording,
+  ]);
 
   useEffect(() => {
     // 加载测试样本
@@ -62,10 +74,10 @@ export function LLMAnalysisInterface() {
     ) {
       // 设置标志，防止重复播放
       isPlayingNextRef.current = true;
-      
+
       console.log("开始自动化测试");
       machineResponseRef.current.playCurrentSampleAudio();
-      
+
       // 播放后重置标志（延迟重置，确保不会立即触发新的播放）
       setTimeout(() => {
         isPlayingNextRef.current = false;
@@ -183,10 +195,15 @@ export function LLMAnalysisInterface() {
         const nextSampleId = sortedSampleIds[newCompletedCount];
         const nextSample = samples.find((s) => s.id === nextSampleId);
 
-        if (nextSample && autoPlayNext && machineResponseRef.current && !isPlayingNextRef.current) {
+        if (
+          nextSample &&
+          autoPlayNext &&
+          machineResponseRef.current &&
+          !isPlayingNextRef.current
+        ) {
           // 设置标志，防止重复播放
           isPlayingNextRef.current = true;
-          
+
           // 短暂延迟后自动播放下一条语料
           setTimeout(() => {
             if (
@@ -195,7 +212,7 @@ export function LLMAnalysisInterface() {
             ) {
               console.log("自动播放下一条语料:", nextSample.text);
               machineResponseRef.current.playCurrentSampleAudio();
-              
+
               // 播放后重置标志（延迟重置，确保不会立即触发新的播放）
               setTimeout(() => {
                 isPlayingNextRef.current = false;
@@ -374,7 +391,7 @@ export function LLMAnalysisInterface() {
   return (
     <div className="flex flex-col w-full max-h-screen">
       {/* Header with logo and title */}
-      <header className="bg-background p-3 flex items-center justify-between shadow-sm">
+      {/* <header className="bg-background p-3 flex items-center justify-between shadow-sm">
         <div className="flex-1"></div>
         <div className="flex items-center space-x-3">
           <div className="h-8 relative">
@@ -393,13 +410,28 @@ export function LLMAnalysisInterface() {
         <div className="flex-1 flex justify-end pr-4">
           <ThemeToggle />
         </div>
-      </header>
+      </header> */}
 
       {/* Navigation */}
-      <NavTabs />
+      {/* <NavTabs /> */}
+
+      <div className="flex items-center fixed top-0 w-full bg-white">
+        <SidebarTrigger className="m-4"/>
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/">主页</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/">语音交互大模型分析</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
 
       {/* Main content */}
-      <div className="flex flex-auto p-4 gap-4 h-dvh">
+      <div className="pt-14 flex flex-auto px-4 gap-4">
         <div className="flex flex-col w-1/2 gap-4 h-full">
           <div className="flex-none">
             <TestSamples

@@ -8,6 +8,7 @@ interface UseAudioPlayerProps {
 
 export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps = {}) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioFiles, setAudioFiles] = useState<string[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Cleanup on unmount
@@ -20,6 +21,30 @@ export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps =
     };
   }, []);
 
+  // 初始化时获取音频文件列表
+  useEffect(() => {
+    fetchAudioFiles();
+  }, []);
+
+  const fetchAudioFiles = async () => {
+    try {
+      const res = await fetch('/api/audio-files');
+      const data = await res.json();
+      setAudioFiles(data.files);
+    } catch (error) {
+      console.error('获取音频文件列表失败:', error);
+    }
+  };
+
+  // 根据文本查找匹配的音频文件
+  const findMatchingAudio = (text: string): string | null => {
+    if (!text || !audioFiles.length) return null;
+    return audioFiles.find(file => 
+      file.includes(text) && /^\d+/.test(file)
+    ) || null;
+  };
+
+  // 参数：音频URL
   const playAudio = async (audioUrl: string) => {
     // Stop any currently playing audio
     if (audioRef.current) {
@@ -56,6 +81,16 @@ export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps =
     }
   };
 
+  // 播放匹配当前文本的音频，参数：要匹配的音频名
+  const playMatchedAudio = async (text: string) => {
+    const matchedFile = findMatchingAudio(text);
+    if (!matchedFile) {
+      onPlayError?.('未找到匹配的音频文件');
+      return;
+    }
+    await playAudio(`/audio/${matchedFile}`);
+  };
+
   const stopAudio = () => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -67,6 +102,7 @@ export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps =
   return {
     isPlaying,
     playAudio,
+    playMatchedAudio,
     stopAudio
   };
 }

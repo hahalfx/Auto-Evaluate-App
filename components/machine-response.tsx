@@ -60,7 +60,7 @@ export const MachineResponse = forwardRef<MachineResponseHandle, MachineResponse
       }
     });
 
-    const { isPlaying, playAudio } = useAudioPlayer({
+    const { isPlaying, playMatchedAudio } = useAudioPlayer({
       onPlayEnd: () => {
         console.log("音频播放结束，开始语音识别");
         startRecording();
@@ -88,36 +88,7 @@ export const MachineResponse = forwardRef<MachineResponseHandle, MachineResponse
     useImperativeHandle(ref, () => ({
       playCurrentSampleAudio: async () => {
         if (!currentSampleText || isPlaying) return;
-        
-        try {
-          // Get audio file list and play the matching file
-          const response = await fetch('/api/audio-files');
-          const data = await response.json();
-          const audioFiles = data.files;
-          
-          // Find file that includes sample text (ignoring leading numbers)
-          const matchedFile = audioFiles.find(
-            (file: string) => file.includes(currentSampleText) && /^\d+/.test(file)
-          );
-          
-          if (matchedFile) {
-            playAudio(`/audio/${matchedFile}`);
-          } else {
-            console.warn(`未找到匹配的音频文件: ${currentSampleText}`);
-            toast.toast({
-              title: "播放失败",
-              description: `未找到匹配的音频文件: ${currentSampleText}`,
-              variant: "destructive",
-            });
-          }
-        } catch (error) {
-          console.error("播放音频失败:", error);
-          toast.toast({
-            title: "播放失败",
-            description: "播放音频文件时出错",
-            variant: "destructive",
-          });
-        }
+        await playMatchedAudio(currentSampleText);
       },
       isPlaying,
       isRecording
@@ -125,7 +96,7 @@ export const MachineResponse = forwardRef<MachineResponseHandle, MachineResponse
 
     return (
       <Card className="shadow-sm rounded-lg h-full">
-        <CardHeader className="bg-background p-3 flex-col space-y-2 border-b">
+        <CardHeader className="rounded-lg bg-background p-3 flex-col space-y-2 border-b">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-foreground">被测车机响应</h3>
           </div>
