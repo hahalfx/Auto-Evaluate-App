@@ -3,6 +3,16 @@ import { submitForAnalysis, fetchTestSamples } from "@/services/api";
 import type { AnalysisResult, TestSample } from "@/types/api";
 import { useToast } from "@/components/ui/use-toast";
 import { MachineResponseHandle } from "@/components/machine-response";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { 
+  selectAllSamples,
+  selectSelectedSampleIds,
+  selectSamplesStatus,
+  setSelectedSamples,
+  updateSampleResult,
+  deleteSample,
+  fetchSamples
+} from "@/store/samplesSlice";
 
 /**
  * 自定义hook，封装LLM分析界面的状态和业务逻辑
@@ -16,28 +26,33 @@ import { MachineResponseHandle } from "@/components/machine-response";
  * @returns 返回状态和方法供组件使用
  */
 export function useLLMAnalysis() {
-  // 测试样本相关状态
-  const [samples, setSamples] = useState<TestSample[]>([]); // 所有测试样本
-  const [selectedSample, setSelectedSample] = useState<number[]>([]); // 选中的样本ID数组
+  // 使用 Redux store 中的样本数据
+  const samples = useAppSelector(selectAllSamples);
+  const selectedSample = useAppSelector(selectSelectedSampleIds);
+  const dispatch = useAppDispatch();
   
   // 机器响应相关状态
-  const [machineResponse, setMachineResponse] = useState(""); // 当前输入的机器响应文本
-  const machineResponseRef = useRef<MachineResponseHandle>(null); // 机器响应组件引用
+  const [machineResponse, setMachineResponse] = useState<string>("");
+  const machineResponseRef = useRef<MachineResponseHandle>(null);
   
   // 分析结果相关状态
-  const [analysisResults, setAnalysisResults] = useState<Map<number, AnalysisResult>>(new Map()); // 分析结果映射表
-  const [currentResultIndex, setCurrentResultIndex] = useState(0); // 当前查看的结果索引
+  const [analysisResults, setAnalysisResults] = useState<Map<number, AnalysisResult>>(new Map());
+  const [currentResultIndex, setCurrentResultIndex] = useState<number>(0);
   
   // 进度和状态相关
-  const [loading, setLoading] = useState(false); // 是否正在加载
-  const [error, setError] = useState<string | null>(null); // 错误信息
-  const { toast } = useToast(); // toast通知
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
   
   // 任务进度
-  const [taskProgress, setTaskProgress] = useState({
-    value: 0, // 进度百分比
-    current: 0, // 当前测试的样本序号
-    total: 0, // 总样本数
+  const [taskProgress, setTaskProgress] = useState<{
+    value: number;
+    current: number;
+    total: number;
+  }>({
+    value: 0,
+    current: 0,
+    total: 0,
   });
   
   // 播放控制相关状态
@@ -45,6 +60,25 @@ export function useLLMAnalysis() {
   const [isPlaying, setIsPlaying] = useState(false); // 是否正在播放音频
   const [isRecording, setIsRecording] = useState(false); // 是否正在录音
   const isPlayingNextRef = useRef<boolean>(false); // 防止重复播放的标记
+
+    const setSelectedSampleIds = (ids: number[]) => {
+      dispatch(setSelectedSamples(ids));
+    };
+
+    const handleDeleteSample = (id: number) => {
+      dispatch(deleteSample(id));
+    };
+
+    // 初始化加载测试样本 - 仅在数据不存在时获取
+  const samplesStatus = useAppSelector(selectSamplesStatus);
+
+  useEffect(() => {
+    if (samples.length === 0 && samplesStatus !== 'loading') {
+      dispatch(fetchSamples());
+    }
+  }, [dispatch, samples.length, samplesStatus]);
+
+    // 移除重复的本地样本加载逻辑
 
   // 监听机器响应组件的播放和录音状态变化
   useEffect(() => {
@@ -57,14 +91,6 @@ export function useLLMAnalysis() {
     machineResponseRef.current?.isRecording,
   ]);
 
-  // 初始化加载测试样本
-  useEffect(() => {
-    const loadSamples = async () => {
-      const data = await fetchTestSamples();
-      setSamples(data);
-    };
-    loadSamples();
-  }, []);
 
   /**
    * 自动播放下一条测试样本
@@ -75,7 +101,7 @@ export function useLLMAnalysis() {
     if (completedCount >= sortedSampleIds.length) return;
     
     const nextSampleId = sortedSampleIds[completedCount];
-    const nextSample = samples.find((s) => s.id === nextSampleId);
+    const nextSample = samples.find((s: TestSample) => s.id === nextSampleId);
     
     if (nextSample && autoPlayNext && machineResponseRef.current && !isPlayingNextRef.current) {
       isPlayingNextRef.current = true;
@@ -222,7 +248,7 @@ export function useLLMAnalysis() {
         total: totalCount,
       });
 
-      const sample = samples.find((s) => s.id === currentSampleId);
+      const sample = samples.find((s: TestSample) => s.id === currentSampleId);
       if (!sample) throw new Error("未找到选中的测试样本");
 
       const result = await submitForAnalysis(sample.text, responseToSubmit);
@@ -231,13 +257,11 @@ export function useLLMAnalysis() {
       newResults.set(currentSampleId, result);
       setAnalysisResults(newResults);
 
-      //更新samples中result字段
-      const newSamples = samples.map(sample => 
-        sample.id === currentSampleId 
-          ? { ...sample, result: result.assessment.valid ? 'pass' : 'fail' }
-          : sample
-      );
-      setSamples(newSamples);
+      // 使用Redux action更新样本结果
+      dispatch(updateSampleResult({
+        sampleId: currentSampleId,
+        result: result.assessment.valid ? 'pass' : 'fail'
+      }));
 
       const newIndex = sortedSampleIds.findIndex((id) => id === currentSampleId);
       setCurrentResultIndex(newIndex >= 0 ? newIndex : 0);
@@ -369,7 +393,7 @@ export function useLLMAnalysis() {
     const sortedIds = [...selectedSample].sort((a, b) => a - b);
     if (currentResultIndex >= sortedIds.length) return "";
     const currentId = sortedIds[currentResultIndex];
-    const sample = samples.find((s) => s.id === currentId);
+    const sample = samples.find((s: TestSample) => s.id === currentId);
     return sample ? sample.text : "";
   };
 
@@ -383,15 +407,14 @@ export function useLLMAnalysis() {
     const completedCount = analysisResults.size;
     if (completedCount >= sortedSampleIds.length) return "";
     const nextSampleId = sortedSampleIds[completedCount];
-    const nextSample = samples.find((s) => s.id === nextSampleId);
+    const nextSample = samples.find((s: TestSample) => s.id === nextSampleId);
     return nextSample ? nextSample.text : "";
   };
 
   return {
-    samples,
-    setSamples,
     selectedSample,
-    setSelectedSample,
+    setSelectedSample: setSelectedSampleIds,
+    handleDeleteSample,
     machineResponse,
     setMachineResponse,
     loading,

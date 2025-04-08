@@ -8,6 +8,22 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Play, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
+import { DialogTrigger } from "@radix-ui/react-dialog";
+import { TestSamples } from "./test-samples";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 interface ProgressBarProps {
   progress: {
@@ -54,7 +70,7 @@ export function ProgressBar({
         </div>
       </CardContent>
       <CardFooter className="flex justify-center px-3 pb-3">
-        <Button
+        {/* <Button
           onClick={onStartAutomatedTest}
           disabled={
             disabled ||
@@ -71,8 +87,55 @@ export function ProgressBar({
           ) : (
             <Play className="h-4 w-4" />
           )}
-          开始自动化测试
-        </Button>
+          开始自动化测试任务
+        </Button> */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              className="gap-2 bg-blue-700 hover:bg-blue-500 w-full"
+              variant="default"
+            >
+              开始自动化测试任务
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:min-w-[730px]">
+            <DialogHeader>
+              <DialogTitle>编辑测试任务</DialogTitle>
+            </DialogHeader>
+            <TestSamples initialPageSize={5} />
+            <DialogFooter>
+              <Select>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="选择唤醒词" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="light">Light</SelectItem>
+                  <SelectItem value="dark">Dark</SelectItem>
+                  <SelectItem value="system">System</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={onStartAutomatedTest}
+                disabled={
+                  disabled ||
+                  isPlaying ||
+                  isRecording ||
+                  isAnalyzing ||
+                  samplelength === 0
+                }
+                className="gap-2 bg-blue-700 hover:bg-blue-500 w-full"
+                variant="default"
+              >
+                {isPlaying ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                开始自动化测试任务
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardFooter>
     </Card>
   );

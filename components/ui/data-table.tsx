@@ -24,6 +24,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
+  initialPageSize?: number
   data: TData[]
   onRowClick?: (row: TData) => void
   selectedRowId?: number[] | string[]
@@ -33,7 +34,8 @@ interface DataTableProps<TData, TValue> {
 
 export function DataTable<TData, TValue>({
   columns,
-  data,
+  initialPageSize,
+  data, 
   onRowClick,
   selectedRowId,
   filterPlaceholder = "搜索...",
@@ -87,7 +89,7 @@ export function DataTable<TData, TValue>({
     getPaginationRowModel: getPaginationRowModel(),
     initialState: {
       pagination: {
-        pageSize: 4,
+        pageSize: initialPageSize,
       },
     },
     onSortingChange: setSorting,

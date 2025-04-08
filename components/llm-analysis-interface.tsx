@@ -17,10 +17,6 @@ import { useLLMAnalysis } from "@/hooks/useLLMAnalysis";
 
 export function LLMAnalysisInterface() {
   const {
-    samples,
-    setSamples,
-    selectedSample,
-    setSelectedSample,
     machineResponse,
     setMachineResponse,
     loading,
@@ -38,6 +34,8 @@ export function LLMAnalysisInterface() {
     goToNextResult,
     getCurrentSampleText,
     getCurrentTestSampleText,
+    selectedSample,
+    handleDeleteSample
   } = useLLMAnalysis();
 
   return (
@@ -58,18 +56,10 @@ export function LLMAnalysisInterface() {
       </div>
 
       {/* Main content */}
-      <div className="pt-14 flex flex-auto p-6 gap-4 h-dvh">
+      <div className="pt-14 flex flex-auto p-6 gap-4 h-screen">
         <div className="flex flex-col w-1/2 gap-4 h-full">
           <div className="flex-none">
-            <TestSamples
-              samples={samples}
-              onSamples={setSamples}
-              selectedSample={selectedSample}
-              onSelectSample={setSelectedSample}
-              onDeleteSample={(id) =>
-                setSamples(samples.filter((s) => s.id !== id))
-              }
-            />
+            <TestSamples initialPageSize={4} onDeleteSample={handleDeleteSample}/>
           </div>
           <div className="flex-1 h-full">
             <MachineResponse

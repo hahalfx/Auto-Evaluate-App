@@ -7,7 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import type { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/ui/data-table";
 import type { TestSample } from "@/types/api";
-import { fetchTestSamples } from "@/services/api";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import {
+  selectAllSamples,
+  selectSelectedSampleIds,
+  selectSamplesStatus,
+  setSelectedSamples,
+  setSamples,
+  fetchSamples,
+} from "@/store/samplesSlice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,20 +47,17 @@ import {
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 
 interface TestSamplesProps {
-  samples: TestSample[];
-  onSamples: (samples: TestSample[]) => void;
-  selectedSample: number[];
-  onSelectSample: (id: number[]) => void;
-  onDeleteSample: (id: number) => void;
+  initialPageSize?: number;
+  onDeleteSample?: (id: number) => void;
 }
 
 export function TestSamples({
-  samples,
-  onSamples,
-  selectedSample,
-  onSelectSample,
+  initialPageSize,
   onDeleteSample,
-}: TestSamplesProps) {
+}: TestSamplesProps = {}) {
+  const samples = useAppSelector(selectAllSamples);
+  const selectedSample = useAppSelector(selectSelectedSampleIds);
+  const dispatch = useAppDispatch();
   const [newSampleText, setNewSampleText] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -60,6 +65,7 @@ export function TestSamples({
   const [importFile, setImportFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { playMatchedAudio } = useAudioPlayer();
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
 
   const handleAddCustomSample = () => {
     if (!newSampleText.trim()) return;
@@ -69,7 +75,7 @@ export function TestSamples({
       text: newSampleText,
     };
 
-    onSamples([...samples, newSample]);
+    dispatch(setSamples([...samples, newSample]));
     setNewSampleText("");
     setIsDialogOpen(false);
   };
@@ -100,7 +106,7 @@ export function TestSamples({
             text: row.语料,
           }));
 
-          onSamples([...samples, ...newSamples]);
+          dispatch(setSamples([...samples, ...newSamples]));
           setImportFile(null);
           if (fileInputRef.current) {
             fileInputRef.current.value = "";
@@ -114,9 +120,14 @@ export function TestSamples({
     reader.readAsArrayBuffer(importFile);
   };
 
+  const samplesStatus = useAppSelector(selectSamplesStatus);
+
   useEffect(() => {
+    if (samples.length === 0 && samplesStatus !== "loading") {
+      dispatch(fetchSamples());
+    }
     setLoading(false);
-  }, []);
+  }, [dispatch, samples.length, samplesStatus]);
 
   const columns: ColumnDef<TestSample>[] = [
     {
@@ -143,7 +154,7 @@ export function TestSamples({
       enableHiding: false,
     },
     {
-      accessorKey: "text",
+      accessorKey: "id",
       header: ({ column }) => {
         return (
           <Button
@@ -151,18 +162,59 @@ export function TestSamples({
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
             className="p-0 hover:bg-transparent"
           >
-            语音指令
+            ID
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         );
       },
-    },
-    {
-      accessorKey: "id",
-      header: "ID",
       cell: ({ row }) => {
         const id = row.getValue("id") as number;
         return <div className="text-left font-medium">#{id}</div>;
+      },
+    },
+    {
+      accessorKey: "text",
+      header: "语音指令",
+    },
+    {
+      accessorKey: "status",
+      header: "状态",
+      cell: ({ row }) => {
+        const status = row.getValue("status") as string;
+        return <div className="text-left font-medium">{status}</div>;
+      },
+    },
+    {
+      accessorKey: "result",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="p-0 hover:bg-transparent"
+          >
+            测试结果
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => {
+        const result = row.getValue("result") as string;
+        {
+          return !result ? (
+            <div className="justify-items-center">
+              <CircleDot size={20} color="#ffc300" />
+            </div>
+          ) : result === "pass" ? (
+            <div className="justify-items-center">
+              <CircleCheck size={20} color="green" />
+            </div>
+          ) : (
+            <div className="justify-items-center">
+              <CircleX size={20} color="red" />
+            </div>
+          );
+        }
       },
     },
     {
@@ -192,36 +244,6 @@ export function TestSamples({
       },
     },
     {
-      accessorKey: "status",
-      header: "状态",
-      cell: ({ row }) => {
-        const status = row.getValue("status") as string;
-        return <div className="text-left font-medium">{status}</div>;
-      },
-    },
-    {
-      accessorKey: "result",
-      header: () => <div className="text-center w-full">测试结果</div>,
-      cell: ({ row }) => {
-        const result = row.getValue("result") as string;
-        {
-          return !result ? (
-            <div className="justify-items-center">
-              <CircleDot color="#ffc300" />
-            </div>
-          ) : result === "pass" ? (
-            <div className="justify-items-center">
-              <CircleCheck color="green" />
-            </div>
-          ) : (
-            <div className="justify-items-center">
-              <CircleX color="red" />
-            </div>
-          );
-        }
-      },
-    },
-    {
       id: "actions",
       header: () => <div className="text-right w-full">操作</div>,
       cell: ({ row }) => {
@@ -239,17 +261,24 @@ export function TestSamples({
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>操作</DropdownMenuLabel>
                 <DropdownMenuItem
-                  onClick={() => onSelectSample([...selectedSample, sample.id])}
+                  onClick={() =>
+                    dispatch(setSelectedSamples([...selectedSample, sample.id]))
+                  }
                 >
                   选择
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>查看详情</DropdownMenuItem>
+                <DropdownMenuItem onClick={(e)=> {
+                  e.stopPropagation();
+                  setIsDetailDialogOpen(true)}}>详情</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (confirm("确定要删除这条测试语料吗？")) {
+                    if (
+                      confirm("确定要删除这条测试语料吗？") &&
+                      onDeleteSample
+                    ) {
                       onDeleteSample(sample.id);
                     }
                   }}
@@ -290,9 +319,7 @@ export function TestSamples({
               variant="outline"
               className="mt-2"
               onClick={() =>
-                fetchTestSamples()
-                  .then(onSamples)
-                  .catch(() => setError("重试失败"))
+                dispatch(fetchSamples()).catch(() => setError("重试失败"))
               }
             >
               重试
@@ -301,13 +328,18 @@ export function TestSamples({
         ) : (
           <DataTable
             columns={columns}
+            initialPageSize={initialPageSize}
             data={samples || []}
             onRowClick={(row) => {
               // 如果行已经被选中，则取消选择；否则添加到选择中
               if (selectedSample.includes(row.id)) {
-                onSelectSample(selectedSample.filter((id) => id !== row.id));
+                dispatch(
+                  setSelectedSamples(
+                    selectedSample.filter((id) => id !== row.id)
+                  )
+                );
               } else {
-                onSelectSample([...selectedSample, row.id]);
+                dispatch(setSelectedSamples([...selectedSample, row.id]));
               }
             }}
             selectedRowId={selectedSample}
@@ -315,7 +347,7 @@ export function TestSamples({
             onSelectRows={(selectedRows) => {
               // Extract IDs from selected rows and update the selection state
               const selectedIds = selectedRows.map((row) => row.id as number);
-              onSelectSample(selectedIds);
+              dispatch(setSelectedSamples(selectedIds));
             }}
           />
         )}
@@ -371,6 +403,13 @@ export function TestSamples({
               </p>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>详情</DialogTitle>
+          </DialogHeader>
         </DialogContent>
       </Dialog>
     </Card>

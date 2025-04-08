@@ -1,4 +1,4 @@
-import { Calendar, Home, Inbox, Search, Settings, Brain } from "lucide-react";
+import {  Home, Settings, Brain, Mic } from "lucide-react";
 
 import {
   Sidebar,
@@ -12,6 +12,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import Image from "next/image";
+import Link from "next/link";
 
 // Menu items.
 const items = [
@@ -24,6 +25,11 @@ const items = [
     title: "语音交互大模型测试",
     url: "/llm-analysis",
     icon: Brain,
+  },
+  {
+    title: "语音测试用例管理",
+    url: "/casemanage",
+    icon: Mic,
   },
   {
     title: "应用设置",
@@ -59,10 +65,10 @@ export function AppSidebar() {
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton  asChild>
-                    <a href={item.url}>
+                    <Link href={item.url}>
                       <item.icon />
                       <span>{item.title}</span>
-                    </a>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

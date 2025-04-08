@@ -46,7 +46,7 @@ export default function DashBoard() {
   return (
     <div>
       <div className="flex items-center fixed top-0 w-full bg-white">
-        <SidebarTrigger className="m-4" />
+        <SidebarTrigger className="mx-6 my-4" />
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
@@ -56,7 +56,7 @@ export default function DashBoard() {
         </Breadcrumb>
       </div>
       <div className="min-h-screen bg-white p-6">
-        <div className="pt-11 w-full mx-auto">
+        <div className="pt-8 w-full mx-auto">
           <h1 className="text-3xl font-bold mb-6">
             语音验证数据看板
           </h1>
@@ -93,7 +93,7 @@ export default function DashBoard() {
             {/* 平均相似度 */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">平均相似度</CardTitle>
+                <CardTitle className="text-lg">平均成功率</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-4xl font-bold">
