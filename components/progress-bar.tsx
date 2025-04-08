@@ -24,6 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import { useEffect, useState } from "react";
+import { WakeWord } from "@/types/api";
 
 interface ProgressBarProps {
   progress: {
@@ -48,6 +50,15 @@ export function ProgressBar({
   isAnalyzing,
   disabled,
 }: ProgressBarProps) {
+  const [wakewords, setwakewords] = useState([]);
+  const [ selectedWakeWordid, setSelectedWakeWordid ] = useState(Number);
+  useEffect(() => {
+    fetch("/api/wakeword")
+      .then((response) => response.json())
+      .then((data) => {
+        setwakewords(data);
+      });
+  }, []);
   return (
     <Card className="shadow-sm rounded-lg h-full">
       <CardHeader className="bg-background p-3 rounded-lg flex-row items-center justify-between space-y-0 border-b">
@@ -98,20 +109,24 @@ export function ProgressBar({
               开始自动化测试任务
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:min-w-[730px]">
+          <DialogContent className="min-w-[900px]">
             <DialogHeader>
               <DialogTitle>编辑测试任务</DialogTitle>
             </DialogHeader>
             <TestSamples initialPageSize={5} />
             <DialogFooter>
-              <Select>
+              <Select onValueChange={()=>setSelectedWakeWordid}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="选择唤醒词" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="light">Light</SelectItem>
-                  <SelectItem value="dark">Dark</SelectItem>
-                  <SelectItem value="system">System</SelectItem>
+                  {
+                    wakewords.map((wakeword: WakeWord) => (
+                      <SelectItem value={wakeword.text} key={wakeword.id}>
+                        {wakeword.text}
+                      </SelectItem>
+                    ))
+                  }
                 </SelectContent>
               </Select>
               <Button

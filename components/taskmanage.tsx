@@ -8,8 +8,18 @@ import {
   BreadcrumbSeparator,
 } from "./ui/breadcrumb";
 import { SidebarTrigger } from "./ui/sidebar";
+import { ChartComponent } from "./chartsample";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Ellipsis } from "lucide-react";
 
-export default function DashBoard() {
+export default function TaskManage() {
   // 静态演示数据
   const stats = {
     totalVerifications: 1248,
@@ -52,71 +62,29 @@ export default function DashBoard() {
             <BreadcrumbItem>
               <BreadcrumbLink href="/">主页</BreadcrumbLink>
             </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/taskmanage">测试任务管理</BreadcrumbLink>
+            </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
       </div>
       <div className="min-h-screen bg-white p-6">
         <div className="pt-8 w-full mx-auto">
-          <h1 className="text-3xl font-bold mb-6">
-            语音验证数据看板
-          </h1>
+          <h1 className="text-3xl font-bold mb-6">测试任务管理</h1>
 
           {/* 核心指标卡片组 */}
-          <div className="grid gap-6 md:grid-cols-3 mb-8">
-            {/* 总验证次数 */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">总验证次数</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-bold">
-                  {stats.totalVerifications}
-                </div>
-                <p className="text-sm text-muted-foreground mt-2">
-                  过去30天数据
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* 验证成功率 */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">验证成功率</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-bold">{stats.successRate}%</div>
-                <Progress value={stats.successRate} className="h-2 mt-3" />
-                <p className="text-sm text-muted-foreground mt-2">较上月 ↑2%</p>
-              </CardContent>
-            </Card>
-
-            {/* 平均相似度 */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">平均成功率</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-bold">
-                  {stats.averageSimilarity}%
-                </div>
-                <Progress
-                  value={stats.averageSimilarity}
-                  className="h-2 mt-3"
-                />
-                <p className="text-sm text-muted-foreground mt-2">
-                  行业基准: 70%
-                </p>
-              </CardContent>
-            </Card>
+          <div className="w-full mb-6">
+            <ChartComponent />
           </div>
 
-          {/* 最近验证记录 */}
+          {/* 最近验证任务 */}
           <Card>
             <CardHeader>
-              <CardTitle>最近验证记录</CardTitle>
+              <CardTitle>最近验证任务</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {stats.recentResults.map((result) => (
                   <div
                     key={result.id}
@@ -150,6 +118,21 @@ export default function DashBoard() {
                         }`}
                       >
                         {result.status === "success" ? "通过" : "失败"}
+                      </div>
+                      <div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger className="justify-items-center hover:bg-gray-100">
+                            <Ellipsis className="p-1"/>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuLabel>更多</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem>Profile</DropdownMenuItem>
+                            <DropdownMenuItem>Billing</DropdownMenuItem>
+                            <DropdownMenuItem>Team</DropdownMenuItem>
+                            <DropdownMenuItem>Subscription</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   </div>

@@ -1,4 +1,4 @@
-import {  Home, Settings, Brain, Mic } from "lucide-react";
+import {  Home, Settings, Brain, Mic, ListChecks } from "lucide-react";
 
 import {
   Sidebar,
@@ -27,7 +27,12 @@ const items = [
     icon: Brain,
   },
   {
-    title: "语音测试用例管理",
+    title: "测试任务管理",
+    url: "/taskmanage",
+    icon: ListChecks,
+  },
+  {
+    title: "测试语料管理",
     url: "/casemanage",
     icon: Mic,
   },

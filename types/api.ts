@@ -7,6 +7,18 @@ export interface TestSample {
   result?: string
 }
 
+export interface WakeWord {
+  id: number
+  text: string
+}
+  
+export interface Task {
+  id: number
+  task_samples_id: number
+  task_wake_word_id: number
+  task_status: string
+}
+
 // 评估项目类型
 export interface AssessmentItem {
   score: number

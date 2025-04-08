@@ -7,11 +7,9 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { 
   selectAllSamples,
   selectSelectedSampleIds,
-  selectSamplesStatus,
   setSelectedSamples,
   updateSampleResult,
   deleteSample,
-  fetchSamples
 } from "@/store/samplesSlice";
 
 /**
@@ -69,16 +67,6 @@ export function useLLMAnalysis() {
       dispatch(deleteSample(id));
     };
 
-    // 初始化加载测试样本 - 仅在数据不存在时获取
-  const samplesStatus = useAppSelector(selectSamplesStatus);
-
-  useEffect(() => {
-    if (samples.length === 0 && samplesStatus !== 'loading') {
-      dispatch(fetchSamples());
-    }
-  }, [dispatch, samples.length, samplesStatus]);
-
-    // 移除重复的本地样本加载逻辑
 
   // 监听机器响应组件的播放和录音状态变化
   useEffect(() => {

@@ -23,21 +23,21 @@ export default function TestSamplePage() {
               <BreadcrumbSeparator />
               <BreadcrumbItem>
                 <BreadcrumbLink href="/casemanage">
-                  语音测试用例管理
+                测试语料管理
                 </BreadcrumbLink>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
         </div>
 
-        <div className="flex flex-1 mt-14 m-6">
+        <div className="flex flex-1 mt-14 mx-6">
           <Tabs defaultValue="case" className="w-full">
             <TabsList>
               <TabsTrigger value="case">测试语料管理</TabsTrigger>
               <TabsTrigger value="wake">唤醒词管理</TabsTrigger>
             </TabsList>
             <TabsContent value="case">
-              <TestSamples initialPageSize={10} />
+              <TestSamples initialPageSize={9} />
             </TabsContent>
             <TabsContent value="wake">Change your password here.</TabsContent>
           </Tabs>

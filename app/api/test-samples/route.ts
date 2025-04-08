@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server"
 import type { TestSample } from "@/types/api"
+import path from "path";
+import fs from "fs/promises";
+
+const filePath = path.join(process.cwd(), "public", "mock", "testsamples.json");
 
 // 模拟数据
 const testSamples: TestSample[] = [
@@ -16,9 +20,13 @@ const testSamples: TestSample[] = [
 ]
 
 export async function GET() {
-  // 模拟网络延迟
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  try {
+    const data = await fs.readFile(filePath, "utf-8");
+    return NextResponse.json(JSON.parse(data));
+  } catch (error) {
+    console.error("Error reading car-info.json:", error);
+    return NextResponse.json(testSamples)
+  }
 
-  return NextResponse.json(testSamples)
 }
 
