@@ -1,47 +1,51 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, use } from "react";
 import { submitForAnalysis, fetchTestSamples } from "@/services/api";
 import type { AnalysisResult, TestSample } from "@/types/api";
 import { useToast } from "@/components/ui/use-toast";
 import { MachineResponseHandle } from "@/components/machine-response";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { 
+import {
   selectAllSamples,
   selectSelectedSampleIds,
   setSelectedSamples,
   updateSampleResult,
   deleteSample,
 } from "@/store/samplesSlice";
+import { setCurrentTask, updateMachineResponse, updateTaskAsync, updateTaskStatus, updateTestResult } from "@/store/taskSlice";
 
 /**
  * 自定义hook，封装LLM分析界面的状态和业务逻辑
- * 
+ *
  * 主要功能：
  * 1. 管理测试样本、选中样本、机器响应和分析结果等状态
  * 2. 处理自动化测试流程
  * 3. 处理分析提交和结果导航
  * 4. 管理播放和录音状态
- * 
+ *
  * @returns 返回状态和方法供组件使用
  */
 export function useLLMAnalysis() {
   // 使用 Redux store 中的样本数据
   const samples = useAppSelector(selectAllSamples);
   const selectedSample = useAppSelector(selectSelectedSampleIds);
+  const Task = useAppSelector((state) => state.tasks.currentTask);
   const dispatch = useAppDispatch();
-  
+
   // 机器响应相关状态
   const [machineResponse, setMachineResponse] = useState<string>("");
   const machineResponseRef = useRef<MachineResponseHandle>(null);
-  
+
   // 分析结果相关状态
-  const [analysisResults, setAnalysisResults] = useState<Map<number, AnalysisResult>>(new Map());
+  const [analysisResults, setAnalysisResults] = useState<
+    Map<number, AnalysisResult>
+  >(new Map());
   const [currentResultIndex, setCurrentResultIndex] = useState<number>(0);
-  
+
   // 进度和状态相关
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  
+
   // 任务进度
   const [taskProgress, setTaskProgress] = useState<{
     value: number;
@@ -52,21 +56,31 @@ export function useLLMAnalysis() {
     current: 0,
     total: 0,
   });
-  
+  const [progressName, setProgressName] = useState<string>("");
+
+  useEffect(() => {
+    setTaskProgress({
+      value: 0,
+      current: 0,
+      total: 0,
+    });
+    setProgressName("");
+    setError(null);
+  }, [Task?.id]);
+
   // 播放控制相关状态
   const [autoPlayNext, setAutoPlayNext] = useState(true); // 是否自动播放下一条
   const [isPlaying, setIsPlaying] = useState(false); // 是否正在播放音频
   const [isRecording, setIsRecording] = useState(false); // 是否正在录音
   const isPlayingNextRef = useRef<boolean>(false); // 防止重复播放的标记
 
-    const setSelectedSampleIds = (ids: number[]) => {
-      dispatch(setSelectedSamples(ids));
-    };
+  const setSelectedSampleIds = (ids: number[]) => {
+    dispatch(setSelectedSamples(ids));
+  };
 
-    const handleDeleteSample = (id: number) => {
-      dispatch(deleteSample(id));
-    };
-
+  const handleDeleteSample = (id: number) => {
+    dispatch(deleteSample(id));
+  };
 
   // 监听机器响应组件的播放和录音状态变化
   useEffect(() => {
@@ -79,19 +93,26 @@ export function useLLMAnalysis() {
     machineResponseRef.current?.isRecording,
   ]);
 
-
   /**
    * 自动播放下一条测试样本
    * @param sortedSampleIds 排序后的样本ID数组
    * @param completedCount 已完成的测试数量
    */
-  const playNextSample = (sortedSampleIds: number[], completedCount: number) => {
+  const playNextSample = (
+    sortedSampleIds: number[],
+    completedCount: number
+  ) => {
     if (completedCount >= sortedSampleIds.length) return;
-    
+
     const nextSampleId = sortedSampleIds[completedCount];
     const nextSample = samples.find((s: TestSample) => s.id === nextSampleId);
-    
-    if (nextSample && autoPlayNext && machineResponseRef.current && !isPlayingNextRef.current) {
+
+    if (
+      nextSample &&
+      autoPlayNext &&
+      machineResponseRef.current &&
+      !isPlayingNextRef.current
+    ) {
       isPlayingNextRef.current = true;
       setTimeout(() => {
         if (machineResponseRef.current?.playCurrentSampleAudio) {
@@ -103,7 +124,7 @@ export function useLLMAnalysis() {
           isPlayingNextRef.current = false;
         }
       }, 2000);
-      
+
       toast({
         title: "自动播放下一条",
         description: `正在处理指令: "${nextSample.text}"`,
@@ -145,9 +166,10 @@ export function useLLMAnalysis() {
     // 如果提供了初始响应，直接进行分析
     if (initialResponse) {
       await handleAnalysis(initialResponse);
+      setProgressName("分析提交");
       return;
     }
-    
+
     // 否则，开始播放当前样本音频
     if (selectedSample.length === 0) {
       toast({
@@ -157,11 +179,11 @@ export function useLLMAnalysis() {
       });
       return;
     }
-    
+
     // 检查是否已完成所有测试
     const sortedSampleIds = [...selectedSample].sort((a, b) => a - b);
     const completedCount = analysisResults.size;
-    
+
     if (completedCount >= sortedSampleIds.length) {
       toast({
         title: "测试已完成",
@@ -170,9 +192,10 @@ export function useLLMAnalysis() {
       });
       return;
     }
-    
+
     // 开始播放音频
     handleStartAutomatedTest();
+    setProgressName("播放语料");
   };
 
   /**
@@ -239,19 +262,44 @@ export function useLLMAnalysis() {
       const sample = samples.find((s: TestSample) => s.id === currentSampleId);
       if (!sample) throw new Error("未找到选中的测试样本");
 
+      // 使用Redux action更新车机响应
+      dispatch(
+        updateMachineResponse({
+          taskId: Task?.id,
+          sampleId: currentSampleId,
+          response: responseToSubmit,
+        })
+      );
+
+      // 向后端提交分析请求
       const result = await submitForAnalysis(sample.text, responseToSubmit);
 
+      // 使用Redux action更新任务结果
+      dispatch(
+        updateTestResult({
+          taskId: Task?.id,
+          sampleId: currentSampleId,
+          result: result,
+        })
+      );
+
+      //dispatch(setCurrentTask({...Task, machine_response[currentSampleId]: responseToSubmit, test_result[currentSampleId]: result, task_status: "in_progress"}))
       const newResults = new Map(analysisResults);
       newResults.set(currentSampleId, result);
       setAnalysisResults(newResults);
 
       // 使用Redux action更新样本结果
-      dispatch(updateSampleResult({
-        sampleId: currentSampleId,
-        result: result.assessment.valid ? 'pass' : 'fail'
-      }));
+      dispatch(
+        updateSampleResult({
+          sampleId: currentSampleId,
+          taskId: Task?.id,
+          result: result,
+        })
+      );
 
-      const newIndex = sortedSampleIds.findIndex((id) => id === currentSampleId);
+      const newIndex = sortedSampleIds.findIndex(
+        (id) => id === currentSampleId
+      );
       setCurrentResultIndex(newIndex >= 0 ? newIndex : 0);
 
       const newCompletedCount = newResults.size;
@@ -263,7 +311,9 @@ export function useLLMAnalysis() {
 
       toast({
         title: "分析完成",
-        description: `测评结果: ${result.assessment.valid ? "通过" : "不通过"} (${Math.round(result.assessment.overall_score * 100)}%)`,
+        description: `测评结果: ${
+          result.assessment.valid ? "通过" : "不通过"
+        } (${Math.round(result.assessment.overall_score * 100)}%)`,
         variant: result.assessment.valid ? "default" : "destructive",
       });
 
@@ -272,6 +322,7 @@ export function useLLMAnalysis() {
       if (newCompletedCount < totalCount) {
         playNextSample(sortedSampleIds, newCompletedCount);
       } else {
+        dispatch(updateTaskStatus({ taskId: Task?.id, status: "completed" }));
         toast({
           title: "测试完成",
           description: `所有${totalCount}条测试样本已完成分析`,
@@ -290,11 +341,6 @@ export function useLLMAnalysis() {
       setLoading(false);
     }
   };
-
-  // 当选择新的测试样本时，重置错误状态
-  useEffect(() => {
-    setError(null);
-  }, [selectedSample]);
 
   /**
    * 获取当前显示的分析结果
@@ -408,6 +454,7 @@ export function useLLMAnalysis() {
     loading,
     error,
     taskProgress,
+    progressName,
     isPlaying,
     isRecording,
     machineResponseRef,

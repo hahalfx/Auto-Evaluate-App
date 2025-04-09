@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { useVoiceRecognition } from "@/hooks/useVoiceRecognition";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { useAppDispatch } from '@/store/hooks';
 
 interface MachineResponseProps {
   value: string;
@@ -46,14 +47,17 @@ export const MachineResponse = forwardRef<
 ) {
   const toast = useToast();
 
+  const dispatch = useAppDispatch();
+
   // Use custom hooks for voice recognition and audio playback
   const { isRecording, error, startRecording, stopRecording } =
     useVoiceRecognition({
       onRecognitionResult: (text) => {
         onChange(text);
       },
-      onRecognitionSubmit: (text) => {
+      onRecognitionStable: (text) => {
         if (text.trim() && currentSampleText) {
+          
           toast.toast({
             title: "识别结果已稳定",
             description: "自动停止录音并提交分析",

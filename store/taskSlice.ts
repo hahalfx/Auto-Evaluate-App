@@ -113,6 +113,7 @@ const taskSlice = createSlice({
           state.items[taskIndex].test_result = {};
         }
         state.items[taskIndex].test_result![sampleId] = result;
+        updateTaskAsync(state.items[taskIndex]);
       }
     },
     // 添加新任务

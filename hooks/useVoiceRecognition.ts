@@ -1,6 +1,7 @@
 // hooks/useVoiceRecognition.ts
 import { useState, useRef, useEffect } from 'react';
 
+
 interface XunfeiConfig {
   url: string;
   appId: string;
@@ -8,11 +9,11 @@ interface XunfeiConfig {
 
 interface UseVoiceRecognitionProps {
   onRecognitionResult: (text: string) => void;
-  onRecognitionSubmit: (text: string) => void;
+  onRecognitionStable: (text: string) => void;
   onError: (error: string) => void;
 }
 
-export function useVoiceRecognition({ onRecognitionResult, onRecognitionSubmit,onError }: UseVoiceRecognitionProps) {
+export function useVoiceRecognition({ onRecognitionResult, onRecognitionStable,onError }: UseVoiceRecognitionProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -255,8 +256,9 @@ export function useVoiceRecognition({ onRecognitionResult, onRecognitionSubmit,o
         // Stop recording
         stopRecording();
         
+        
         // Make sure text is updated in UI
-        onRecognitionSubmit(currentText);
+        onRecognitionStable(currentText);
         
         // Reset submission flag after delay
         setTimeout(() => {

@@ -25,6 +25,7 @@ export function LLMAnalysisInterface() {
     loading,
     error,
     taskProgress,
+    progressName,
     isPlaying,
     isRecording,
     machineResponseRef,
@@ -99,6 +100,7 @@ export function LLMAnalysisInterface() {
           <div className="flex-none">
             <ProgressBar
               progress={taskProgress}
+              progressname={progressName}
               samplelength={selectedSample.length}
               onStartAutomatedTest={handleStartAutomatedTest}
               isPlaying={isPlaying}

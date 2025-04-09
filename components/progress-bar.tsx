@@ -33,6 +33,7 @@ interface ProgressBarProps {
     current: number;
     total: number;
   };
+  progressname: string;
   samplelength: number;
   onStartAutomatedTest: () => void;
   isPlaying: boolean;
@@ -43,6 +44,7 @@ interface ProgressBarProps {
 
 export function ProgressBar({
   progress,
+  progressname,
   samplelength,
   onStartAutomatedTest,
   isPlaying,
@@ -67,6 +69,9 @@ export function ProgressBar({
       <CardContent className="p-4">
         <p className="text-sm justify-start text-muted-foreground py-1">
           当前测试任务：
+        </p>
+        <p className="text-sm justify-start text-muted-foreground py-1">
+          正在：{progressname}
         </p>
         <Progress value={progress.value} />
         <div className="flex justify-between">
@@ -106,7 +111,7 @@ export function ProgressBar({
               className="gap-2 bg-blue-700 hover:bg-blue-500 w-full"
               variant="default"
             >
-              开始自动化测试任务
+              选择自动化测试任务
             </Button>
           </DialogTrigger>
           <DialogContent className="min-w-[900px]">

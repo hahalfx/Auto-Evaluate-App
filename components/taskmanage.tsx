@@ -245,7 +245,7 @@ export default function TaskManage() {
           </Card>
         </div>
         <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
-          <DialogContent className="max-w-6xl max-h-[800px] overflow-auto">
+          <DialogContent className="max-w-6xl max-h-[800px] overflow-auto p-9">
             <DialogHeader>
               <DialogTitle>任务详情</DialogTitle>
             </DialogHeader>

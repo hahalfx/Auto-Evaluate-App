@@ -4,7 +4,7 @@ export interface TestSample {
   text: string
   status?: string
   repeats?: number
-  result?: string
+  result?: Record<number, AnalysisResult>
 }
 
 export interface WakeWord {
@@ -19,6 +19,7 @@ export interface Task {
   machine_response?: Record<number,MachineResponseData>
   test_result?: Record<number, AnalysisResult>
   task_status: string
+  task_progress?: number
 }
 
 // 评估项目类型
