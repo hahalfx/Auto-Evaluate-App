@@ -14,6 +14,9 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { useLLMAnalysis } from "@/hooks/useLLMAnalysis";
+import { useEffect } from "react";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { setAutoStart } from "@/store/taskSlice";
 
 export function LLMAnalysisInterface() {
   const {
@@ -35,13 +38,28 @@ export function LLMAnalysisInterface() {
     getCurrentSampleText,
     getCurrentTestSampleText,
     selectedSample,
-    handleDeleteSample
+    handleDeleteSample,
   } = useLLMAnalysis();
+
+  const dispatch = useAppDispatch();
+  const autoStart = useAppSelector((state) => state.tasks.autoStart);
+
+  useEffect(() => {
+    if (autoStart) {
+      // 从Redux获取
+      // 添加延迟，给音频文件加载留出时间
+      const timer = setTimeout(() => {
+        handleStartAutomatedTest();
+        dispatch(setAutoStart(false));
+      }, 1000); // 延迟1秒
+      return () => clearTimeout(timer);
+    }
+  }, [autoStart]);
 
   return (
     <div className="flex flex-col w-full max-h-screen">
       <div className="flex items-center fixed top-0 w-full bg-white">
-        <SidebarTrigger className="mx-6 my-4"/>
+        <SidebarTrigger className="mx-6 my-4" />
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
@@ -49,7 +67,9 @@ export function LLMAnalysisInterface() {
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <BreadcrumbLink href="/llm-analysis">语音交互大模型分析</BreadcrumbLink>
+              <BreadcrumbLink href="/llm-analysis">
+                语音交互大模型分析
+              </BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
@@ -59,7 +79,10 @@ export function LLMAnalysisInterface() {
       <div className="pt-14 flex flex-auto p-6 gap-4 h-screen">
         <div className="flex flex-col w-1/2 gap-4 h-full">
           <div className="flex-none">
-            <TestSamples initialPageSize={4} onDeleteSample={handleDeleteSample}/>
+            <TestSamples
+              initialPageSize={4}
+              onDeleteSample={handleDeleteSample}
+            />
           </div>
           <div className="flex-1 h-full">
             <MachineResponse

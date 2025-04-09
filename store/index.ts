@@ -1,11 +1,12 @@
 // src/store/index.ts
 import { configureStore } from "@reduxjs/toolkit";
 import samplesReducer from "./samplesSlice";
+import taskReducer from "./taskSlice";
 
 export const store = configureStore({
   reducer: {
     samples: samplesReducer,
-    // 将来可以添加其他 reducers
+    tasks: taskReducer,
   },
 });
 

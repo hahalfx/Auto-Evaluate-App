@@ -66,7 +66,7 @@ export function ProgressBar({
       </CardHeader>
       <CardContent className="p-4">
         <p className="text-sm justify-start text-muted-foreground py-1">
-          测试进度
+          当前测试任务：
         </p>
         <Progress value={progress.value} />
         <div className="flex justify-between">

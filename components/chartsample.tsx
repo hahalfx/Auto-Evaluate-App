@@ -154,9 +154,9 @@ export function ChartComponent() {
     <Card>
       <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
         <div className="grid flex-1 gap-1 text-center sm:text-left">
-          <CardTitle>Area Chart - Interactive</CardTitle>
+          <CardTitle>近期测试任务</CardTitle>
           <CardDescription>
-            Showing total visitors for the last 3 months
+            展示近三个月测试任务成功率
           </CardDescription>
         </div>
         <Select value={timeRange} onValueChange={setTimeRange}>
@@ -168,13 +168,13 @@ export function ChartComponent() {
           </SelectTrigger>
           <SelectContent className="rounded-xl">
             <SelectItem value="90d" className="rounded-lg">
-              Last 3 months
+              近3个月
             </SelectItem>
             <SelectItem value="30d" className="rounded-lg">
-              Last 30 days
+              近30天
             </SelectItem>
             <SelectItem value="7d" className="rounded-lg">
-              Last 7 days
+              近7天
             </SelectItem>
           </SelectContent>
         </Select>

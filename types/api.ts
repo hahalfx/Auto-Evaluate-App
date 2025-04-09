@@ -14,8 +14,10 @@ export interface WakeWord {
   
 export interface Task {
   id: number
-  task_samples_id: number
-  task_wake_word_id: number
+  test_samples_ids: number[]
+  wake_word_id: number
+  machine_response?: Record<number,MachineResponseData>
+  test_result?: Record<number, AnalysisResult>
   task_status: string
 }
 

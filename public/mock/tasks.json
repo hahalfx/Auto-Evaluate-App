@@ -1,0 +1,275 @@
+[
+  {
+    "id": 1001,
+    "test_samples_ids": [
+      1,
+      2
+    ],
+    "wake_word_id": 1,
+    "machine_response": {
+      "1": {
+        "text": "好的，已为您打开空调，温度设置为24度",
+        "connected": true
+      },
+      "2": {
+        "text": "正在为您导航至最近的加油站，预计5分钟到达",
+        "connected": true
+      }
+    },
+    "test_result": {
+      "1": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 9.7,
+            "comment": "语义理解准确，识别了打开空调的意图并附带了温度设置"
+          },
+          "state_change_confirmation": {
+            "score": 9.5,
+            "comment": "明确表达了状态变化并给出具体温度设置"
+          },
+          "unambiguous_expression": {
+            "score": 9.2,
+            "comment": "表达清晰无歧义，用户能明确理解"
+          },
+          "overall_score": 9.5,
+          "valid": true,
+          "suggestions": [
+            "可提供当前车内温度对比",
+            "可询问温度是否合适"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "空调控制分析",
+          "content": "系统完全理解了用户指令，并添加了默认的温度设置，响应非常完善。该响应包含了操作确认和具体的温度信息，使用户清晰地知道空调的工作状态。",
+          "context": false,
+          "multiRound": false
+        }
+      },
+      "2": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 9.8,
+            "comment": "准确理解导航需求并智能选择了最近的加油站"
+          },
+          "state_change_confirmation": {
+            "score": 9.6,
+            "comment": "明确表达了导航状态并提供了到达时间估计"
+          },
+          "unambiguous_expression": {
+            "score": 9.4,
+            "comment": "表达清晰，提供了有价值的附加信息"
+          },
+          "overall_score": 9.6,
+          "valid": true,
+          "suggestions": [
+            "可提供加油站名称",
+            "可询问是否需要其他加油站选项"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "导航请求分析",
+          "content": "系统不仅正确理解了导航请求，还智能地选择了最近的加油站作为目的地，并提供了预计到达时间。这种响应既满足了用户的核心需求，又提供了有价值的附加信息。",
+          "context": false,
+          "multiRound": false
+        }
+      }
+    },
+    "task_status": "completed"
+  },
+  {
+    "id": 1002,
+    "test_samples_ids": [
+      1,
+      2,
+      3
+    ],
+    "wake_word_id": 2,
+    "machine_response": {
+      "1": {
+        "text": "音乐已切换到下一首：周杰伦的《稻香》",
+        "connected": true
+      },
+      "2": {
+        "text": "抱歉，我没有找到这首歌曲",
+        "connected": true
+      },
+      "3": {
+        "text": "",
+        "connected": false
+      }
+    },
+    "test_result": {
+      "1": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 9.3,
+            "comment": "正确理解了切换音乐的请求"
+          },
+          "state_change_confirmation": {
+            "score": 9.8,
+            "comment": "明确确认了歌曲切换并提供了新歌曲信息"
+          },
+          "unambiguous_expression": {
+            "score": 9.5,
+            "comment": "清晰明了，包含歌手和歌曲名"
+          },
+          "overall_score": 9.5,
+          "valid": true,
+          "suggestions": [
+            "可提供音乐播放时长",
+            "可添加'是否喜欢这首歌'的询问"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "音乐控制分析",
+          "content": "系统完美执行了音乐切换指令，并在响应中提供了详细的歌曲信息。这种包含歌手和歌名的响应方式增强了用户体验，使用户确切知道正在播放什么。",
+          "context": false,
+          "multiRound": false
+        }
+      },
+      "2": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 8.5,
+            "comment": "理解了查找歌曲的意图，但无法找到歌曲"
+          },
+          "state_change_confirmation": {
+            "score": 7,
+            "comment": "确认了无法找到歌曲，但没有提供后续建议"
+          },
+          "unambiguous_expression": {
+            "score": 7.5,
+            "comment": "表达清晰但过于简短，缺乏帮助性"
+          },
+          "overall_score": 7.7,
+          "valid": true,
+          "suggestions": [
+            "建议提供其他类似歌曲",
+            "询问是否需要查找其他歌手的歌曲"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "歌曲搜索失败分析",
+          "content": "系统理解了用户查找特定歌曲的意图，但无法找到目标歌曲。响应虽然诚实，但缺乏帮助性。建议在无法找到歌曲时提供替代建议或询问更多信息以辅助搜索。",
+          "context": false,
+          "multiRound": true
+        }
+      },
+      "3": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 0,
+            "comment": "没有响应，无法评估语义理解"
+          },
+          "state_change_confirmation": {
+            "score": 0,
+            "comment": "没有响应，无法评估状态确认"
+          },
+          "unambiguous_expression": {
+            "score": 0,
+            "comment": "没有响应，无法评估表达质量"
+          },
+          "overall_score": 0,
+          "valid": false,
+          "suggestions": [
+            "检查系统连接状态",
+            "改进语音识别系统稳定性"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "系统无响应分析",
+          "content": "系统完全没有响应用户指令，这可能是由于连接中断、系统崩溃或语音识别失败。这种情况严重影响用户体验，需要从技术层面解决系统稳定性问题。",
+          "context": false,
+          "multiRound": false
+        }
+      }
+    },
+    "task_status": "completed"
+  },
+  {
+    "id": 1003,
+    "test_samples_ids": [
+      1,
+      2
+    ],
+    "wake_word_id": 3,
+    "machine_response": {
+      "1": {
+        "text": "好的，已将车窗打开",
+        "connected": true
+      },
+      "2": {
+        "text": "抱歉，我不理解您的请求，请您说得更具体一些",
+        "connected": true
+      }
+    },
+    "test_result": {
+      "1": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 9,
+            "comment": "正确理解了打开车窗的请求"
+          },
+          "state_change_confirmation": {
+            "score": 8.5,
+            "comment": "确认了车窗状态变化，但没说明哪个车窗"
+          },
+          "unambiguous_expression": {
+            "score": 7.8,
+            "comment": "表达简洁但不够具体，可能导致歧义"
+          },
+          "overall_score": 8.4,
+          "valid": true,
+          "suggestions": [
+            "明确指出打开的是哪个车窗",
+            "可以询问是否需要调整开启程度"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "车窗控制分析",
+          "content": "系统理解并执行了打开车窗的指令，响应简洁。但响应中未指明打开的是哪个车窗（可能是所有车窗或仅驾驶位车窗），这种不确定性可能导致用户疑惑。建议在响应中更加具体。",
+          "context": true,
+          "multiRound": false
+        }
+      },
+      "2": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 4,
+            "comment": "未能理解用户意图"
+          },
+          "state_change_confirmation": {
+            "score": 5,
+            "comment": "明确表示无法理解，但没有引导具体方向"
+          },
+          "unambiguous_expression": {
+            "score": 7.5,
+            "comment": "表达清晰，但帮助性不足"
+          },
+          "overall_score": 5.5,
+          "valid": false,
+          "suggestions": [
+            "提供例句或可用命令示例",
+            "具体询问用户意图的领域"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "理解失败分析",
+          "content": "系统未能理解用户的请求，虽然明确表达了这一点，但缺乏建设性的引导。当遇到理解困难时，系统应该提供更具体的问题或示例，帮助用户重新表述请求或选择可用的命令。",
+          "context": true,
+          "multiRound": true
+        }
+      }
+    },
+    "task_status": "in_progress"
+  },
+  {
+    "test_samples_ids": [
+      1,
+      4
+    ],
+    "wake_word_id": 1,
+    "task_status": "pending",
+    "id": 1004
+  }
+]
