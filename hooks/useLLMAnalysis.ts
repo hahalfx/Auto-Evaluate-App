@@ -12,6 +12,8 @@ import {
   deleteSample,
 } from "@/store/samplesSlice";
 import { setCurrentTask, updateMachineResponse, updateTaskAsync, updateTaskStatus, updateTestResult } from "@/store/taskSlice";
+import { store } from "@/store";
+import { connected } from "process";
 
 /**
  * 自定义hook，封装LLM分析界面的状态和业务逻辑
@@ -262,12 +264,17 @@ export function useLLMAnalysis() {
       const sample = samples.find((s: TestSample) => s.id === currentSampleId);
       if (!sample) throw new Error("未找到选中的测试样本");
 
+      const newResponse = {
+        connected: true,
+        text: responseToSubmit,
+      }
+
       // 使用Redux action更新车机响应
       dispatch(
         updateMachineResponse({
           taskId: Task?.id,
           sampleId: currentSampleId,
-          response: responseToSubmit,
+          response: newResponse,
         })
       );
 
@@ -283,7 +290,6 @@ export function useLLMAnalysis() {
         })
       );
 
-      //dispatch(setCurrentTask({...Task, machine_response[currentSampleId]: responseToSubmit, test_result[currentSampleId]: result, task_status: "in_progress"}))
       const newResults = new Map(analysisResults);
       newResults.set(currentSampleId, result);
       setAnalysisResults(newResults);
@@ -323,6 +329,10 @@ export function useLLMAnalysis() {
         playNextSample(sortedSampleIds, newCompletedCount);
       } else {
         dispatch(updateTaskStatus({ taskId: Task?.id, status: "completed" }));
+        const newTask = store.getState().tasks.currentTask;
+        if (newTask){
+          dispatch(updateTaskAsync(newTask));
+        }
         toast({
           title: "测试完成",
           description: `所有${totalCount}条测试样本已完成分析`,

@@ -48,10 +48,16 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useLLMAnalysis } from "@/hooks/useLLMAnalysis";
+import { generateASRTestReport, example } from "@/utils/generateASRTestReport";
 
 // 定义排序类型
-type SortType = "id-asc" | "id-desc" | "similarity-asc" | "similarity-desc" | "time-asc" | "time-desc";
+type SortType =
+  | "id-asc"
+  | "id-desc"
+  | "similarity-asc"
+  | "similarity-desc"
+  | "time-asc"
+  | "time-desc";
 // 定义筛选类型
 type FilterType = "all" | "completed" | "failed" | "in_progress" | "pending";
 
@@ -68,7 +74,97 @@ export default function TaskManage() {
   const { playMatchedAudio } = useAudioPlayer();
   const router = useRouter();
 
-  const { handleStartAutomatedTest } = useLLMAnalysis();
+  const handleExportReport = () => {
+    if (!currentTask) {
+      console.warn("No current task to export");
+      return;
+    }
+
+    const now = new Date();
+    const reportData: any = {
+      taskName: currentTask.name || `任务#${currentTask.id}`,
+      date: now.toLocaleString(),
+      audioType: "",
+      audioFile: "",
+      audioDuration: "",
+      audioCategory: "",
+      testCollection: "",
+      testDuration: "",
+      sentenceAccuracy: 0,
+      wordAccuracy: 0,
+      characterErrorRate: 0,
+      recognitionSuccessRate: 0,
+      totalWords: 0,
+      insertionErrors: 0,
+      deletionErrors: 0,
+      substitutionErrors: 0,
+      fastestRecognitionTime: 0,
+      slowestRecognitionTime: 0,
+      averageRecognitionTime: 0,
+      completedSamples: 0,
+      items: [],
+    };
+
+    if (currentTask.test_result) {
+      const items: any[] = [];
+      let totalWords = 0;
+      let insertionErrors = 0;
+      let deletionErrors = 0;
+      let substitutionErrors = 0;
+      let recognitionTimes = [];
+      let passedCount = 0;
+
+      for (const [sampleId, result] of Object.entries(
+        currentTask.test_result
+      )) {
+        const assessment = result.assessment;
+        const item = {
+          audioFile: "",
+          recognitionFile: "",
+          device: "",
+          recognitionResult: "",
+          insertionErrors: 0,
+          deletionErrors: 0,
+          substitutionErrors: 0,
+          totalWords: 0,
+          referenceText: "",
+          recognizedText: "",
+          resultStatus: assessment.valid ? "Success" : "Fail",
+          recognitionTime: 0,
+          testTime: "",
+        };
+
+        totalWords += item.totalWords;
+        insertionErrors += item.insertionErrors;
+        deletionErrors += item.deletionErrors;
+        substitutionErrors += item.substitutionErrors;
+        recognitionTimes.push(item.recognitionTime);
+        if (assessment.valid) passedCount++;
+
+        items.push(item);
+      }
+
+      reportData.items = items;
+      reportData.totalWords = totalWords;
+      reportData.insertionErrors = insertionErrors;
+      reportData.deletionErrors = deletionErrors;
+      reportData.substitutionErrors = substitutionErrors;
+      reportData.completedSamples = items.length;
+      reportData.recognitionSuccessRate =
+        items.length > 0 ? passedCount / items.length : 0;
+      reportData.fastestRecognitionTime =
+        recognitionTimes.length > 0 ? Math.min(...recognitionTimes) : 0;
+      reportData.slowestRecognitionTime =
+        recognitionTimes.length > 0 ? Math.max(...recognitionTimes) : 0;
+      reportData.averageRecognitionTime =
+        recognitionTimes.length > 0
+          ? recognitionTimes.reduce((a, b) => a + b, 0) /
+            recognitionTimes.length
+          : 0;
+    }
+
+    generateASRTestReport(reportData, `ASR测试报告_任务${currentTask.id}.xlsx`);
+  };
 
   // 处理开始任务
   const handleStartTask = (taskId: number) => {
@@ -81,7 +177,7 @@ export default function TaskManage() {
     //   task_status: "in_progress"
     // }));
 
-    dispatch(setAutoStart(true)); // 添加一个新的Redux action
+    dispatch(setAutoStart(true)); // 添加一个新的Redux action用于开始自动化测试流程
     router.push("/llm-analysis");
   };
 
@@ -132,11 +228,13 @@ export default function TaskManage() {
     // 首先进行筛选
     let filteredTasks = [...tasks];
     if (filterType !== "all") {
-      filteredTasks = filteredTasks.filter(task => task.task_status === filterType);
+      filteredTasks = filteredTasks.filter(
+        (task) => task.task_status === filterType
+      );
     }
 
     // 将筛选后的任务映射为显示所需的格式
-    const mappedTasks = filteredTasks.map(task => ({
+    const mappedTasks = filteredTasks.map((task) => ({
       id: task.id,
       similarity: Math.round(Math.random() * 30 + 70), // 示例数据，实际应该从task中计算
       status: task.task_status,
@@ -155,9 +253,13 @@ export default function TaskManage() {
         case "similarity-desc":
           return b.similarity - a.similarity;
         case "time-asc":
-          return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+          return (
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
         case "time-desc":
-          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+          return (
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
         default:
           return b.id - a.id;
       }
@@ -200,7 +302,11 @@ export default function TaskManage() {
                 {/* 筛选下拉菜单 */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="flex items-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center"
+                    >
                       <Filter className="h-4 w-4 mr-1" />
                       筛选
                       {filterType !== "all" && (
@@ -221,7 +327,9 @@ export default function TaskManage() {
                       已完成
                       {filterType === "completed" && " ✓"}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleFilter("in_progress")}>
+                    <DropdownMenuItem
+                      onClick={() => handleFilter("in_progress")}
+                    >
                       进行中
                       {filterType === "in_progress" && " ✓"}
                     </DropdownMenuItem>
@@ -239,7 +347,11 @@ export default function TaskManage() {
                 {/* 排序下拉菜单 */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="flex items-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center"
+                    >
                       <ArrowUpDown className="h-4 w-4 mr-1" />
                       排序
                     </Button>
@@ -256,11 +368,15 @@ export default function TaskManage() {
                       {sortType === "id-asc" && " ✓"}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleSort("similarity-desc")}>
+                    <DropdownMenuItem
+                      onClick={() => handleSort("similarity-desc")}
+                    >
                       成功率 (高到低)
                       {sortType === "similarity-desc" && " ✓"}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleSort("similarity-asc")}>
+                    <DropdownMenuItem
+                      onClick={() => handleSort("similarity-asc")}
+                    >
                       成功率 (低到高)
                       {sortType === "similarity-asc" && " ✓"}
                     </DropdownMenuItem>
@@ -296,21 +412,24 @@ export default function TaskManage() {
                 </div>
               ) : (
                 <div>
-                  <div className="mb-4 flex justify-between items-center">
+                  <div className="mb-1 flex justify-between items-center">
                     <p className="text-sm text-muted-foreground">
-                      {filterType !== "all" 
+                      {filterType !== "all"
                         ? `显示 ${filteredAndSortedTasks.length} 个${
-                            filterType === "completed" ? "已完成" 
-                            : filterType === "in_progress" ? "进行中" 
-                            : filterType === "failed" ? "失败" 
-                            : "待处理"
+                            filterType === "completed"
+                              ? "已完成"
+                              : filterType === "in_progress"
+                              ? "进行中"
+                              : filterType === "failed"
+                              ? "失败"
+                              : "待处理"
                           }任务`
                         : `共 ${filteredAndSortedTasks.length} 个任务`}
                     </p>
                     {filterType !== "all" && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setFilterType("all")}
                         className="text-xs"
                       >
@@ -318,88 +437,92 @@ export default function TaskManage() {
                       </Button>
                     )}
                   </div>
-                  
+
                   {filteredAndSortedTasks.length === 0 ? (
                     <div className="text-center py-8">
-                      <p className="text-muted-foreground mb-4">没有符合条件的任务</p>
-                      <Button onClick={() => setFilterType("all")}>显示所有任务</Button>
+                      <p className="text-muted-foreground mb-4">
+                        没有符合条件的任务
+                      </p>
+                      <Button onClick={() => setFilterType("all")}>
+                        显示所有任务
+                      </Button>
                     </div>
                   ) : (
                     <div className="space-y-2">
                       {filteredAndSortedTasks.map((result) => (
-                    <div
-                      key={result.id}
-                      className="flex h-24 items-center justify-between p-4 border rounded-lg hover:bg-accent cursor-pointer"
-                      onClick={() => {
-                        const task = tasks.find((t) => t.id === result.id);
-                        if (task) {
-                          dispatch(setCurrentTask(task));
-                          setIsDetailDialogOpen(true);
-                        }
-                      }}
-                    >
-                      <div className="flex items-center space-x-4">
                         <div
-                          className={`h-3 w-3 rounded-full ${
-                            result.status === "completed"
-                              ? "bg-green-500"
-                              : result.status === "failed"
-                              ? "bg-red-500"
-                              : result.status === "in_progress"
-                              ? "bg-blue-500"
-                              : "bg-yellow-500"
-                          }`}
-                        />
-                        <div>
-                          <p className="font-medium">任务 #{result.id}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {result.timestamp}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-4">
-                        <div className="text-right">
-                          <p className="font-mono">{result.similarity}%</p>
-                          <p className="text-xs text-muted-foreground">
-                            成功率
-                          </p>
-                        </div>
-                        <div
-                          className={`px-3 py-1 rounded-full text-sm ${
-                            result.status === "completed"
-                              ? "bg-green-100 text-green-800"
-                              : result.status === "failed"
-                              ? "bg-red-100 text-red-800"
-                              : result.status === "in_progress"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-yellow-100 text-yellow-800"
-                          }`}
+                          key={result.id}
+                          className="flex h-24 items-center justify-between p-5 border rounded-xl hover:bg-accent cursor-pointer"
+                          onClick={() => {
+                            const task = tasks.find((t) => t.id === result.id);
+                            if (task) {
+                              dispatch(setCurrentTask(task));
+                              setIsDetailDialogOpen(true);
+                            }
+                          }}
                         >
-                          {result.status === "completed"
-                            ? "完成"
-                            : result.status === "failed"
-                            ? "失败"
-                            : result.status === "in_progress"
-                            ? "进行中"
-                            : "暂停"}
-                        </div>
-                        <div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger className="rounded-lg justify-items-center hover:bg-gray-100">
-                              <Ellipsis className="p-1" />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                              <DropdownMenuLabel>操作</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem>查看详情</DropdownMenuItem>
-                              <DropdownMenuItem>编辑任务</DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive">
-                                删除任务
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
+                          <div className="flex items-center space-x-4">
+                            <div
+                              className={`h-3 w-3 rounded-full ${
+                                result.status === "completed"
+                                  ? "bg-green-500"
+                                  : result.status === "failed"
+                                  ? "bg-red-500"
+                                  : result.status === "in_progress"
+                                  ? "bg-blue-500"
+                                  : "bg-yellow-500"
+                              }`}
+                            />
+                            <div>
+                              <p className="font-medium">任务 #{result.id}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {result.timestamp}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-4">
+                            <div className="text-right">
+                              <p className="font-mono">{result.similarity}%</p>
+                              <p className="text-xs text-muted-foreground">
+                                成功率
+                              </p>
+                            </div>
+                            <div
+                              className={`px-3 py-1 rounded-full text-sm ${
+                                result.status === "completed"
+                                  ? "bg-green-100 text-green-800"
+                                  : result.status === "failed"
+                                  ? "bg-red-100 text-red-800"
+                                  : result.status === "in_progress"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-yellow-100 text-yellow-800"
+                              }`}
+                            >
+                              {result.status === "completed"
+                                ? "完成"
+                                : result.status === "failed"
+                                ? "失败"
+                                : result.status === "in_progress"
+                                ? "进行中"
+                                : "暂停"}
+                            </div>
+                            <div>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger className="rounded-lg justify-items-center hover:bg-gray-100">
+                                  <Ellipsis className="p-1" />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                  <DropdownMenuLabel>操作</DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem>查看详情</DropdownMenuItem>
+                                  <DropdownMenuItem>编辑任务</DropdownMenuItem>
+                                  <DropdownMenuItem className="text-destructive">
+                                    删除任务
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -446,17 +569,6 @@ export default function TaskManage() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-sm font-medium">测试语料IDs</p>
-                  <div className="flex flex-wrap gap-2">
-                    {currentTask.test_samples_ids.map((id) => (
-                      <Badge key={id} variant="outline">
-                        #{id}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
                   <p className="text-sm font-medium">唤醒词ID</p>
                   <Badge variant="outline">#{currentTask.wake_word_id}</Badge>
                 </div>
@@ -465,7 +577,7 @@ export default function TaskManage() {
                 {samples.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-sm font-medium">测试语料</p>
-                    <div className="border rounded-md p-4 space-y-3">
+                    <div className="border rounded-lg p-4 space-y-3">
                       {currentTask.test_samples_ids.map((sampleId) => {
                         const sample = samples.find((s) => s.id === sampleId);
                         return sample ? (
@@ -474,9 +586,9 @@ export default function TaskManage() {
                             className="flex justify-between items-center border-b pb-2 last:border-0 last:pb-0"
                           >
                             <div>
-                              <p className="font-medium">语料 #{sampleId}</p>
+                              <p className="font-medium">{sample.text}</p>
                               <p className="text-sm text-muted-foreground">
-                                {sample.text}
+                                语料 #{sampleId}
                               </p>
                             </div>
                             <Button
@@ -501,7 +613,7 @@ export default function TaskManage() {
                   Object.keys(currentTask.machine_response).length > 0 && (
                     <div className="space-y-2">
                       <p className="text-sm font-medium">车机响应</p>
-                      <div className="border rounded-md p-4 space-y-3">
+                      <div className="border rounded-lg p-4 space-y-3">
                         {Object.entries(currentTask.machine_response).map(
                           ([sampleId, response]) => (
                             <div
@@ -509,9 +621,9 @@ export default function TaskManage() {
                               className="flex justify-between items-start border-b pb-2 last:border-0 last:pb-0"
                             >
                               <div>
-                                <p className="font-medium">语料 #{sampleId}</p>
+                                <p className="font-medium">{response.text}</p>
                                 <p className="text-sm text-muted-foreground">
-                                  {response.text}
+                                  语料 #{sampleId}
                                 </p>
                               </div>
                               <div
@@ -534,7 +646,7 @@ export default function TaskManage() {
                   Object.keys(currentTask.test_result).length > 0 && (
                     <div className="space-y-2">
                       <p className="text-sm font-medium">测试结果</p>
-                      <div className="border rounded-md p-4 space-y-3">
+                      <div className="border rounded-lg p-4 space-y-3">
                         {Object.entries(currentTask.test_result).map(
                           ([sampleId, result]) => (
                             <div
@@ -554,8 +666,8 @@ export default function TaskManage() {
                                 </div>
                               </div>
                               <div className="grid grid-cols-3 gap-2 mb-2">
-                                <div className="text-center p-2 bg-gray-50 rounded">
-                                  <p className="text-xs text-muted-foreground">
+                                <div className="text-center p-2 bg-gray-50 rounded-xl">
+                                  <p className="text-sm text-muted-foreground">
                                     语义正确性
                                   </p>
                                   <p className="font-mono font-bold">
@@ -564,8 +676,8 @@ export default function TaskManage() {
                                     )}
                                   </p>
                                 </div>
-                                <div className="text-center p-2 bg-gray-50 rounded">
-                                  <p className="text-xs text-muted-foreground">
+                                <div className="text-center p-2 bg-gray-50 rounded-xl">
+                                  <p className="text-sm text-muted-foreground">
                                     状态变更确认
                                   </p>
                                   <p className="font-mono font-bold">
@@ -574,8 +686,8 @@ export default function TaskManage() {
                                     )}
                                   </p>
                                 </div>
-                                <div className="text-center p-2 bg-gray-50 rounded">
-                                  <p className="text-xs text-muted-foreground">
+                                <div className="text-center p-2 bg-gray-50 rounded-xl">
+                                  <p className="text-sm text-muted-foreground">
                                     表达无歧义
                                   </p>
                                   <p className="font-mono font-bold">
@@ -585,8 +697,8 @@ export default function TaskManage() {
                                   </p>
                                 </div>
                               </div>
-                              <div className="text-center p-2 bg-gray-100 rounded mb-2">
-                                <p className="text-xs text-muted-foreground">
+                              <div className="text-center p-2 bg-gray-100 rounded-xl mb-2">
+                                <p className="text-sm text-muted-foreground">
                                   总分
                                 </p>
                                 <p className="font-mono font-bold text-lg">
@@ -595,10 +707,10 @@ export default function TaskManage() {
                               </div>
                               {result.assessment.suggestions.length > 0 && (
                                 <div>
-                                  <p className="text-xs text-muted-foreground mb-1">
+                                  <p className="text-sm text-muted-foreground mb-1">
                                     改进建议:
                                   </p>
-                                  <ul className="text-xs list-disc list-inside">
+                                  <ul className="text-sm list-disc list-inside">
                                     {result.assessment.suggestions.map(
                                       (suggestion, idx) => (
                                         <li key={idx}>{suggestion}</li>
@@ -632,7 +744,7 @@ export default function TaskManage() {
                     </Button>
                   )}
 
-                  <Button>导出报告</Button>
+                  <Button onClick={handleExportReport}>导出报告</Button>
                 </div>
               </div>
             )}

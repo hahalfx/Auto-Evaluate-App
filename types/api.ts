@@ -13,6 +13,7 @@ export interface WakeWord {
 }
   
 export interface Task {
+  name: string
   id: number
   test_samples_ids: number[]
   wake_word_id: number
