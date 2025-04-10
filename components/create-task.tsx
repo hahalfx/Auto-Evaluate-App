@@ -24,6 +24,7 @@ import { createTaskAsync } from "@/store/taskSlice";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/components/ui/use-toast";
+import { Input } from "./ui/input";
 
 export default function CreateTask() {
   const [wakewords, setwakewords] = useState<WakeWord[]>([]);
@@ -33,6 +34,7 @@ export default function CreateTask() {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [taskName, setTaskName] = useState("");
 
   const dispatch = useAppDispatch();
   const router = useRouter();
@@ -68,6 +70,7 @@ export default function CreateTask() {
     try {
       // 创建新任务
       const newTask = {
+        name: taskName,
         test_samples_ids: selectedIds,
         wake_word_id: selectedWakeWordId,
         task_status: "pending",
@@ -127,17 +130,21 @@ export default function CreateTask() {
         <div className="pt-8 w-full mx-auto">
           <h1 className="text-3xl font-bold mb-3">新建测试任务</h1>
         </div>
-        <div>
-          <div className="text-sm text-gray-500 mb-1">1. 选择测试语料</div>
-          <TestSamples initialPageSize={6} />
-        </div>
-        <div className="flex gap-2 mt-3">
-          <div className="flex-col">
+        <div className="flex gap-x-3">
+          <div className="flex-1 mb-3">
+            <div className="text-sm text-gray-500 mb-1">1. 输入任务名称</div>
+            <Input
+              placeholder="请输入任务名称"
+              value={taskName}
+              onChange={(e) => setTaskName(e.target.value)}
+            />
+          </div>
+          <div className="flex-col flex-1">
             <div className="text-sm text-gray-500 mb-1">2. 选择唤醒词</div>
             <Select
               onValueChange={(value) => setSelectedWakeWordId(Number(value))}
             >
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger>
                 <SelectValue placeholder="选择唤醒词" />
               </SelectTrigger>
               <SelectContent>
@@ -149,8 +156,14 @@ export default function CreateTask() {
               </SelectContent>
             </Select>
           </div>
+        </div>
+        <div>
+          <div className="text-sm text-gray-500 mb-1">3. 选择测试语料</div>
+          <TestSamples initialPageSize={6} />
+        </div>
+        <div className="flex gap-2 mt-3">
           <div className="flex-col w-full">
-            <div className="text-sm text-gray-500 mb-1">3. 新建测试任务</div>
+            <div className="text-sm text-gray-500 mb-1">4. 新建测试任务</div>
             <Button
               onClick={handleCreateTask}
               disabled={

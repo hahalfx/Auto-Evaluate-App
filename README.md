@@ -246,3 +246,9 @@ npm run lint
 2. 添加完整的TypeScript类型定义
 3. 更新相关文档
 4. 提供必要的测试用例
+
+## 项目进展
+1. 将Task交由Redux管理(✅)
+2. 新建测试任务管理界面(✅)
+3. 将Task状态运用到LLManalysis中(✅)(currenttask与itmes同步问题)
+4. 完善新建任务界面(✅)

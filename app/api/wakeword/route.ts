@@ -16,7 +16,7 @@ export async function GET() {
     const data = await fs.readFile(filePath, "utf-8");
     return NextResponse.json(JSON.parse(data));
   } catch (error) {
-    console.error("Error reading car-info.json:", error);
+    console.error("Error reading wakewords.json:", error);
     return NextResponse.json(wakeWords)
   }
 

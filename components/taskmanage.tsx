@@ -35,6 +35,7 @@ import {
   setCurrentTask,
   selectTasksStatus,
   updateTaskAsync,
+  deleteTaskAsync,
   setAutoStart,
 } from "@/store/taskSlice";
 import {
@@ -48,7 +49,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { generateASRTestReport, example } from "@/utils/generateASRTestReport";
+import { generateASRTestReport } from "@/utils/generateASRTestReport";
 
 // 定义排序类型
 type SortType =
@@ -172,10 +173,12 @@ export default function TaskManage() {
 
     dispatch(setSelectedSamples(currentTask?.test_samples_ids || []));
 
-    // dispatch(updateTaskAsync({
-    //   id: taskId,
-    //   task_status: "in_progress"
-    // }));
+    dispatch(
+      updateTaskAsync({
+        id: taskId,
+        task_status: "in_progress",
+      })
+    );
 
     dispatch(setAutoStart(true)); // 添加一个新的Redux action用于开始自动化测试流程
     router.push("/llm-analysis");
@@ -236,6 +239,7 @@ export default function TaskManage() {
     // 将筛选后的任务映射为显示所需的格式
     const mappedTasks = filteredTasks.map((task) => ({
       id: task.id,
+      name: task.name,
       similarity: Math.round(Math.random() * 30 + 70), // 示例数据，实际应该从task中计算
       status: task.task_status,
       timestamp: new Date().toLocaleString(), // 示例时间戳，实际应该从task中获取
@@ -474,7 +478,9 @@ export default function TaskManage() {
                               }`}
                             />
                             <div>
-                              <p className="font-medium">任务 #{result.id}</p>
+                              <p className="font-medium">
+                                {result.name || "任务#" + result.id}
+                              </p>
                               <p className="text-sm text-muted-foreground">
                                 {result.timestamp}
                               </p>
@@ -516,7 +522,13 @@ export default function TaskManage() {
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem>查看详情</DropdownMenuItem>
                                   <DropdownMenuItem>编辑任务</DropdownMenuItem>
-                                  <DropdownMenuItem className="text-destructive">
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={() => {
+                                      setIsDetailDialogOpen(false),
+                                        dispatch(deleteTaskAsync(result.id));
+                                    }}
+                                  >
                                     删除任务
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
@@ -539,7 +551,11 @@ export default function TaskManage() {
             </DialogHeader>
             {currentTask && (
               <div className="mt-4 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">任务名</p>
+                    <p className="text-lg">{currentTask.name}</p>
+                  </div>
                   <div className="space-y-2">
                     <p className="text-sm font-medium">任务ID</p>
                     <p className="text-lg">{currentTask.id}</p>
@@ -728,10 +744,13 @@ export default function TaskManage() {
 
                 <div className="flex justify-end space-x-2 pt-4">
                   <Button
-                    variant="outline"
-                    onClick={() => setIsDetailDialogOpen(false)}
+                    variant="destructive"
+                    onClick={() => {
+                      setIsDetailDialogOpen(false),
+                        dispatch(deleteTaskAsync(currentTask.id));
+                    }}
                   >
-                    关闭
+                    删除任务
                   </Button>
 
                   {currentTask.task_status === "pending" && (

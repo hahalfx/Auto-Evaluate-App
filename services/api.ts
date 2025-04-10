@@ -1,4 +1,4 @@
-import type { TestSample, AnalysisResult, Task } from "@/types/api"
+import type { TestSample, AnalysisResult, Task, WakeWord } from "@/types/api"
 
 // 获取测试语料
 export async function fetchTestSamples(): Promise<TestSample[]> {
@@ -11,6 +11,21 @@ export async function fetchTestSamples(): Promise<TestSample[]> {
     return await response.json()
   } catch (error) {
     console.error("Error fetching test samples:", error)
+    return []
+  }
+}
+
+// 获取唤醒词
+export async function fetchWakeWords(): Promise<WakeWord[]> {
+  // 实际项目中替换为真实API调用
+  try {
+    const response = await fetch("/api/wakeword")
+    if (!response.ok) {
+      throw new Error("Failed to fetch wakewords")
+    }
+    return await response.json()
+  } catch (error) {
+    console.error("Error fetching wakewords:", error)
     return []
   }
 }
