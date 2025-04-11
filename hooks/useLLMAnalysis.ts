@@ -29,8 +29,9 @@ import { connected } from "process";
 export function useLLMAnalysis() {
   // 使用 Redux store 中的样本数据
   const samples = useAppSelector(selectAllSamples);
-  const selectedSample = useAppSelector(selectSelectedSampleIds);
   const Task = useAppSelector((state) => state.tasks.currentTask);
+  // Redux store 中的选中样本数据
+  const selectedSample = Task?.test_samples_ids || [];
   const dispatch = useAppDispatch();
 
   // 机器响应相关状态

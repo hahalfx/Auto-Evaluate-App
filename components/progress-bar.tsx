@@ -16,16 +16,9 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { DialogTrigger } from "@radix-ui/react-dialog";
-import { TestSamples } from "./test-samples";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
-import { useEffect, useState } from "react";
-import { WakeWord } from "@/types/api";
+import TaskList from "./custom/task-list";
+import { useAppSelector } from "@/store/hooks";
+import { selectCurrentTask } from "@/store/taskSlice";
 
 interface ProgressBarProps {
   progress: {
@@ -52,15 +45,10 @@ export function ProgressBar({
   isAnalyzing,
   disabled,
 }: ProgressBarProps) {
-  const [wakewords, setwakewords] = useState([]);
-  const [ selectedWakeWordid, setSelectedWakeWordid ] = useState(Number);
-  useEffect(() => {
-    fetch("/api/wakeword")
-      .then((response) => response.json())
-      .then((data) => {
-        setwakewords(data);
-      });
-  }, []);
+
+
+  const currentTask = useAppSelector(selectCurrentTask);
+  
   return (
     <Card className="shadow-sm rounded-lg h-full">
       <CardHeader className="bg-background p-3 rounded-lg flex-row items-center justify-between space-y-0 border-b">
@@ -68,10 +56,7 @@ export function ProgressBar({
       </CardHeader>
       <CardContent className="p-4">
         <p className="text-sm justify-start text-muted-foreground py-1">
-          当前测试任务：
-        </p>
-        <p className="text-sm justify-start text-muted-foreground py-1">
-          正在：{progressname}
+          当前测试任务：{currentTask?.name}
         </p>
         <Progress value={progress.value} />
         <div className="flex justify-between">
@@ -86,62 +71,28 @@ export function ProgressBar({
         </div>
       </CardContent>
       <CardFooter className="flex justify-center px-3 pb-3">
-        {/* <Button
-          onClick={onStartAutomatedTest}
-          disabled={
-            disabled ||
-            isPlaying ||
-            isRecording ||
-            isAnalyzing ||
-            samplelength === 0
-          }
-          className="gap-2 bg-blue-700 hover:bg-blue-500 w-full"
-          variant="default"
-        >
-          {isPlaying ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Play className="h-4 w-4" />
-          )}
-          开始自动化测试任务
-        </Button> */}
         <Dialog>
           <DialogTrigger asChild>
             <Button
               className="gap-2 bg-blue-700 hover:bg-blue-500 w-full"
               variant="default"
+              disabled={ isAnalyzing || isRecording || isPlaying}
             >
               选择自动化测试任务
             </Button>
           </DialogTrigger>
-          <DialogContent className="min-w-[900px]">
+          <DialogContent className="min-w-[900px] max-h-[700px] flex flex-col">
             <DialogHeader>
               <DialogTitle>编辑测试任务</DialogTitle>
             </DialogHeader>
-            <TestSamples initialPageSize={5} />
+            <div className="overflow-auto w-full ">
+              <TaskList />
+            </div>
             <DialogFooter>
-              <Select onValueChange={()=>setSelectedWakeWordid}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="选择唤醒词" />
-                </SelectTrigger>
-                <SelectContent>
-                  {
-                    wakewords.map((wakeword: WakeWord) => (
-                      <SelectItem value={wakeword.text} key={wakeword.id}>
-                        {wakeword.text}
-                      </SelectItem>
-                    ))
-                  }
-                </SelectContent>
-              </Select>
               <Button
                 onClick={onStartAutomatedTest}
                 disabled={
-                  disabled ||
-                  isPlaying ||
-                  isRecording ||
-                  isAnalyzing ||
-                  samplelength === 0
+                  currentTask === null
                 }
                 className="gap-2 bg-blue-700 hover:bg-blue-500 w-full"
                 variant="default"
