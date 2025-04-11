@@ -173,16 +173,22 @@ export default function TaskManage() {
 
     dispatch(setSelectedSamples(currentTask?.test_samples_ids || []));
 
-    dispatch(
-      updateTaskAsync({
-        id: taskId,
-        task_status: "in_progress",
-      })
-    );
+    // dispatch(
+    //   updateTaskAsync({
+    //     id: taskId,
+    //     task_status: "in_progress",
+    //   })
+    // );
 
-    dispatch(setAutoStart(true)); // 添加一个新的Redux action用于开始自动化测试流程
+    dispatch(setAutoStart(taskId)); // 添加一个新的Redux action用于开始自动化测试流程
     router.push("/llm-analysis");
   };
+
+  useEffect(() => {
+    if (isDetailDialogOpen === false) {
+      dispatch(setCurrentTask(null));
+    }
+  }, [isDetailDialogOpen]);
 
   // 获取任务数据
   useEffect(() => {
@@ -525,8 +531,7 @@ export default function TaskManage() {
                                   <DropdownMenuItem
                                     className="text-destructive"
                                     onClick={() => {
-                                      setIsDetailDialogOpen(false),
-                                        dispatch(deleteTaskAsync(result.id));
+                                      dispatch(deleteTaskAsync(result.id));
                                     }}
                                   >
                                     删除任务
@@ -746,8 +751,10 @@ export default function TaskManage() {
                   <Button
                     variant="destructive"
                     onClick={() => {
-                      setIsDetailDialogOpen(false),
-                        dispatch(deleteTaskAsync(currentTask.id));
+                      if (isDetailDialogOpen === true) {
+                        setIsDetailDialogOpen(false);
+                      }
+                      dispatch(deleteTaskAsync(currentTask.id));
                     }}
                   >
                     删除任务

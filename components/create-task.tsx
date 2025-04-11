@@ -91,7 +91,7 @@ export default function CreateTask() {
         // 延迟后跳转到任务管理页面
         setTimeout(() => {
           router.push("/taskmanage");
-        }, 1500);
+        }, 500);
       } else {
         setError("创建任务失败，请重试");
       }

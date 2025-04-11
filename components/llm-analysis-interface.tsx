@@ -16,7 +16,8 @@ import {
 import { useLLMAnalysis } from "@/hooks/useLLMAnalysis";
 import { useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { setAutoStart } from "@/store/taskSlice";
+import { fetchTaskById, setAutoStart, setCurrentTask } from "@/store/taskSlice";
+import { store } from "@/store";
 
 export function LLMAnalysisInterface() {
   const {
@@ -45,13 +46,16 @@ export function LLMAnalysisInterface() {
   const dispatch = useAppDispatch();
   const autoStart = useAppSelector((state) => state.tasks.autoStart);
 
+  // 处理从任务管理界面跳转过来开始的任务
   useEffect(() => {
     if (autoStart) {
       // 从Redux获取
       // 添加延迟，给音频文件加载留出时间
+      const selectedTask = store.getState().tasks.items.find(task => task.id === autoStart);
+      dispatch(setCurrentTask(selectedTask));
       const timer = setTimeout(() => {
         handleStartAutomatedTest();
-        dispatch(setAutoStart(false));
+        dispatch(setAutoStart(null));
       }, 1000); // 延迟1秒
       return () => clearTimeout(timer);
     }

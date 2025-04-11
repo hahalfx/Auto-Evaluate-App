@@ -15,7 +15,7 @@ interface TaskState {
   items: Task[];
   currentTask: Task | null;
   status: "idle" | "loading" | "succeeded" | "failed";
-  autoStart: boolean;
+  autoStart: number | null;
   error: string | null;
 }
 
@@ -23,7 +23,7 @@ const initialState: TaskState = {
   items: [],
   currentTask: null,
   status: "idle",
-  autoStart: false,
+  autoStart: null,
   error: null,
 };
 

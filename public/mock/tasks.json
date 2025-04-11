@@ -273,76 +273,7 @@
       3
     ],
     "wake_word_id": 1,
-    "task_status": "pending",
+    "task_status": "in_progress",
     "id": 1004
-  },
-  {
-    "name": "东风奕派007",
-    "test_samples_ids": [
-      6,
-      1
-    ],
-    "wake_word_id": 3,
-    "task_status": "completed",
-    "id": 1005,
-    "machine_response": {
-      "1": {
-        "connected": true,
-        "text": "嗯"
-      },
-      "6": {
-        "connected": true,
-        "text": "嗯"
-      }
-    },
-    "test_result": {
-      "1": {
-        "assessment": {
-          "semantic_correctness": {
-            "score": 0,
-            "comment": "指令\"播放周杰伦的歌曲\"意图明确，要求系统播放周杰伦的歌曲。但响应\"嗯\"未能正确理解并执行指令。系统应开始播放周杰伦的歌曲，或者给出无法找到歌曲的明确提示。"
-          },
-          "state_change_confirmation": {
-            "score": 0,
-            "comment": "响应\"嗯\"没有确认系统状态的改变。用户无法得知系统是否理解并开始执行播放指令。有效的响应应该明确指出正在播放周杰伦的歌曲，或者给出错误提示。"
-          },
-          "unambiguous_expression": {
-            "score": 0,
-            "comment": "指令本身没有歧义，目标明确。 问题在于响应， \"嗯\" 极其模糊不清，完全不符合车机系统对指令的反馈要求。"
-          },
-          "overall_score": 0,
-          "valid": false,
-          "suggestions": [
-            "系统应能正确解析用户\"播放周杰伦的歌曲\"指令，并开始播放。",
-            "系统响应应该包含明确的操作反馈，例如\"开始播放周杰伦的歌曲\"、 \"正在播放周杰伦的歌曲\"， 或者 \"找不到周杰伦的歌曲\"等。",
-            "避免使用模糊不清的响应，如\"嗯\"、 \"好的\"。必须使用明确清晰的语言进行表达。"
-          ]
-        }
-      },
-      "6": {
-        "assessment": {
-          "semantic_correctness": {
-            "score": 0,
-            "comment": "响应缺乏语义信息，未能提供任何关于系统功能的信息。'嗯' 可以被理解为一种确认收到指令，但完全没有回答指令的实际内容。"
-          },
-          "state_change_confirmation": {
-            "score": 0,
-            "comment": "响应 '嗯' 没有任何状态改变的确认信息。期望的回应是列出功能或者提供一个操作成功的提示。"
-          },
-          "unambiguous_expression": {
-            "score": 0,
-            "comment": "响应极其模糊，'嗯' 无法明确表达系统的任何状态或功能，严重缺乏清晰的表达。"
-          },
-          "overall_score": 0,
-          "valid": false,
-          "suggestions": [
-            "系统应提供一个清晰且详细的功能列表，方便用户了解系统能力。",
-            "系统应使用更明确的语言，避免使用模糊不清的回复。",
-            "系统应该根据指令的内容，返回相关的有效信息，例如 '我可以执行导航、音乐播放、语音控制等功能'。",
-            "考虑使用自然语言处理技术，更好地理解用户指令，并提供更精准的响应。"
-          ]
-        }
-      }
-    }
   }
 ]
