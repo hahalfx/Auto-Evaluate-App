@@ -1,13 +1,33 @@
 "use client";
 
-import { CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import {
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  Play,
+  Download,
+  FileUp,
+} from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AnalysisResult } from "@/types/api";
 import { ScoreDisplay } from "./score-display";
 import { Button } from "./ui/button";
 import { useState } from "react";
-import { Dialog, DialogHeader, DialogContent, DialogTitle, DialogTrigger  } from "./ui/dialog";
+import {
+  Dialog,
+  DialogHeader,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
+import { useAppSelector } from "@/store/hooks";
+import { selectCurrentTask } from "@/store/taskSlice";
+import { Badge } from "./ui/badge";
+import { selectAllSamples } from "@/store/samplesSlice";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { generateASRTestReport, example } from "../utils/generateASRTestReport";
+import { useExportCurrentTask } from "@/hooks/useExportCurrentTask";
 
 interface AnalysisResultsProps {
   result: AnalysisResult | null;
@@ -21,6 +41,17 @@ export function AnalysisResults({
   error,
 }: AnalysisResultsProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const currentTask = useAppSelector(selectCurrentTask);
+  const samples = useAppSelector(selectAllSamples);
+  const playMatchedAudio = useAudioPlayer();
+  const  {exportCurrentTask}  = useExportCurrentTask();
+
+  const handleExportReport = () => {
+    if (currentTask) {
+      exportCurrentTask();
+    }
+  };
+
   // 将评估项目名称转换为可读标签
   const getAssessmentLabel = (key: string): string => {
     const labels: Record<string, string> = {
@@ -40,14 +71,221 @@ export function AnalysisResults({
         </h3>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="flex-none">导出结果</Button>
+            <Button className="flex-none">
+              <FileUp className="mr-2 h-4 w-4" />
+              导出结果
+            </Button>
           </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className="max-w-[800px] h-auto max-h-[700px] flex flex-col">
+            <DialogHeader className="grid grid-cols-9">
               <DialogTitle>导出结果</DialogTitle>
+              <div className="col-start-8 space-x-2 !mt-0">
+                <Button
+                  onClick={handleExportReport}
+                  disabled={!currentTask}
+                  className="bg-blue-700 hover:bg-blue-600"
+                >
+                  <FileUp className="mr-2 h-4 w-4" />
+                  导出结果报告
+                </Button>
+              </div>
             </DialogHeader>
-            <div>
-              haha
+            <div className="w-full overflow-auto">
+              {!currentTask && (
+                <div className="flex flex-col items-center justify-center h-full">
+                  <AlertTriangle className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-muted-foreground text-sm">
+                    请先选择一个任务
+                  </p>
+                </div>
+              )}
+              {currentTask && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">任务名</p>
+                      <p className="text-lg">{currentTask.name}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">任务ID</p>
+                      <p className="text-lg">{currentTask.id}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">状态</p>
+                      <div
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${
+                          currentTask.task_status === "completed"
+                            ? "bg-green-100 text-green-800"
+                            : currentTask.task_status === "in_progress"
+                            ? "bg-blue-100 text-blue-800"
+                            : currentTask.task_status === "failed"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {currentTask.task_status === "completed"
+                          ? "已完成"
+                          : currentTask.task_status === "in_progress"
+                          ? "进行中"
+                          : currentTask.task_status === "failed"
+                          ? "失败"
+                          : "待处理"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">唤醒词ID</p>
+                    <Badge variant="outline">#{currentTask.wake_word_id}</Badge>
+                  </div>
+
+                  {/* 测试语料 */}
+                  {samples.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">测试语料</p>
+                      <div className="border rounded-lg p-4 space-y-3">
+                        {currentTask.test_samples_ids.map((sampleId) => {
+                          const sample = samples.find((s) => s.id === sampleId);
+                          return sample ? (
+                            <div
+                              key={sampleId}
+                              className="flex justify-between items-center border-b pb-2 last:border-0 last:pb-0"
+                            >
+                              <div>
+                                <p className="font-medium">{sample.text}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  语料 #{sampleId}
+                                </p>
+                              </div>
+                            </div>
+                          ) : null;
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {currentTask.machine_response &&
+                    Object.keys(currentTask.machine_response).length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">车机响应</p>
+                        <div className="border rounded-lg p-4 space-y-3">
+                          {Object.entries(currentTask.machine_response).map(
+                            ([sampleId, response]) => (
+                              <div
+                                key={sampleId}
+                                className="flex justify-between items-start border-b pb-2 last:border-0 last:pb-0"
+                              >
+                                <div>
+                                  <p className="font-medium">{response.text}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    语料 #{sampleId}
+                                  </p>
+                                </div>
+                                <div
+                                  className={`px-2 py-1 rounded-full text-xs ${
+                                    response.connected
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-red-100 text-red-800"
+                                  }`}
+                                >
+                                  {response.connected ? "已连接" : "未连接"}
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  {currentTask.test_result &&
+                    Object.keys(currentTask.test_result).length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">测试结果</p>
+                        <div className="border rounded-lg p-4 space-y-3">
+                          {Object.entries(currentTask.test_result).map(
+                            ([sampleId, result]) => (
+                              <div
+                                key={sampleId}
+                                className="border-b pb-2 last:border-0 last:pb-0"
+                              >
+                                <div className="flex justify-between items-center mb-2">
+                                  <p className="font-medium">
+                                    语料 #{sampleId}
+                                  </p>
+                                  <div
+                                    className={`px-2 py-1 rounded-full text-xs ${
+                                      result.assessment.valid
+                                        ? "bg-green-100 text-green-800"
+                                        : "bg-red-100 text-red-800"
+                                    }`}
+                                  >
+                                    {result.assessment.valid
+                                      ? "通过"
+                                      : "未通过"}
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 mb-2">
+                                  <div className="text-center p-2 bg-gray-50 rounded-xl">
+                                    <p className="text-sm text-muted-foreground">
+                                      语义正确性
+                                    </p>
+                                    <p className="font-mono font-bold">
+                                      {result.assessment.semantic_correctness.score.toFixed(
+                                        1
+                                      )}
+                                    </p>
+                                  </div>
+                                  <div className="text-center p-2 bg-gray-50 rounded-xl">
+                                    <p className="text-sm text-muted-foreground">
+                                      状态变更确认
+                                    </p>
+                                    <p className="font-mono font-bold">
+                                      {result.assessment.state_change_confirmation.score.toFixed(
+                                        1
+                                      )}
+                                    </p>
+                                  </div>
+                                  <div className="text-center p-2 bg-gray-50 rounded-xl">
+                                    <p className="text-sm text-muted-foreground">
+                                      表达无歧义
+                                    </p>
+                                    <p className="font-mono font-bold">
+                                      {result.assessment.unambiguous_expression.score.toFixed(
+                                        1
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-center p-2 bg-gray-100 rounded-xl mb-2">
+                                  <p className="text-sm text-muted-foreground">
+                                    总分
+                                  </p>
+                                  <p className="font-mono font-bold text-lg">
+                                    {result.assessment.overall_score.toFixed(1)}
+                                  </p>
+                                </div>
+                                {result.assessment.suggestions.length > 0 && (
+                                  <div>
+                                    <p className="text-sm text-muted-foreground mb-1">
+                                      改进建议:
+                                    </p>
+                                    <ul className="text-sm list-disc list-inside">
+                                      {result.assessment.suggestions.map(
+                                        (suggestion, idx) => (
+                                          <li key={idx}>{suggestion}</li>
+                                        )
+                                      )}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    )}
+                </div>
+              )}
             </div>
           </DialogContent>
         </Dialog>

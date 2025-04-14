@@ -25,6 +25,8 @@ import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/components/ui/use-toast";
 import { Input } from "./ui/input";
+import { setSelectedSamples } from "@/store/samplesSlice";
+import { create } from "domain";
 
 export default function CreateTask() {
   const [wakewords, setwakewords] = useState<WakeWord[]>([]);
@@ -74,6 +76,7 @@ export default function CreateTask() {
         test_samples_ids: selectedIds,
         wake_word_id: selectedWakeWordId,
         task_status: "pending",
+        created_at: new Date().toLocaleString(),
       };
 
       const resultAction = await dispatch(createTaskAsync(newTask));
@@ -89,9 +92,9 @@ export default function CreateTask() {
         });
 
         // 延迟后跳转到任务管理页面
-        setTimeout(() => {
-          router.push("/taskmanage");
-        }, 500);
+
+        dispatch(setSelectedSamples([]));
+        router.push("/taskmanage");
       } else {
         setError("创建任务失败，请重试");
       }

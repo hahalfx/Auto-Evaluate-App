@@ -35,8 +35,6 @@ import Link from "next/link";
 type SortType =
   | "id-asc"
   | "id-desc"
-  | "similarity-asc"
-  | "similarity-desc"
   | "time-asc"
   | "time-desc";
 // 定义筛选类型
@@ -105,7 +103,7 @@ export default function TaskList() {
       name: task.name,
       similarity: Math.round(Math.random() * 30 + 70), // 示例数据，实际应该从task中计算
       status: task.task_status,
-      timestamp: new Date().toLocaleString(), // 示例时间戳，实际应该从task中获取
+      timestamp: task.created_at, // 示例时间戳，实际应该从task中获取
     }));
 
     // 然后进行排序
@@ -258,7 +256,9 @@ export default function TaskList() {
                       const task = tasks.find((t) => t.id === result.id);
                       if (task) {
                         dispatch(setCurrentTask(task));
-                        setIsDetailDialogOpen(true);
+                      }
+                      if (currentTask?.id === result.id) {
+                        dispatch(setCurrentTask(null));
                       }
                     }}
                   >
@@ -314,8 +314,7 @@ export default function TaskList() {
                             <DropdownMenuItem
                               className="text-destructive"
                               onClick={() => {
-                                setIsDetailDialogOpen(false),
-                                  dispatch(deleteTaskAsync(result.id));
+                                dispatch(deleteTaskAsync(result.id));
                               }}
                             >
                               删除任务

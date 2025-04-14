@@ -21,6 +21,25 @@ export interface Task {
   test_result?: Record<number, AnalysisResult>
   task_status: string
   task_progress?: number
+  created_at: string
+  audioType?: string;
+  audioFile?: string;
+  audioDuration?: string;
+  audioCategory?: string;
+  testCollection?: string;
+  testDuration?: string;
+  sentenceAccuracy?: number | null;
+  wordAccuracy?: number | null;
+  characterErrorRate?: number | null;
+  recognitionSuccessRate?: number | null;
+  totalWords?: number | null;
+  insertionErrors?: number | null;
+  deletionErrors?: number | null;
+  substitutionErrors?: number | null;
+  fastestRecognitionTime?: number | null;
+  slowestRecognitionTime?: number | null;
+  averageRecognitionTime?: number | null;
+  completedSamples?: number | null;
 }
 
 // 评估项目类型
@@ -48,6 +67,17 @@ export interface AnalysisResult {
     context: boolean
     multiRound: boolean
   }
+  test_time?: string
+  audioFile?: string;
+  recognitionFile?: string;
+  device?: string;
+  recognitionResult?: string;
+  totalWords?: number | null;
+  referenceText?: string;
+  recognizedText?: string;
+  resultStatus?: string;
+  recognitionTime?: number | null;
+  responseTime?: number | null;
 }
 
 // 车机响应类型
@@ -55,4 +85,3 @@ export interface MachineResponseData {
   text: string
   connected: boolean
 }
-

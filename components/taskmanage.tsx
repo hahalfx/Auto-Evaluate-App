@@ -1,6 +1,5 @@
 "use client";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -50,6 +49,8 @@ import { Badge } from "./ui/badge";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { generateASRTestReport } from "@/utils/generateASRTestReport";
+import { Task } from "@/types/api";
+import { useExportCurrentTask } from "@/hooks/useExportCurrentTask";
 
 // 定义排序类型
 type SortType =
@@ -74,97 +75,12 @@ export default function TaskManage() {
   const samplesStatus = useAppSelector(selectSamplesStatus);
   const { playMatchedAudio } = useAudioPlayer();
   const router = useRouter();
+  const {exportCurrentTask} = useExportCurrentTask();
 
   const handleExportReport = () => {
-    if (!currentTask) {
+    currentTask ? exportCurrentTask() :
       console.warn("No current task to export");
-      return;
-    }
-
-    const now = new Date();
-    const reportData: any = {
-      taskName: currentTask.name || `任务#${currentTask.id}`,
-      date: now.toLocaleString(),
-      audioType: "",
-      audioFile: "",
-      audioDuration: "",
-      audioCategory: "",
-      testCollection: "",
-      testDuration: "",
-      sentenceAccuracy: 0,
-      wordAccuracy: 0,
-      characterErrorRate: 0,
-      recognitionSuccessRate: 0,
-      totalWords: 0,
-      insertionErrors: 0,
-      deletionErrors: 0,
-      substitutionErrors: 0,
-      fastestRecognitionTime: 0,
-      slowestRecognitionTime: 0,
-      averageRecognitionTime: 0,
-      completedSamples: 0,
-      items: [],
-    };
-
-    if (currentTask.test_result) {
-      const items: any[] = [];
-      let totalWords = 0;
-      let insertionErrors = 0;
-      let deletionErrors = 0;
-      let substitutionErrors = 0;
-      let recognitionTimes = [];
-      let passedCount = 0;
-
-      for (const [sampleId, result] of Object.entries(
-        currentTask.test_result
-      )) {
-        const assessment = result.assessment;
-        const item = {
-          audioFile: "",
-          recognitionFile: "",
-          device: "",
-          recognitionResult: "",
-          insertionErrors: 0,
-          deletionErrors: 0,
-          substitutionErrors: 0,
-          totalWords: 0,
-          referenceText: "",
-          recognizedText: "",
-          resultStatus: assessment.valid ? "Success" : "Fail",
-          recognitionTime: 0,
-          testTime: "",
-        };
-
-        totalWords += item.totalWords;
-        insertionErrors += item.insertionErrors;
-        deletionErrors += item.deletionErrors;
-        substitutionErrors += item.substitutionErrors;
-        recognitionTimes.push(item.recognitionTime);
-        if (assessment.valid) passedCount++;
-
-        items.push(item);
-      }
-
-      reportData.items = items;
-      reportData.totalWords = totalWords;
-      reportData.insertionErrors = insertionErrors;
-      reportData.deletionErrors = deletionErrors;
-      reportData.substitutionErrors = substitutionErrors;
-      reportData.completedSamples = items.length;
-      reportData.recognitionSuccessRate =
-        items.length > 0 ? passedCount / items.length : 0;
-      reportData.fastestRecognitionTime =
-        recognitionTimes.length > 0 ? Math.min(...recognitionTimes) : 0;
-      reportData.slowestRecognitionTime =
-        recognitionTimes.length > 0 ? Math.max(...recognitionTimes) : 0;
-      reportData.averageRecognitionTime =
-        recognitionTimes.length > 0
-          ? recognitionTimes.reduce((a, b) => a + b, 0) /
-            recognitionTimes.length
-          : 0;
-    }
-
-    generateASRTestReport(reportData, `ASR测试报告_任务${currentTask.id}.xlsx`);
+    
   };
 
   // 处理开始任务
@@ -248,7 +164,7 @@ export default function TaskManage() {
       name: task.name,
       similarity: Math.round(Math.random() * 30 + 70), // 示例数据，实际应该从task中计算
       status: task.task_status,
-      timestamp: new Date().toLocaleString(), // 示例时间戳，实际应该从task中获取
+      timestamp: task.created_at, // 示例时间戳，实际应该从task中获取
     }));
 
     // 然后进行排序
@@ -674,8 +590,8 @@ export default function TaskManage() {
                               key={sampleId}
                               className="border-b pb-2 last:border-0 last:pb-0"
                             >
-                              <div className="flex justify-between items-center mb-2">
-                                <p className="font-medium">语料 #{sampleId}</p>
+                              <div className="flex justify-between items-center mb-1">
+                                <p className="font-medium">{samples.find((TestSample) => TestSample.id === Number(sampleId))?.text}</p>
                                 <div
                                   className={`px-2 py-1 rounded-full text-xs ${
                                     result.assessment.valid
@@ -685,6 +601,9 @@ export default function TaskManage() {
                                 >
                                   {result.assessment.valid ? "通过" : "未通过"}
                                 </div>
+                              </div>
+                              <div className="text-sm text-muted-foreground mb-1">
+                                <p>测试时间：{result.test_time}</p>
                               </div>
                               <div className="grid grid-cols-3 gap-2 mb-2">
                                 <div className="text-center p-2 bg-gray-50 rounded-xl">

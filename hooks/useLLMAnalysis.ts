@@ -287,7 +287,7 @@ export function useLLMAnalysis() {
         updateTestResult({
           taskId: Task?.id,
           sampleId: currentSampleId,
-          result: result,
+          result: {...result, test_time: new Date().toLocaleString()},
         })
       );
 
@@ -300,7 +300,7 @@ export function useLLMAnalysis() {
         updateSampleResult({
           sampleId: currentSampleId,
           taskId: Task?.id,
-          result: result,
+          result: {...result, test_time: new Date().toLocaleString()},
         })
       );
 

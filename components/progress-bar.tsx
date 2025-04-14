@@ -83,7 +83,7 @@ export function ProgressBar({
           </DialogTrigger>
           <DialogContent className="min-w-[900px] max-h-[700px] flex flex-col">
             <DialogHeader>
-              <DialogTitle>编辑测试任务</DialogTitle>
+              <DialogTitle>选择测试任务</DialogTitle>
             </DialogHeader>
             <div className="overflow-auto w-full ">
               <TaskList />

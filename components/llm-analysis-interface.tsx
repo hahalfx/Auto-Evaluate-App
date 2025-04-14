@@ -18,6 +18,7 @@ import { useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { fetchTaskById, setAutoStart, setCurrentTask } from "@/store/taskSlice";
 import { store } from "@/store";
+import CV from "./custom/cv";
 
 export function LLMAnalysisInterface() {
   const {
@@ -83,11 +84,12 @@ export function LLMAnalysisInterface() {
       {/* Main content */}
       <div className="pt-14 flex flex-auto p-6 gap-4 h-screen">
         <div className="flex flex-col w-1/2 gap-4 h-full">
-          <div className="flex-none">
-            <TestSamples
+          <div className="flex-1 basis-2/3">
+            {/* <TestSamples
               initialPageSize={4}
               onDeleteSample={handleDeleteSample}
-            />
+            /> */}
+            <CV />
           </div>
           <div className="flex-1 h-full">
             <MachineResponse
