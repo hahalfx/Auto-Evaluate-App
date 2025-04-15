@@ -19,6 +19,7 @@ import { DialogTrigger } from "@radix-ui/react-dialog";
 import TaskList from "./custom/task-list";
 import { useAppSelector } from "@/store/hooks";
 import { selectCurrentTask } from "@/store/taskSlice";
+import { useState } from "react";
 
 interface ProgressBarProps {
   progress: {
@@ -45,10 +46,9 @@ export function ProgressBar({
   isAnalyzing,
   disabled,
 }: ProgressBarProps) {
-
-
   const currentTask = useAppSelector(selectCurrentTask);
-  
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
   return (
     <Card className="shadow-sm rounded-lg h-full">
       <CardHeader className="bg-background p-3 rounded-lg flex-row items-center justify-between space-y-0 border-b">
@@ -71,12 +71,12 @@ export function ProgressBar({
         </div>
       </CardContent>
       <CardFooter className="flex justify-center px-3 pb-3">
-        <Dialog>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button
               className="gap-2 bg-blue-700 hover:bg-blue-500 w-full"
               variant="default"
-              disabled={ isAnalyzing || isRecording || isPlaying}
+              disabled={isAnalyzing || isRecording || isPlaying}
             >
               选择自动化测试任务
             </Button>
@@ -90,10 +90,8 @@ export function ProgressBar({
             </div>
             <DialogFooter>
               <Button
-                onClick={onStartAutomatedTest}
-                disabled={
-                  currentTask === null
-                }
+                onClick={() => (onStartAutomatedTest(), setIsDialogOpen(false))}
+                disabled={currentTask === null}
                 className="gap-2 bg-blue-700 hover:bg-blue-500 w-full"
                 variant="default"
               >

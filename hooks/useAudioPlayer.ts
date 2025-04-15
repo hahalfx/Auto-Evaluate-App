@@ -9,6 +9,7 @@ interface UseAudioPlayerProps {
 export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps = {}) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioFiles, setAudioFiles] = useState<string[]>([]);
+  const [wakeFiles, setWakeFiles] = useState<string[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Cleanup on unmount
@@ -24,6 +25,7 @@ export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps =
   // 初始化时获取音频文件列表
   useEffect(() => {
     fetchAudioFiles();
+    fetchWakeAudio();
   }, []);
 
   const fetchAudioFiles = async () => {
@@ -36,8 +38,19 @@ export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps =
     }
   };
 
+  const fetchWakeAudio = async () => {
+    try {
+      const res = await fetch('/api/wakeword');
+      const data = await res.json();
+      setWakeFiles(data.files);
+    } catch (error) {
+      console.error('获取音频文件列表失败:', error);
+    }
+    
+  };
+
   // 根据文本查找匹配的音频文件
-  const findMatchingAudio = (text: string): string | null => {
+  const findMatchingAudio = (audioFiles: string[], text: string): string | null => {
     if (!text || !audioFiles.length) return null;
     return audioFiles.find(file => 
       file.includes(text) && /^\d+/.test(file)
@@ -83,12 +96,21 @@ export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps =
 
   // 播放匹配当前文本的音频，参数：要匹配的音频名
   const playMatchedAudio = async (text: string) => {
-    const matchedFile = findMatchingAudio(text);
+    const matchedFile = findMatchingAudio(audioFiles, text);
     if (!matchedFile) {
       onPlayError?.('未找到匹配的音频文件');
       return;
     }
     await playAudio(`/audio/${matchedFile}`);
+  };
+
+  const playWakeAudio = async (text: string) => {
+    const matchedFile = findMatchingAudio(wakeFiles, text);
+    if (!matchedFile) {
+      onPlayError?.('未找到匹配的音频文件');
+      return;
+    }
+    await playAudio(`/audio/wakeword/${matchedFile}`);
   };
 
   const stopAudio = () => {
@@ -103,6 +125,7 @@ export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps =
     isPlaying,
     playAudio,
     playMatchedAudio,
+    playWakeAudio,
     stopAudio
   };
 }

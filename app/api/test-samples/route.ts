@@ -17,6 +17,8 @@ const testSamples: TestSample[] = [
   { id: 8, text: "打开蓝牙", status: "Ready" },
   { id: 9, text: "回到主界面", status: "Ready" },
   { id: 10, text: "打开设置", status: "Ready" },
+  { id: 11, text: "明天的天气", status: "Ready" },
+  { id: 12, text: "最近的超市", status: "Ready" },
 ]
 
 export async function GET() {

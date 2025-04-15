@@ -16,6 +16,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# audio
+/public/audio
+
 # env files
 .env*
 

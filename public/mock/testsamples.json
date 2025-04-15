@@ -48,6 +48,21 @@
       "id": 10,
       "text": "打开设置",
       "status": "Ready"
+    },
+    {
+      "id": 11,
+      "text": "明天的天气",
+      "status": "Ready"
+    },
+    {
+      "id": 12,
+      "text": "最近的超市",
+      "status": "Ready"
+    },
+    {
+      "id": 13,
+      "text": "我想吃饭",
+      "status": "Ready"
     }
   ]
   
