@@ -75,12 +75,12 @@ export default function TaskManage() {
   const samplesStatus = useAppSelector(selectSamplesStatus);
   const { playMatchedAudio } = useAudioPlayer();
   const router = useRouter();
-  const {exportCurrentTask} = useExportCurrentTask();
+  const { exportCurrentTask } = useExportCurrentTask();
 
   const handleExportReport = () => {
-    currentTask ? exportCurrentTask() :
-      console.warn("No current task to export");
-    
+    currentTask
+      ? exportCurrentTask()
+      : console.warn("No current task to export");
   };
 
   // 处理开始任务
@@ -591,7 +591,14 @@ export default function TaskManage() {
                               className="border-b pb-2 last:border-0 last:pb-0"
                             >
                               <div className="flex justify-between items-center mb-1">
-                                <p className="font-medium">{samples.find((TestSample) => TestSample.id === Number(sampleId))?.text}</p>
+                                <p className="font-medium">
+                                  {
+                                    samples.find(
+                                      (TestSample) =>
+                                        TestSample.id === Number(sampleId)
+                                    )?.text
+                                  }
+                                </p>
                                 <div
                                   className={`px-2 py-1 rounded-full text-xs ${
                                     result.assessment.valid

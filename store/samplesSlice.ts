@@ -1,11 +1,12 @@
 // src/store/samplesSlice.ts
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import { fetchTestSamples } from "@/services/api";
-import type { TestSample } from "@/types/api";
+import { fetchTestSamples, fetchWakeWordsAPI } from "@/services/api";
+import type { TestSample, WakeWord } from "@/types/api";
 import type { RootState } from "./index";
 
 interface SamplesState {
   items: TestSample[];
+  wakeWords: WakeWord[];
   selectedIds: number[];
   status: "idle" | "loading" | "succeeded" | "failed";
   error: string | null;
@@ -13,6 +14,7 @@ interface SamplesState {
 
 const initialState: SamplesState = {
   items: [],
+  wakeWords: [],
   selectedIds: [],
   status: "idle",
   error: null,
@@ -23,6 +25,15 @@ export const fetchSamples = createAsyncThunk(
   "samples/fetchSamples",
   async () => {
     const response = await fetchTestSamples();
+    return response;
+  }
+);
+
+// 异步 thunk 用于获取唤醒词数据
+export const fetchWakeWords = createAsyncThunk<WakeWord[], void, { state: RootState }>(
+  "samples/fetchWakeWords",
+  async (): Promise<WakeWord[]> => {
+    const response = await fetchWakeWordsAPI();
     return response;
   }
 );
@@ -75,6 +86,17 @@ const samplesSlice = createSlice({
       .addCase(fetchSamples.rejected, (state, action) => {
         state.status = "failed";
         state.error = action.error.message || "Failed to fetch samples";
+      })
+      .addCase(fetchWakeWords.pending, (state) => {
+        state.status = "loading";
+      })
+      .addCase(fetchWakeWords.fulfilled, (state, action) => {
+        state.status = "succeeded";
+        state.wakeWords = action.payload;
+      })
+      .addCase(fetchWakeWords.rejected, (state, action) => {
+        state.status = "failed";
+        state.error = action.error.message || "Failed to fetch wake words";
       });
   },
 });
@@ -89,6 +111,7 @@ export const {
 
 // 定义 selectors
 export const selectAllSamples = (state: RootState) => state.samples.items;
+export const selectWakeWords = (state: RootState) => state.samples.wakeWords;
 export const selectSelectedSampleIds = (state: RootState) =>
   state.samples.selectedIds;
 export const selectSampleById = (

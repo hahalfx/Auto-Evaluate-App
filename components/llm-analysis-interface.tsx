@@ -50,17 +50,28 @@ export function LLMAnalysisInterface() {
   // 处理从任务管理界面跳转过来开始的任务
   useEffect(() => {
     if (autoStart) {
-      // 从Redux获取
-      // 添加延迟，给音频文件加载留出时间
+      // 从Redux获取任务
       const selectedTask = store.getState().tasks.items.find(task => task.id === autoStart);
+      if (!selectedTask) {
+        console.error('未找到对应任务');
+        return;
+      }
+      
+      // 设置当前任务
       dispatch(setCurrentTask(selectedTask));
+      
+      // 添加延迟，给音频文件加载和状态更新留出时间
       const timer = setTimeout(() => {
-        handleStartAutomatedTest();
+        // 检查任务是否处于待处理状态
+        if (selectedTask.task_status === 'pending') {
+          handleStartAutomatedTest();
+        }
         dispatch(setAutoStart(null));
       }, 1000); // 延迟1秒
+      
       return () => clearTimeout(timer);
     }
-  }, [autoStart]);
+  }, [autoStart, dispatch]);
 
   return (
     <div className="flex flex-col w-full max-h-screen">

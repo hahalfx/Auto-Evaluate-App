@@ -16,7 +16,7 @@ export async function fetchTestSamples(): Promise<TestSample[]> {
 }
 
 // 获取唤醒词
-export async function fetchWakeWords(): Promise<WakeWord[]> {
+export async function fetchWakeWordsAPI(): Promise<WakeWord[]> {
   // 实际项目中替换为真实API调用
   try {
     const response = await fetch("/api/wakeword")

@@ -11,6 +11,8 @@ import {
   updateSampleResult,
   deleteSample,
   fetchSamples,
+  fetchWakeWords,
+  selectWakeWords,
 } from "@/store/samplesSlice";
 import {
   setCurrentTask,
@@ -20,7 +22,8 @@ import {
   updateTestResult, // 更新测试结果
 } from "@/store/taskSlice"; // 导入任务相关的Redux actions
 import { store } from "@/store"; // 导入Redux store实例
-
+import { useAudioPlayer } from "./useAudioPlayer";
+import { set } from "date-fns";
 
 /**
  * 自定义hook，封装LLM分析界面的状态和业务逻辑
@@ -37,6 +40,8 @@ export function useLLMAnalysis() {
   // --- Redux State ---
   // 从Redux store获取所有样本数据
   const samples = useAppSelector(selectAllSamples);
+  // 从Redux store获取所有唤醒词信息
+  const wakeWords = useAppSelector(selectWakeWords);
   // 从Redux store获取当前任务信息
   const Task = useAppSelector((state) => state.tasks.currentTask);
   // 从当前任务获取选中的样本ID列表，如果任务不存在则为空数组
@@ -80,7 +85,13 @@ export function useLLMAnalysis() {
   // 组件挂载时，从后端获取测试样本数据并存入Redux store
   useEffect(() => {
     dispatch(fetchSamples());
+    dispatch(fetchWakeWords());
   }, [dispatch]); // 依赖dispatch，但通常dispatch是稳定的
+
+  // 在组件中添加效果验证
+useEffect(() => {
+  console.log('CurrentTask changed:', Task);
+}, [Task]); 
 
   // 当当前任务ID变化时，重置进度条和错误状态
   useEffect(() => {
@@ -93,12 +104,10 @@ export function useLLMAnalysis() {
     setError(null);
     setAnalysisResults(new Map()); // 清空之前的分析结果
     setCurrentResultIndex(0); // 重置结果索引
+    isPlayingNextRef.current = false;
   }, [Task?.id]);
 
   // --- Playback & Recording State ---
-  // 是否自动播放下一条样本的音频
-  const [autoPlayNext, setAutoPlayNext] = useState(true); // (这个状态似乎没有被使用来控制逻辑)
-  // 是否正在播放音频
   const [isPlaying, setIsPlaying] = useState(false);
   // 是否正在录音
   const [isRecording, setIsRecording] = useState(false);
@@ -124,16 +133,27 @@ export function useLLMAnalysis() {
   useEffect(() => {
     const currentRef = machineResponseRef.current;
     if (currentRef) {
-      setIsPlaying(currentRef.isPlaying || false);
       setIsRecording(currentRef.isRecording || false);
     }
     // 依赖项应包含明确的状态属性，而不是整个ref.current
-  }, [
-    machineResponseRef.current?.isPlaying,
-    machineResponseRef.current?.isRecording,
-  ]);
+  }, [machineResponseRef.current?.isRecording]);
 
   // --- Core Logic Functions ---
+
+  const { playWakeAudio } = useAudioPlayer({
+    onPlayEnd: () => {
+      console.log("音频播放结束，开始语音识别");
+      setIsPlaying(false);
+      machineResponseRef.current?.startRecording();
+    },
+    onPlayError: (errorMsg) => {
+      toast({
+        title: "播放失败",
+        description: errorMsg,
+        variant: "destructive",
+      });
+    },
+  });
 
   /**
    * 自动播放下一条测试样本的音频
@@ -151,28 +171,41 @@ export function useLLMAnalysis() {
     const nextSampleId = sortedSampleIds[completedCount];
     const nextSample = samples.find((s: TestSample) => s.id === nextSampleId);
 
+    //debug用
+    console.log("尝试播放下一个样本:", {
+      completedCount,
+      nextSampleId,
+      nextSample,
+      nextSampleText: nextSample?.text,
+      currentResultIndex,
+      currentSampleText: getCurrentSampleText(),
+      isPlaying,
+    });
+
     // 检查样本是否存在、是否需要自动播放、MachineResponse组件引用是否存在且未在播放中
     if (
       nextSample &&
-      // autoPlayNext && // autoPlayNext 状态未使用，始终尝试播放
-      machineResponseRef.current &&
-      !isPlayingNextRef.current // 使用Ref防止重复触发
+      !isPlaying // 使用Ref防止重复触发
     ) {
-      isPlayingNextRef.current = true; // 设置标记，表示正在准备播放
-      // 延迟2秒后尝试播放
+      // 延迟1秒后尝试播放
       setTimeout(() => {
-        // 再次检查组件引用和播放方法是否存在
-        if (machineResponseRef.current?.playCurrentSampleAudio) {
-          machineResponseRef.current.playCurrentSampleAudio();
-          // 播放后延迟2秒重置标记 (允许下一次播放)
-          setTimeout(() => {
-            isPlayingNextRef.current = false;
-          }, 2000);
-        } else {
-          // 如果播放方法不存在，立即重置标记
-          isPlayingNextRef.current = false;
+        try {
+          // 播放唤醒词
+          Task?.wake_word_id &&
+            playWakeAudio(
+              wakeWords[Task?.wake_word_id - 1].text,
+              nextSample.text
+            );
+        } catch (error) {
+          console.error("播放唤醒词失败:", error);
+          return;
         }
-      }, 2000); // 2秒延迟
+      }, 1000);
+
+      // 播放后延迟2秒重置标记 (允许下一次播放)
+      setTimeout(() => {
+        isPlayingNextRef.current = false;
+      }, 2000);
 
       // 显示提示信息
       toast({
@@ -195,17 +228,26 @@ export function useLLMAnalysis() {
    * 触发当前待测样本的音频播放 (如果存在)
    */
   const handleStartAutomatedTest = () => {
-    if (
-      machineResponseRef.current &&
-      machineResponseRef.current.playCurrentSampleAudio &&
-      !isPlayingNextRef.current
-    ) {
+    console.log("开始自动化测试", isPlayingNextRef.current);
+
+    if (!isPlayingNextRef.current) {
       isPlayingNextRef.current = true; // 设置播放标记
+
       // 延迟1秒后播放
       setTimeout(() => {
-        // 再次检查引用和方法
-        machineResponseRef.current && machineResponseRef.current.playCurrentSampleAudio();
-      }, 1000); // 1秒延迟
+        try {
+          // 播放唤醒词
+          console.log("开始播放", Task, Task?.wake_word_id);
+          Task?.wake_word_id &&
+            playWakeAudio(
+              wakeWords[Task?.wake_word_id - 1].text,
+              getCurrentSampleText()
+            );
+        } catch (error) {
+          console.error("播放唤醒词失败:", error);
+          return;
+        }
+      }, 1000);
 
       // 播放后延迟2秒重置标记
       setTimeout(() => {

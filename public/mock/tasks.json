@@ -286,9 +286,112 @@
       6
     ],
     "wake_word_id": 3,
-    "task_status": "pending",
+    "task_status": "completed",
     "created_at": "2025/4/12 11:42:47",
-    "id": 1005
+    "id": 1005,
+    "machine_response": {
+      "1": {
+        "connected": true,
+        "text": "为您播放周杰伦的歌曲"
+      },
+      "2": {
+        "connected": true,
+        "text": "已为您打开空调"
+      },
+      "6": {
+        "connected": true,
+        "text": "嗯"
+      }
+    },
+    "test_result": {
+      "1": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 0,
+            "comment": "响应未匹配核心功能需求（空调控制），仅反馈识别失败。"
+          },
+          "state_change_confirmation": {
+            "score": 0,
+            "comment": "未执行空调开关操作，未提供状态变更信息。"
+          },
+          "unambiguous_expression": {
+            "score": 1,
+            "comment": "响应文本本身无歧义，但未解决原始指令意图。"
+          },
+          "overall_score": 0.33,
+          "valid": false,
+          "suggestions": [
+            "应优先执行空调开关指令，而非直接进入语音识别错误处理流程",
+            "若识别失败，建议补充引导（如：'您是要打开空调吗？'）以确认意图"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "deepseek&星火大模型分析",
+          "content": "从响应内容来看，车机未能正确理解用户的空调控制指令，而是将其视为无法识别的语音输入。这种响应方式不符合用户期望，无法满足用户的实际需求。",
+          "context": false,
+          "multiRound": false
+        },
+        "test_time": "2025/4/16 13:58:25"
+      },
+      "2": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 0,
+            "comment": "响应未匹配核心功能需求（空调控制），仅反馈识别失败。"
+          },
+          "state_change_confirmation": {
+            "score": 0,
+            "comment": "未执行空调开关操作，未提供状态变更信息。"
+          },
+          "unambiguous_expression": {
+            "score": 1,
+            "comment": "响应文本本身无歧义，但未解决原始指令意图。"
+          },
+          "overall_score": 0.33,
+          "valid": false,
+          "suggestions": [
+            "应优先执行空调开关指令，而非直接进入语音识别错误处理流程",
+            "若识别失败，建议补充引导（如：'您是要打开空调吗？'）以确认意图"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "deepseek&星火大模型分析",
+          "content": "从响应内容来看，车机未能正确理解用户的空调控制指令，而是将其视为无法识别的语音输入。这种响应方式不符合用户期望，无法满足用户的实际需求。",
+          "context": false,
+          "multiRound": false
+        },
+        "test_time": "2025/4/16 13:58:35"
+      },
+      "6": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 0,
+            "comment": "响应未匹配核心功能需求（空调控制），仅反馈识别失败。"
+          },
+          "state_change_confirmation": {
+            "score": 0,
+            "comment": "未执行空调开关操作，未提供状态变更信息。"
+          },
+          "unambiguous_expression": {
+            "score": 1,
+            "comment": "响应文本本身无歧义，但未解决原始指令意图。"
+          },
+          "overall_score": 0.33,
+          "valid": false,
+          "suggestions": [
+            "应优先执行空调开关指令，而非直接进入语音识别错误处理流程",
+            "若识别失败，建议补充引导（如：'您是要打开空调吗？'）以确认意图"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "deepseek&星火大模型分析",
+          "content": "从响应内容来看，车机未能正确理解用户的空调控制指令，而是将其视为无法识别的语音输入。这种响应方式不符合用户期望，无法满足用户的实际需求。",
+          "context": false,
+          "multiRound": false
+        },
+        "test_time": "2025/4/16 13:58:46"
+      }
+    }
   },
   {
     "name": "xiaomi",
@@ -297,9 +400,79 @@
       2
     ],
     "wake_word_id": 1,
-    "task_status": "pending",
+    "task_status": "completed",
     "created_at": "2025/4/11 11:42:47",
-    "id": 1006
+    "id": 1006,
+    "machine_response": {
+      "1": {
+        "connected": true,
+        "text": "播放周杰伦的歌曲"
+      },
+      "2": {
+        "connected": true,
+        "text": "已为您打开空调"
+      }
+    },
+    "test_result": {
+      "1": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 0,
+            "comment": "响应未匹配核心功能需求（空调控制），仅反馈识别失败。"
+          },
+          "state_change_confirmation": {
+            "score": 0,
+            "comment": "未执行空调开关操作，未提供状态变更信息。"
+          },
+          "unambiguous_expression": {
+            "score": 1,
+            "comment": "响应文本本身无歧义，但未解决原始指令意图。"
+          },
+          "overall_score": 0.33,
+          "valid": false,
+          "suggestions": [
+            "应优先执行空调开关指令，而非直接进入语音识别错误处理流程",
+            "若识别失败，建议补充引导（如：'您是要打开空调吗？'）以确认意图"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "deepseek&星火大模型分析",
+          "content": "从响应内容来看，车机未能正确理解用户的空调控制指令，而是将其视为无法识别的语音输入。这种响应方式不符合用户期望，无法满足用户的实际需求。",
+          "context": false,
+          "multiRound": false
+        },
+        "test_time": "2025/4/16 13:53:55"
+      },
+      "2": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 0,
+            "comment": "响应未匹配核心功能需求（空调控制），仅反馈识别失败。"
+          },
+          "state_change_confirmation": {
+            "score": 0,
+            "comment": "未执行空调开关操作，未提供状态变更信息。"
+          },
+          "unambiguous_expression": {
+            "score": 1,
+            "comment": "响应文本本身无歧义，但未解决原始指令意图。"
+          },
+          "overall_score": 0.33,
+          "valid": false,
+          "suggestions": [
+            "应优先执行空调开关指令，而非直接进入语音识别错误处理流程",
+            "若识别失败，建议补充引导（如：'您是要打开空调吗？'）以确认意图"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "deepseek&星火大模型分析",
+          "content": "从响应内容来看，车机未能正确理解用户的空调控制指令，而是将其视为无法识别的语音输入。这种响应方式不符合用户期望，无法满足用户的实际需求。",
+          "context": false,
+          "multiRound": false
+        },
+        "test_time": "2025/4/16 13:54:04"
+      }
+    }
   },
   {
     "name": "小艺小艺",
@@ -728,5 +901,169 @@
         "test_time": "2025/4/15 10:30:47"
       }
     }
+  },
+  {
+    "name": "xiaoyi",
+    "test_samples_ids": [
+      1,
+      2
+    ],
+    "wake_word_id": 1,
+    "task_status": "completed",
+    "created_at": "2025/4/16 14:05:00",
+    "id": 1013,
+    "machine_response": {
+      "1": {
+        "connected": true,
+        "text": "播放周杰伦的歌曲"
+      },
+      "2": {
+        "connected": true,
+        "text": "已为您打开空调"
+      }
+    },
+    "test_result": {
+      "1": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 1,
+            "comment": "指令语义明确，系统正确理解了用户的播放周杰伦歌曲的需求。"
+          },
+          "state_change_confirmation": {
+            "score": 0.8,
+            "comment": "系统响应“播放周杰伦的歌曲”确认了任务，但是仅仅确认任务并不知道实际是否开始播放，缺少更明确的告知机制，比如“正在播放周杰伦的歌曲”或者显示播放界面等。"
+          },
+          "unambiguous_expression": {
+            "score": 1,
+            "comment": "指令表达清晰明确，没有歧义。"
+          },
+          "overall_score": 0.93,
+          "valid": true,
+          "suggestions": [
+            "增加播放状态的明确反馈，例如“正在播放周杰伦的歌曲”或直接显示播放界面。",
+            "可以考虑增加播放列表功能，例如播放指定专辑或指定歌曲。",
+            "可以考虑增加一些容错机制，例如用户说错歌手名字，系统能够识别相似的歌手或者给出提示。"
+          ]
+        },
+        "test_time": "2025/4/16 14:06:29"
+      },
+      "2": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 0.9,
+            "comment": "指令“我很冷”在大多数情况下可以合理推断用户需要开启空调以提高温度。 语义理解基本正确，但不够精准，例如应该开启制热模式而非直接开启空调，或者询问用户期望温度。"
+          },
+          "state_change_confirmation": {
+            "score": 0.7,
+            "comment": "响应“已为您打开空调”较为简单。 缺少具体的信息，例如空调的模式（制冷/制热）、目标温度、风速等，无法让用户清晰地了解空调的状态变化。如果能补充这些信息，体验会更好。"
+          },
+          "unambiguous_expression": {
+            "score": 1,
+            "comment": "指令“我很冷”表达清晰明确，用户意图直接，不存在歧义。"
+          },
+          "overall_score": 0.87,
+          "valid": true,
+          "suggestions": [
+            "识别“我很冷”后，自动开启空调制热模式，而非仅仅打开空调",
+            "在确认响应中，提供更详细的空调状态信息，例如：已为您开启制热模式，目标温度25度，风速自动",
+            "可以考虑增加询问环节，例如：'您觉得有多冷？' 或 '您想把温度调到多少？'"
+          ]
+        },
+        "test_time": "2025/4/16 14:06:41"
+      }
+    }
+  },
+  {
+    "name": "小艺",
+    "test_samples_ids": [
+      1,
+      2
+    ],
+    "wake_word_id": 1,
+    "task_status": "completed",
+    "created_at": "2025/4/16 14:37:44",
+    "id": 1014,
+    "machine_response": {
+      "1": {
+        "connected": true,
+        "text": "为您播放周杰伦的歌曲"
+      },
+      "2": {
+        "connected": true,
+        "text": "也为你打开空调"
+      }
+    },
+    "test_result": {
+      "1": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 1,
+            "comment": "指令语义明确，表达了播放周杰伦歌曲的意图，系统正确理解并响应。"
+          },
+          "state_change_confirmation": {
+            "score": 0.8,
+            "comment": "响应语确认了将要播放周杰伦的歌曲，但是缺少实际状态变化的确认，例如正在播放、缓冲中或者播放曲目信息等。可以优化为'正在为您播放周杰伦的歌曲'，或者提供更详细的信息。"
+          },
+          "unambiguous_expression": {
+            "score": 1,
+            "comment": "指令和响应的表述都很清晰，没有任何歧义。"
+          },
+          "overall_score": 0.93,
+          "valid": true,
+          "suggestions": [
+            "优化状态变化确认，例如增加 '正在播放' 等状态信息。",
+            "可以增加播放曲目信息，例如 '正在为您播放周杰伦的《青花瓷》' (假设当前播放的是青花瓷)。"
+          ]
+        },
+        "test_time": "2025/4/16 14:58:26"
+      },
+      "2": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 0.9,
+            "comment": "指令“我很冷”的语义理解较为准确，系统将其理解为需要提高车内温度或开启空调。但如果能进一步了解用户的期望温度，则语义理解更佳。"
+          },
+          "state_change_confirmation": {
+            "score": 0.7,
+            "comment": "响应“也为你打开空调”缺乏明确的状态反馈。例如，应该明确告知用户当前设定的温度，或者是否已经自动调整温度至预设的舒适温度。缺少具体数值和状态确认。"
+          },
+          "unambiguous_expression": {
+            "score": 1,
+            "comment": "指令“我很冷”表达清晰、直接，没有歧义。"
+          },
+          "overall_score": 0.87,
+          "valid": true,
+          "suggestions": [
+            "在开启空调的同时，应显示或语音播报当前的设置温度。",
+            "如果系统可以判断车内已达到舒适温度，可以增加语音提示：“已将车内温度调节至舒适温度”。",
+            "可以考虑根据用户的个人偏好，记忆用户在类似场景下的空调设置，下次自动应用。",
+            "可以增加温度调节的个性化选项，例如：“我很冷，稍微调高一点温度”。"
+          ]
+        },
+        "test_time": "2025/4/16 14:58:40"
+      }
+    }
+  },
+  {
+    "name": "小艺小艺",
+    "test_samples_ids": [
+      1,
+      2
+    ],
+    "wake_word_id": 1,
+    "task_status": "pending",
+    "created_at": "2025/4/16 15:00:27",
+    "id": 1015
+  },
+  {
+    "name": "华为",
+    "test_samples_ids": [
+      1,
+      2
+    ],
+    "wake_word_id": 1,
+    "task_status": "pending",
+    "created_at": "2025/4/16 15:09:45",
+    "id": 1016
   }
 ]

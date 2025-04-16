@@ -33,8 +33,7 @@ interface MachineResponseProps {
 
 // Export component methods interface
 export interface MachineResponseHandle {
-  playCurrentSampleAudio: () => Promise<void>;
-  isPlaying: boolean;
+  startRecording: () => Promise<void>;
   isRecording: boolean;
 }
 
@@ -46,8 +45,6 @@ export const MachineResponse = forwardRef<
   ref
 ) {
   const toast = useToast();
-
-  const dispatch = useAppDispatch();
 
   // Use custom hooks for voice recognition and audio playback
   const { isRecording, error, startRecording, stopRecording } =
@@ -76,20 +73,6 @@ export const MachineResponse = forwardRef<
       },
     });
 
-  const { isPlaying, playMatchedAudio } = useAudioPlayer({
-    onPlayEnd: () => {
-      console.log("音频播放结束，开始语音识别");
-      startRecording();
-    },
-    onPlayError: (errorMsg) => {
-      toast.toast({
-        title: "播放失败",
-        description: errorMsg,
-        variant: "destructive",
-      });
-    },
-  });
-
   // Handle voice recognition button click
   const handleVoiceRecognition = () => {
     if (!isRecording) {
@@ -102,11 +85,9 @@ export const MachineResponse = forwardRef<
 
   // Expose methods to parent component
   useImperativeHandle(ref, () => ({
-    playCurrentSampleAudio: async () => {
-      if (!currentSampleText || isPlaying) return;
-      await playMatchedAudio(currentSampleText);
+    startRecording: async () => {
+      startRecording();
     },
-    isPlaying,
     isRecording,
   }));
 

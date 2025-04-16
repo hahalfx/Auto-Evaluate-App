@@ -9,7 +9,6 @@ import {
 } from "@/services/api";
 import type { Task } from "@/types/api";
 import type { RootState } from "./index";
-import { set } from "date-fns";
 
 interface TaskState {
   items: Task[];

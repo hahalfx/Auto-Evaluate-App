@@ -1,5 +1,7 @@
 // hooks/useAudioPlayer.ts
 import { useState, useRef, useEffect } from 'react';
+import { toast } from './use-toast';
+import { Toast } from '@radix-ui/react-toast';
 
 interface UseAudioPlayerProps {
   onPlayEnd?: () => void;
@@ -40,7 +42,7 @@ export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps =
 
   const fetchWakeAudio = async () => {
     try {
-      const res = await fetch('/api/wakeword');
+      const res = await fetch('/api/wakeword-files');
       const data = await res.json();
       setWakeFiles(data.files);
     } catch (error) {
@@ -74,7 +76,7 @@ export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps =
       
       // Set up event listeners
       audio.onended = () => {
-        console.log("音频播放结束");
+        console.log("音频播放结束，setIsPlaying(false)");
         setIsPlaying(false);
         if (onPlayEnd) onPlayEnd();
       };
@@ -98,19 +100,49 @@ export function useAudioPlayer({ onPlayEnd, onPlayError }: UseAudioPlayerProps =
   const playMatchedAudio = async (text: string) => {
     const matchedFile = findMatchingAudio(audioFiles, text);
     if (!matchedFile) {
-      onPlayError?.('未找到匹配的音频文件');
+      onPlayError?.('未找到匹配的测试语料音频文件');
       return;
     }
     await playAudio(`/audio/${matchedFile}`);
   };
 
-  const playWakeAudio = async (text: string) => {
+  // 带唤醒词播放测试语料，参数（唤醒词， 测试语料）
+  const playWakeAudio = async (text: string, sampleText: string) => {
+    console.log(text, wakeFiles)
     const matchedFile = findMatchingAudio(wakeFiles, text);
     if (!matchedFile) {
-      onPlayError?.('未找到匹配的音频文件');
+      onPlayError?.('未找到匹配的唤醒词音频文件');
       return;
     }
-    await playAudio(`/audio/wakeword/${matchedFile}`);
+    try {
+      setIsPlaying(true);
+      
+      // Create audio element
+      const audio = new Audio(`/audio/wakeword/${matchedFile}`);
+      audioRef.current = audio;
+      
+      // Set up event listeners
+      audio.onended = () => {
+        console.log("音频播放结束，setIsPlaying(false)");
+        setIsPlaying(false);
+        setTimeout(() => {
+          playMatchedAudio(sampleText);
+        }, 1000);
+      };
+      
+      audio.onerror = (e) => {
+        console.error("音频播放错误:", e);
+        setIsPlaying(false);
+        if (onPlayError) onPlayError("音频播放出错");
+      };
+      
+      // Play audio
+      await audio.play();
+    } catch (error) {
+      console.error("播放音频失败:", error);
+      setIsPlaying(false);
+      if (onPlayError) onPlayError("播放音频文件时出错");
+    }
   };
 
   const stopAudio = () => {

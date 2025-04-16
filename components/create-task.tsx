@@ -25,11 +25,10 @@ import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/components/ui/use-toast";
 import { Input } from "./ui/input";
-import { setSelectedSamples } from "@/store/samplesSlice";
+import { fetchWakeWords, selectWakeWords, setSelectedSamples } from "@/store/samplesSlice";
 import { create } from "domain";
 
 export default function CreateTask() {
-  const [wakewords, setwakewords] = useState<WakeWord[]>([]);
   const [selectedWakeWordId, setSelectedWakeWordId] = useState<number | null>(
     null
   );
@@ -41,17 +40,12 @@ export default function CreateTask() {
   const dispatch = useAppDispatch();
   const router = useRouter();
   const selectedIds = useAppSelector((state) => state.samples.selectedIds);
+  const wakewords = useAppSelector(selectWakeWords);
 
   useEffect(() => {
-    fetch("/api/wakeword")
-      .then((response) => response.json())
-      .then((data) => {
-        setwakewords(data);
-      })
-      .catch((err) => {
-        setError("无法加载唤醒词数据");
-        console.error("Error fetching wake words:", err);
-      });
+    if (wakewords.length === 0) {
+      dispatch(fetchWakeWords());
+    }
   }, []);
 
   const handleCreateTask = async () => {
