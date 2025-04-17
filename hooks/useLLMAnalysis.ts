@@ -15,6 +15,7 @@ import {
   selectWakeWords,
 } from "@/store/samplesSlice";
 import {
+  setAutoStart,
   setCurrentTask,
   updateMachineResponse,
   updateTaskAsync,
@@ -23,7 +24,6 @@ import {
 } from "@/store/taskSlice"; // 导入任务相关的Redux actions
 import { store } from "@/store"; // 导入Redux store实例
 import { useAudioPlayer } from "./useAudioPlayer";
-import { set } from "date-fns";
 
 /**
  * 自定义hook，封装LLM分析界面的状态和业务逻辑
@@ -42,6 +42,8 @@ export function useLLMAnalysis() {
   const samples = useAppSelector(selectAllSamples);
   // 从Redux store获取所有唤醒词信息
   const wakeWords = useAppSelector(selectWakeWords);
+
+  const autoStart = useAppSelector((state) => state.tasks.autoStart);
   // 从Redux store获取当前任务信息
   const Task = useAppSelector((state) => state.tasks.currentTask);
   // 从当前任务获取选中的样本ID列表，如果任务不存在则为空数组
@@ -89,9 +91,9 @@ export function useLLMAnalysis() {
   }, [dispatch]); // 依赖dispatch，但通常dispatch是稳定的
 
   // 在组件中添加效果验证
-useEffect(() => {
-  console.log('CurrentTask changed:', Task);
-}, [Task]); 
+  useEffect(() => {
+    console.log("CurrentTask changed:", Task);
+  }, [Task]);
 
   // 当当前任务ID变化时，重置进度条和错误状态
   useEffect(() => {
@@ -106,6 +108,34 @@ useEffect(() => {
     setCurrentResultIndex(0); // 重置结果索引
     isPlayingNextRef.current = false;
   }, [Task?.id]);
+
+  // 处理从任务管理界面跳转过来开始的任务
+  useEffect(() => {
+    if (autoStart) {
+      // 从Redux获取任务
+      const selectedTask = store
+        .getState()
+        .tasks.items.find((task) => task.id === autoStart);
+      if (!selectedTask) {
+        console.error("未找到对应任务");
+        return;
+      }
+
+      // 设置当前任务
+      dispatch(setCurrentTask(selectedTask));
+
+      // 添加延迟，给音频文件加载和状态更新留出时间
+      const timer = setTimeout(() => {
+        // 检查任务是否处于待处理状态
+        if (selectedTask.task_status === "pending") {
+          handleStartAutomatedTest();
+        }
+        dispatch(setAutoStart(null));
+      }, 1000); // 延迟1秒
+
+      return () => clearTimeout(timer);
+    }
+  }, [autoStart, dispatch]);
 
   // --- Playback & Recording State ---
   const [isPlaying, setIsPlaying] = useState(false);
@@ -140,6 +170,7 @@ useEffect(() => {
 
   // --- Core Logic Functions ---
 
+  // 使用自定义播放音频hook
   const { playWakeAudio } = useAudioPlayer({
     onPlayEnd: () => {
       console.log("音频播放结束，开始语音识别");
@@ -228,7 +259,6 @@ useEffect(() => {
    * 触发当前待测样本的音频播放 (如果存在)
    */
   const handleStartAutomatedTest = () => {
-    console.log("开始自动化测试", isPlayingNextRef.current);
 
     if (!isPlayingNextRef.current) {
       isPlayingNextRef.current = true; // 设置播放标记
@@ -236,13 +266,21 @@ useEffect(() => {
       // 延迟1秒后播放
       setTimeout(() => {
         try {
-          // 播放唤醒词
-          console.log("开始播放", Task, Task?.wake_word_id);
-          Task?.wake_word_id &&
+          console.log(Task);
+          // 从Redux store获取最新的Task状态
+          const currentTask = store.getState().tasks.currentTask;
+          const sampleText = store.getState().samples.items.find((s: TestSample) => s.id === currentTask?.test_samples_ids[currentResultIndex])?.text;
+          console.log("开始播放", currentTask, currentTask?.wake_word_id);
+          
+          if (currentTask?.wake_word_id && sampleText) {
+            console.log("wakeword",store.getState().samples.wakeWords[currentTask.wake_word_id - 1].text)
             playWakeAudio(
-              wakeWords[Task?.wake_word_id - 1].text,
-              getCurrentSampleText()
+              store.getState().samples.wakeWords[currentTask.wake_word_id - 1].text,
+              sampleText
             );
+          } else {
+            console.warn("无法播放：任务或唤醒词ID不存在");
+          }
         } catch (error) {
           console.error("播放唤醒词失败:", error);
           return;
@@ -595,6 +633,7 @@ useEffect(() => {
     // 在Redux的样本列表中查找该样本
     const sample = samples.find((s: TestSample) => s.id === currentId);
     // 返回样本的文本，如果找不到则返回空字符串
+    console.log("getCurrentSampleText called", sample);
     return sample ? sample.text : "";
   };
 
