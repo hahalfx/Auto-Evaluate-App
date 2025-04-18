@@ -51,6 +51,7 @@ import { useRouter } from "next/navigation";
 import { generateASRTestReport } from "@/utils/generateASRTestReport";
 import { Task } from "@/types/api";
 import { useExportCurrentTask } from "@/hooks/useExportCurrentTask";
+import { useToast } from "./ui/use-toast";
 
 // 定义排序类型
 type SortType =
@@ -76,6 +77,7 @@ export default function TaskManage() {
   const { playMatchedAudio } = useAudioPlayer();
   const router = useRouter();
   const { exportCurrentTask } = useExportCurrentTask();
+  const {toast} = useToast();
 
   const handleExportReport = () => {
     currentTask
@@ -104,7 +106,7 @@ export default function TaskManage() {
     if (isDetailDialogOpen === false) {
       dispatch(setCurrentTask(null));
     }
-    console.log("isDetailDialogOpen", isDetailDialogOpen);
+    console.log("isDetailDialogOpen changed to", isDetailDialogOpen, "at", new Date().toISOString());
   }, [isDetailDialogOpen]);
 
   // 获取任务数据
@@ -447,8 +449,16 @@ export default function TaskManage() {
                                   <DropdownMenuItem>编辑任务</DropdownMenuItem>
                                   <DropdownMenuItem
                                     className="text-destructive"
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      e.stopPropagation(); // 阻止事件冒泡
+                                      setIsDetailDialogOpen(false); // 显式设置对话框为关闭状态
                                       dispatch(deleteTaskAsync(result.id));
+                                      toast({
+                                        variant:"destructive",
+                                        title: "任务删除成功",
+                                        description: "任务"+result.name+"已被删除",
+                                        duration: 3000,
+                                      });
                                       console.log("delete task", result.id);
                                     }}
                                   >
