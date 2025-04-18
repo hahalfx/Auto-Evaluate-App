@@ -153,6 +153,14 @@ flowchart TD
 - Node.js 18+
 - npm 9+
 
+### 环境变量配置
+在项目根目录下创建.env.local文件，并添加以下内容：
+```
+XUN_FEI_APPID='你的讯飞AppID'
+XUN_FEI_API_SECRET='你的讯飞API密钥'
+XUN_FEI_API_KEY='你的讯飞API密钥'
+```
+
 ### 安装步骤
 ```bash
 # 克隆仓库
