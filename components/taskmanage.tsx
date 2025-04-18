@@ -104,6 +104,7 @@ export default function TaskManage() {
     if (isDetailDialogOpen === false) {
       dispatch(setCurrentTask(null));
     }
+    console.log("isDetailDialogOpen", isDetailDialogOpen);
   }, [isDetailDialogOpen]);
 
   // 获取任务数据
@@ -448,6 +449,7 @@ export default function TaskManage() {
                                     className="text-destructive"
                                     onClick={() => {
                                       dispatch(deleteTaskAsync(result.id));
+                                      console.log("delete task", result.id);
                                     }}
                                   >
                                     删除任务

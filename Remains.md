@@ -1,14 +1,5 @@
-
 1. 完善任务xlsx导出参数
-2. 记录redux普通reducer与toolkit reducer的区别
-3. 完善唤醒词功能
-4. 改一下machine-response组件中的这段逻辑
-  // Expose methods to parent component
-  useImperativeHandle(ref, () => ({
-    playCurrentSampleAudio: async () => {
-      if (!currentSampleText || isPlaying) return;
-      await playMatchedAudio(currentSampleText);
-    },
-    isPlaying,
-    isRecording,
-  }));
+2. 交互界面的完成按钮
+3. 测试任务成功率
+4. 问llm-analysis-interface.tsx的代码变动问题
+5. 删除任务时Dialog弹窗界面问题

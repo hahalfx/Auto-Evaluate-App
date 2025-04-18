@@ -4,9 +4,9 @@ import crypto from 'crypto';
 // 讯飞语音听写API配置 - 从环境变量或硬编码的备用值获取
 const API_CONFIG = {
   // 尝试从多个可能的环境变量名称获取，如果都不存在则使用.env.local中的值
-  APPID: process.env.XUN_FEI_APPID || process.env.XUNFEI_APPID || '36c3045b',
-  API_SECRET: process.env.XUN_FEI_API_SECRET || process.env.XUNFEI_API_SECRET || 'ZmE3NGRlNjFhMTQ3OWM0NmM2NzI2MTli',
-  API_KEY: process.env.XUN_FEI_API_KEY || process.env.XUNFEI_API_KEY || '19f1a5b85b8e210775d2ffecefcf9c0e',
+  APPID: process.env.XUN_FEI_APPID || process.env.XUNFEI_APPID ,
+  API_SECRET: process.env.XUN_FEI_API_SECRET || process.env.XUNFEI_API_SECRET ,
+  API_KEY: process.env.XUN_FEI_API_KEY || process.env.XUNFEI_API_KEY ,
   HOST: 'wss://iat-api.xfyun.cn/v2/iat', // 中英文推荐使用
 };
 
