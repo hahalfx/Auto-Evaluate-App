@@ -4,9 +4,8 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
 import { ReduxProvider } from "./providers";
+import { DashboardLayout } from "@/components/dashboard-layout";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -25,11 +24,10 @@ export default function RootLayout({
       <body className={inter.className}>
         <ReduxProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-            <SidebarProvider>
-              <AppSidebar />
+            <DashboardLayout>
               {children}
               <Toaster />
-            </SidebarProvider>
+            </DashboardLayout>
           </ThemeProvider>
         </ReduxProvider>
       </body>

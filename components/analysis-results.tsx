@@ -65,7 +65,7 @@ export function AnalysisResults({
 
   return (
     <Card className="flex flex-1 h-full flex-col shadow-sm rounded-lg overflow-auto">
-      <CardHeader className="bg-background p-3 space-y-0 border-b flex flex-row justify-between items-center">
+      <CardHeader className="bg-white p-3 space-y-0 border-b flex flex-row justify-between items-center">
         <h3 className="font-semibold text-foreground text-center">
           结果判定和解析
         </h3>

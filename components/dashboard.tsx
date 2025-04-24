@@ -7,7 +7,7 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from "./ui/breadcrumb";
-import { SidebarTrigger } from "./ui/sidebar";
+//import { SidebarTrigger } from "./ui/sidebar";
 
 export default function DashBoard() {
   // 静态演示数据
@@ -45,18 +45,8 @@ export default function DashBoard() {
 
   return (
     <div>
-      <div className="flex items-center fixed top-0 w-full bg-white">
-        <SidebarTrigger className="mx-6 my-4" />
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/">主页</BreadcrumbLink>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-      </div>
-      <div className="min-h-screen bg-white p-6">
-        <div className="pt-8 w-full mx-auto">
+      <div className="min-h-screen bg-background p-6">
+        <div className="w-full mx-auto">
           <h1 className="text-3xl font-bold mb-6">
             语音验证数据看板
           </h1>

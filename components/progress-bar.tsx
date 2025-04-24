@@ -11,6 +11,7 @@ import { Play, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -51,7 +52,7 @@ export function ProgressBar({
 
   return (
     <Card className="shadow-sm rounded-lg h-full">
-      <CardHeader className="bg-background p-3 rounded-lg flex-row items-center justify-between space-y-0 border-b">
+      <CardHeader className="bg-white p-3 rounded-lg flex-row items-center justify-between space-y-0 border-b">
         <h3 className="font-semibold text-foreground">测试进度</h3>
       </CardHeader>
       <CardContent className="p-4">

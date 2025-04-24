@@ -15,10 +15,10 @@ import {
 } from "@/components/ui/breadcrumb";
 import { useLLMAnalysis } from "@/hooks/useLLMAnalysis";
 import { useEffect } from "react";
-import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { fetchTaskById, setAutoStart, setCurrentTask } from "@/store/taskSlice";
 import { store } from "@/store";
 import CV from "./custom/cv";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
+
 
 export function LLMAnalysisInterface() {
   const {
@@ -43,31 +43,41 @@ export function LLMAnalysisInterface() {
     selectedSample,
     handleDeleteSample,
   } = useLLMAnalysis();
-  
 
-  
+  // 动态路由获取任务ID
+  const params = useParams();
+
+  const Id = params.Id;
+
+  useEffect(() => {
+    if (Id) {
+      console.log("当前任务ID:", Id);
+      const taskId = parseInt(Id as string);
+      const selectedTask = store
+        .getState()
+        .tasks.items.find((task) => task.id === taskId);
+      if (!selectedTask) {
+        console.error("未找到对应任务");
+        return;
+      }
+
+      // 添加延迟，给音频文件加载和状态更新留出时间
+      const timer = setTimeout(() => {
+        // 检查任务是否处于待处理状态
+        if (selectedTask.task_status === "pending") {
+          handleStartAutomatedTest();
+        }
+      }, 1000); // 延迟1秒
+
+      return () => clearTimeout(timer);
+    }
+  }, [Id]);
 
   return (
-    <div className="flex flex-col w-full max-h-screen">
-      <div className="flex items-center fixed top-0 w-full bg-white">
-        <SidebarTrigger className="mx-6 my-4" />
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/">主页</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/llm-analysis">
-                语音交互大模型分析
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-      </div>
+    <div className="flex flex-col w-full max-h-screen ">
 
       {/* Main content */}
-      <div className="pt-14 flex flex-auto p-6 gap-4 h-screen">
+      <div className="flex flex-auto p-6 gap-4 h-dvh overflow-auto">
         <div className="flex flex-col w-1/2 gap-4 h-full">
           <div className="flex-1 basis-2/3">
             {/* <TestSamples

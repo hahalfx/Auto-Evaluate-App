@@ -20,8 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { useVoiceRecognition } from "@/hooks/useVoiceRecognition";
-import { useAudioPlayer } from "@/hooks/useAudioPlayer";
-import { useAppDispatch } from '@/store/hooks';
+
 
 interface MachineResponseProps {
   value: string;
@@ -93,7 +92,7 @@ export const MachineResponse = forwardRef<
 
   return (
     <Card className="shadow-sm rounded-lg h-full">
-      <CardHeader className="rounded-lg bg-background p-3 flex-col space-y-2 border-b">
+      <CardHeader className="rounded-lg bg-white p-3 flex-col space-y-2 border-b">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground">被测车机响应</h3>
         </div>

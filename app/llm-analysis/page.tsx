@@ -1,3 +1,4 @@
+"use client"
 import { LLMAnalysisInterface } from "@/components/llm-analysis-interface"
 
 export default function LLMAnalysis() {

@@ -51,6 +51,8 @@ export function useLLMAnalysis() {
   // 获取Redux dispatch函数，用于派发actions
   const dispatch = useAppDispatch();
 
+  
+
   // --- Local State ---
   // 车机响应文本状态
   const [machineResponse, setMachineResponse] = useState<string>("");
@@ -110,32 +112,32 @@ export function useLLMAnalysis() {
   }, [Task?.id]);
 
   // 处理从任务管理界面跳转过来开始的任务
-  useEffect(() => {
-    if (autoStart) {
-      // 从Redux获取任务
-      const selectedTask = store
-        .getState()
-        .tasks.items.find((task) => task.id === autoStart);
-      if (!selectedTask) {
-        console.error("未找到对应任务");
-        return;
-      }
+  // useEffect(() => {
+  //   if (autoStart) {
+  //     // 从Redux获取任务
+  //     const selectedTask = store
+  //       .getState()
+  //       .tasks.items.find((task) => task.id === autoStart);
+  //     if (!selectedTask) {
+  //       console.error("未找到对应任务");
+  //       return;
+  //     }
 
-      // 设置当前任务
-      dispatch(setCurrentTask(selectedTask));
+  //     // 设置当前任务
+  //     dispatch(setCurrentTask(selectedTask));
 
-      // 添加延迟，给音频文件加载和状态更新留出时间
-      const timer = setTimeout(() => {
-        // 检查任务是否处于待处理状态
-        if (selectedTask.task_status === "pending") {
-          handleStartAutomatedTest();
-        }
-        dispatch(setAutoStart(null));
-      }, 1000); // 延迟1秒
+  //     // 添加延迟，给音频文件加载和状态更新留出时间
+  //     const timer = setTimeout(() => {
+  //       // 检查任务是否处于待处理状态
+  //       if (selectedTask.task_status === "pending") {
+  //         handleStartAutomatedTest();
+  //       }
+  //       dispatch(setAutoStart(null));
+  //     }, 1000); // 延迟1秒
 
-      return () => clearTimeout(timer);
-    }
-  }, [autoStart, dispatch]);
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [autoStart, dispatch]);
 
   // --- Playback & Recording State ---
   const [isPlaying, setIsPlaying] = useState(false);
@@ -259,7 +261,6 @@ export function useLLMAnalysis() {
    * 触发当前待测样本的音频播放 (如果存在)
    */
   const handleStartAutomatedTest = () => {
-
     if (!isPlayingNextRef.current) {
       isPlayingNextRef.current = true; // 设置播放标记
 
@@ -269,13 +270,23 @@ export function useLLMAnalysis() {
           console.log(Task);
           // 从Redux store获取最新的Task状态
           const currentTask = store.getState().tasks.currentTask;
-          const sampleText = store.getState().samples.items.find((s: TestSample) => s.id === currentTask?.test_samples_ids[currentResultIndex])?.text;
+          const sampleText = store
+            .getState()
+            .samples.items.find(
+              (s: TestSample) =>
+                s.id === currentTask?.test_samples_ids[currentResultIndex]
+            )?.text;
           console.log("开始播放", currentTask, currentTask?.wake_word_id);
-          
+
           if (currentTask?.wake_word_id && sampleText) {
-            console.log("wakeword",store.getState().samples.wakeWords[currentTask.wake_word_id - 1].text)
+            console.log(
+              "wakeword",
+              store.getState().samples.wakeWords[currentTask.wake_word_id - 1]
+                .text
+            );
             playWakeAudio(
-              store.getState().samples.wakeWords[currentTask.wake_word_id - 1].text,
+              store.getState().samples.wakeWords[currentTask.wake_word_id - 1]
+                .text,
               sampleText
             );
           } else {

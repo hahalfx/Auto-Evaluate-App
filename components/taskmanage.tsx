@@ -1,5 +1,11 @@
 "use client";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardDescription,
+} from "@/components/ui/card";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -17,10 +23,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Ellipsis, Loader2, Play, ArrowUpDown, Filter } from "lucide-react";
+import {
+  Ellipsis,
+  Loader2,
+  Play,
+  ArrowUpDown,
+  Filter,
+  BarChart3,
+  CheckCircle2,
+  Clock,
+  PlayCircle,
+  Plus,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -77,7 +95,7 @@ export default function TaskManage() {
   const { playMatchedAudio } = useAudioPlayer();
   const router = useRouter();
   const { exportCurrentTask } = useExportCurrentTask();
-  const {toast} = useToast();
+  const { toast } = useToast();
 
   const handleExportReport = () => {
     currentTask
@@ -98,15 +116,20 @@ export default function TaskManage() {
     //   })
     // );
 
-    dispatch(setAutoStart(taskId)); // 添加一个新的Redux action用于开始自动化测试流程
-    router.push("/llm-analysis");
+    //dispatch(setAutoStart(taskId)); // 添加一个新的Redux action用于开始自动化测试流程
+    router.push("/llm-analysis/" + taskId);
   };
 
   useEffect(() => {
     if (isDetailDialogOpen === false) {
       dispatch(setCurrentTask(null));
     }
-    console.log("isDetailDialogOpen changed to", isDetailDialogOpen, "at", new Date().toISOString());
+    console.log(
+      "isDetailDialogOpen changed to",
+      isDetailDialogOpen,
+      "at",
+      new Date().toISOString()
+    );
   }, [isDetailDialogOpen]);
 
   // 获取任务数据
@@ -198,29 +221,94 @@ export default function TaskManage() {
   // 获取筛选和排序后的任务列表
   const filteredAndSortedTasks = getFilteredAndSortedTasks();
 
+  // 统计数据
+  const taskStats = {
+    total: tasks.length,
+    pending: tasks.filter((t) => t.task_status === "pending").length,
+    inProgress: tasks.filter((t) => t.task_status === "in_progress").length,
+    completed: tasks.filter((t) => t.task_status === "completed").length,
+  };
+
   return (
     <div>
-      <div className="flex items-center fixed top-0 w-full bg-white">
-        <SidebarTrigger className="mx-6 my-4" />
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/">主页</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/taskmanage">测试任务管理</BreadcrumbLink>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-      </div>
-      <div className="min-h-screen bg-white p-6">
-        <div className="pt-8 w-full mx-auto">
-          <h1 className="text-3xl font-bold mb-6">测试任务管理</h1>
+      <div className="min-h-screen bg-background p-6">
+        <div className="w-full mx-auto gap-4">
+          <div className="space-y-4 pb-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-3xl font-bold tracking-tight">
+                  测试任务管理
+                </h2>
+                <p className="text-muted-foreground">
+                  创建、编辑和管理测试任务，查看任务执行状态和结果。
+                </p>
+              </div>
+              <Button size="lg" className="gap-2">
+                <Plus className="h-5 w-5" />
+                创建任务
+              </Button>
+            </div>
 
-          {/* 核心指标卡片组 */}
-          <div className="w-full mb-6">
-            <ChartComponent />
+            {/* 统计卡片 */}
+            <div className="grid gap-4 md:grid-cols-4">
+              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
+                <CardHeader className="pb-2">
+                  <CardDescription>总任务数</CardDescription>
+                  <CardTitle className="text-3xl">{taskStats.total}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center text-blue-600 dark:text-blue-400">
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    <span className="text-sm font-medium">全部测试任务</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950 dark:to-amber-900 border-amber-200 dark:border-amber-800">
+                <CardHeader className="pb-2">
+                  <CardDescription>待执行</CardDescription>
+                  <CardTitle className="text-3xl">
+                    {taskStats.pending}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center text-amber-600 dark:text-amber-400">
+                    <Clock className="mr-2 h-4 w-4" />
+                    <span className="text-sm font-medium">等待开始的任务</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-indigo-900 border-indigo-200 dark:border-indigo-800">
+                <CardHeader className="pb-2">
+                  <CardDescription>进行中</CardDescription>
+                  <CardTitle className="text-3xl">
+                    {taskStats.inProgress}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center text-indigo-600 dark:text-indigo-400">
+                    <PlayCircle className="mr-2 h-4 w-4" />
+                    <span className="text-sm font-medium">正在执行的任务</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950 dark:to-emerald-900 border-emerald-200 dark:border-emerald-800">
+                <CardHeader className="pb-2">
+                  <CardDescription>已完成</CardDescription>
+                  <CardTitle className="text-3xl">
+                    {taskStats.completed}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    <span className="text-sm font-medium">已完成的任务</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
 
           {/* 最近验证任务 */}
@@ -454,9 +542,10 @@ export default function TaskManage() {
                                       setIsDetailDialogOpen(false); // 显式设置对话框为关闭状态
                                       dispatch(deleteTaskAsync(result.id));
                                       toast({
-                                        variant:"destructive",
+                                        variant: "destructive",
                                         title: "任务删除成功",
-                                        description: "任务"+result.name+"已被删除",
+                                        description:
+                                          "任务" + result.name + "已被删除",
                                         duration: 3000,
                                       });
                                       console.log("delete task", result.id);
