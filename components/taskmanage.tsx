@@ -53,13 +53,14 @@ import {
   selectTasksStatus,
   updateTaskAsync,
   deleteTaskAsync,
-  setAutoStart,
 } from "@/store/taskSlice";
 import {
   selectAllSamples,
   fetchSamples,
   selectSamplesStatus,
   setSelectedSamples,
+  selectWakeWords,
+  fetchWakeWords,
 } from "@/store/samplesSlice";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { Button } from "./ui/button";
@@ -70,6 +71,7 @@ import { generateASRTestReport } from "@/utils/generateASRTestReport";
 import { Task } from "@/types/api";
 import { useExportCurrentTask } from "@/hooks/useExportCurrentTask";
 import { useToast } from "./ui/use-toast";
+import { useActiveTasks } from "@/lib/contexts/active-tasks-context"
 
 // 定义排序类型
 type SortType =
@@ -96,6 +98,9 @@ export default function TaskManage() {
   const router = useRouter();
   const { exportCurrentTask } = useExportCurrentTask();
   const { toast } = useToast();
+  const { addActiveTask, isTaskActive } = useActiveTasks()
+  const wakeWords = useAppSelector(selectWakeWords);
+  
 
   const handleExportReport = () => {
     currentTask
@@ -124,12 +129,6 @@ export default function TaskManage() {
     if (isDetailDialogOpen === false) {
       dispatch(setCurrentTask(null));
     }
-    console.log(
-      "isDetailDialogOpen changed to",
-      isDetailDialogOpen,
-      "at",
-      new Date().toISOString()
-    );
   }, [isDetailDialogOpen]);
 
   // 获取任务数据
@@ -141,10 +140,11 @@ export default function TaskManage() {
 
   // 获取测试语料数据
   useEffect(() => {
-    if (samplesStatus === "idle" && samples.length === 0) {
+    if (samplesStatus === "idle" && samples.length === 0 && wakeWords.length ===0) {
       dispatch(fetchSamples());
+      dispatch(fetchWakeWords());
     }
-  }, [dispatch, samplesStatus, samples.length]);
+  }, [dispatch, samplesStatus, samples.length, wakeWords.length]);
 
   // 处理排序
   const handleSort = (type: SortType) => {
@@ -229,6 +229,15 @@ export default function TaskManage() {
     completed: tasks.filter((t) => t.task_status === "completed").length,
   };
 
+  // 处理执行任务
+  const handleExecuteTask = (task: any) => {
+    addActiveTask({
+      id: task.id,
+      name: task.name,
+      type: task.type,
+    })
+  }
+
   return (
     <div>
       <div className="min-h-screen bg-background p-6">
@@ -243,7 +252,7 @@ export default function TaskManage() {
                   创建、编辑和管理测试任务，查看任务执行状态和结果。
                 </p>
               </div>
-              <Button size="lg" className="gap-2">
+              <Button size="lg" onClick={() => router.push("/taskmanage/create")} className="gap-2">
                 <Plus className="h-5 w-5" />
                 创建任务
               </Button>
@@ -312,9 +321,9 @@ export default function TaskManage() {
           </div>
 
           {/* 最近验证任务 */}
-          <Card>
+          <Card className="bg-background">
             <CardHeader className="flex flex-row items-center justify-between px-6 py-4">
-              <CardTitle>最近验证任务</CardTitle>
+              <CardTitle>所有任务</CardTitle>
               <div className="flex space-x-2">
                 {/* 筛选下拉菜单 */}
                 <DropdownMenu>
@@ -409,7 +418,7 @@ export default function TaskManage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                <Link href="/taskmanage/create-task">
+                <Link href="/taskmanage/create">
                   <Button size="sm">创建新任务</Button>
                 </Link>
               </div>
@@ -469,7 +478,7 @@ export default function TaskManage() {
                       {filteredAndSortedTasks.map((result) => (
                         <div
                           key={result.id}
-                          className="flex h-24 items-center justify-between p-5 border rounded-xl hover:bg-accent cursor-pointer"
+                          className="flex h-24 bg-white items-center justify-between p-5 border rounded-xl hover:bg-accent cursor-pointer"
                           onClick={() => {
                             const task = tasks.find((t) => t.id === result.id);
                             if (task) {
@@ -607,8 +616,8 @@ export default function TaskManage() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-sm font-medium">唤醒词ID</p>
-                  <Badge variant="outline">#{currentTask.wake_word_id}</Badge>
+                  <p className="text-sm font-medium">唤醒词</p>
+                  <Badge variant="outline">{wakeWords[currentTask.wake_word_id-1].text}</Badge>
                 </div>
 
                 {/* 测试语料 */}
@@ -791,7 +800,9 @@ export default function TaskManage() {
                     <Button
                       variant="default"
                       className="bg-blue-600 hover:bg-blue-700"
-                      onClick={() => handleStartTask(currentTask.id)}
+                      // onClick={() => handleStartTask(currentTask.id)}
+                      onClick={() => handleExecuteTask(currentTask)}
+                            disabled={isTaskActive(String(currentTask.id))}
                     >
                       开始任务
                     </Button>

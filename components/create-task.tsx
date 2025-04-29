@@ -25,7 +25,11 @@ import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/components/ui/use-toast";
 import { Input } from "./ui/input";
-import { fetchWakeWords, selectWakeWords, setSelectedSamples } from "@/store/samplesSlice";
+import {
+  fetchWakeWords,
+  selectWakeWords,
+  setSelectedSamples,
+} from "@/store/samplesSlice";
 import { create } from "domain";
 
 export default function CreateTask() {
@@ -102,29 +106,8 @@ export default function CreateTask() {
 
   return (
     <div>
-      <div className="flex items-center fixed top-0 w-full bg-white">
-        <SidebarTrigger className="mx-6 my-4" />
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/">主页</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/taskmanage">测试任务管理</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/taskmanage/create-task">
-                新建测试任务
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-      </div>
-
-      <div className="min-h-screen bg-white p-6">
-        <div className="pt-8 w-full mx-auto">
+      <div className="min-h-screen bg-background p-6">
+        <div className="w-full mx-auto">
           <h1 className="text-3xl font-bold mb-3">新建测试任务</h1>
         </div>
         <div className="flex gap-x-3">

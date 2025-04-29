@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { AnalysisResult } from "@/types/api";
 import { ScoreDisplay } from "./score-display";
 import { Button } from "./ui/button";
-import { useState } from "react";
+import { use, useEffect, useState } from "react";
 import {
   Dialog,
   DialogHeader,

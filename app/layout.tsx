@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { ReduxProvider } from "./providers";
 import { DashboardLayout } from "@/components/dashboard-layout";
+import { ActiveTasksProvider } from "@/lib/contexts/active-tasks-context";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -24,10 +25,12 @@ export default function RootLayout({
       <body className={inter.className}>
         <ReduxProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-            <DashboardLayout>
-              {children}
-              <Toaster />
-            </DashboardLayout>
+            <ActiveTasksProvider>
+              <DashboardLayout>
+                {children}
+                <Toaster />
+              </DashboardLayout>
+            </ActiveTasksProvider>
           </ThemeProvider>
         </ReduxProvider>
       </body>

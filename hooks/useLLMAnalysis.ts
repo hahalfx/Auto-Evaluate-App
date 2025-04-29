@@ -6,17 +6,16 @@ import { MachineResponseHandle } from "@/components/machine-response"; // 导入
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   selectAllSamples,
-  selectSelectedSampleIds,
   setSelectedSamples,
   updateSampleResult,
   deleteSample,
   fetchSamples,
   fetchWakeWords,
   selectWakeWords,
+  selectSamplesStatus,
 } from "@/store/samplesSlice";
 import {
-  setAutoStart,
-  setCurrentTask,
+  fetchTasks,
   updateMachineResponse,
   updateTaskAsync,
   updateTaskStatus,
@@ -42,16 +41,13 @@ export function useLLMAnalysis() {
   const samples = useAppSelector(selectAllSamples);
   // 从Redux store获取所有唤醒词信息
   const wakeWords = useAppSelector(selectWakeWords);
-
-  const autoStart = useAppSelector((state) => state.tasks.autoStart);
+  const sampleStatus = useAppSelector(selectSamplesStatus);
   // 从Redux store获取当前任务信息
   const Task = useAppSelector((state) => state.tasks.currentTask);
   // 从当前任务获取选中的样本ID列表，如果任务不存在则为空数组
   const selectedSample = Task?.test_samples_ids || [];
   // 获取Redux dispatch函数，用于派发actions
   const dispatch = useAppDispatch();
-
-  
 
   // --- Local State ---
   // 车机响应文本状态
@@ -88,9 +84,12 @@ export function useLLMAnalysis() {
   // --- Effects ---
   // 组件挂载时，从后端获取测试样本数据并存入Redux store
   useEffect(() => {
-    dispatch(fetchSamples());
-    dispatch(fetchWakeWords());
-  }, [dispatch]); // 依赖dispatch，但通常dispatch是稳定的
+    if (sampleStatus === "idle") {
+      dispatch(fetchSamples());
+      dispatch(fetchWakeWords());
+      dispatch(fetchTasks());
+    }
+  }, [dispatch, sampleStatus]); // 依赖dispatch，但通常dispatch是稳定的
 
   // 在组件中添加效果验证
   useEffect(() => {
@@ -110,34 +109,6 @@ export function useLLMAnalysis() {
     setCurrentResultIndex(0); // 重置结果索引
     isPlayingNextRef.current = false;
   }, [Task?.id]);
-
-  // 处理从任务管理界面跳转过来开始的任务
-  // useEffect(() => {
-  //   if (autoStart) {
-  //     // 从Redux获取任务
-  //     const selectedTask = store
-  //       .getState()
-  //       .tasks.items.find((task) => task.id === autoStart);
-  //     if (!selectedTask) {
-  //       console.error("未找到对应任务");
-  //       return;
-  //     }
-
-  //     // 设置当前任务
-  //     dispatch(setCurrentTask(selectedTask));
-
-  //     // 添加延迟，给音频文件加载和状态更新留出时间
-  //     const timer = setTimeout(() => {
-  //       // 检查任务是否处于待处理状态
-  //       if (selectedTask.task_status === "pending") {
-  //         handleStartAutomatedTest();
-  //       }
-  //       dispatch(setAutoStart(null));
-  //     }, 1000); // 延迟1秒
-
-  //     return () => clearTimeout(timer);
-  //   }
-  // }, [autoStart, dispatch]);
 
   // --- Playback & Recording State ---
   const [isPlaying, setIsPlaying] = useState(false);

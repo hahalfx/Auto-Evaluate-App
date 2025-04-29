@@ -1,7 +1,5 @@
 // hooks/useAudioPlayer.ts
 import { useState, useRef, useEffect, useCallback } from "react";
-import { toast } from "./use-toast";
-import { Toast } from "@radix-ui/react-toast";
 
 interface UseAudioPlayerProps {
   onPlayEnd?: () => void;
@@ -18,6 +16,7 @@ export function useAudioPlayer({
   const [wakeFiles, setWakeFiles] = useState<string[]>([]);
   const savedWakeFiles = useRef<string[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [dataStatus, setDataStatus] = useState("idle" );
 
   // Cleanup on unmount
   useEffect(() => {
@@ -31,9 +30,14 @@ export function useAudioPlayer({
 
   // 初始化时获取音频文件列表
   useEffect(() => {
-    fetchAudioFiles();
-    fetchWakeAudio();
-  }, []);
+    if (dataStatus === "idle") {
+      console.log("useAudioPlayer初始化");
+      setDataStatus("loading");
+      fetchAudioFiles();
+      fetchWakeAudio();
+      setDataStatus("succeeded");
+    }
+  }, [dataStatus]);
 
   const fetchAudioFiles = async () => {
     try {
@@ -138,7 +142,7 @@ export function useAudioPlayer({
         onPlayError?.("未找到匹配的唤醒词音频文件");
         return;
       }
-      console.log("测试语料", text, sampleText)
+      console.log("测试语料", text, sampleText);
       try {
         setIsPlaying(true);
 

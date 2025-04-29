@@ -3,22 +3,26 @@ import { TestSamples } from "./test-samples";
 import { AnalysisResults } from "./analysis-results";
 import { MachineResponse } from "./machine-response";
 import { ProgressBar } from "./progress-bar";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { SidebarTrigger } from "./ui/sidebar";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import { useLLMAnalysis } from "@/hooks/useLLMAnalysis";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { store } from "@/store";
 import CV from "./custom/cv";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-
+import { selectTasksStatus, setCurrentTask } from "@/store/taskSlice";
+import { useAppDispatch } from "@/store/hooks";
+import { Button } from "./ui/button";
+import { ArrowLeft, Download, Save } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "./ui/alert-dialog";
+import Link from "next/link";
 
 export function LLMAnalysisInterface() {
   const {
@@ -48,34 +52,109 @@ export function LLMAnalysisInterface() {
   const params = useParams();
 
   const Id = params.Id;
+  const status = store.getState().tasks.status;
+  const currentTask = store.getState().tasks.currentTask;
+  // 获取Redux dispatch函数，用于派发actions
+  const dispatch = useAppDispatch();
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   useEffect(() => {
-    if (Id) {
+    if (Id && status === "succeeded") {
       console.log("当前任务ID:", Id);
       const taskId = parseInt(Id as string);
+
       const selectedTask = store
         .getState()
         .tasks.items.find((task) => task.id === taskId);
-      if (!selectedTask) {
-        console.error("未找到对应任务");
-        return;
-      }
 
-      // 添加延迟，给音频文件加载和状态更新留出时间
-      const timer = setTimeout(() => {
-        // 检查任务是否处于待处理状态
-        if (selectedTask.task_status === "pending") {
-          handleStartAutomatedTest();
+      if (status === "succeeded") {
+        if (!selectedTask) {
+          console.error("未找到对应任务");
+          return;
         }
-      }, 1000); // 延迟1秒
+      }
+      !currentTask && dispatch(setCurrentTask(selectedTask));
 
-      return () => clearTimeout(timer);
+      return;
     }
-  }, [Id]);
+  }, [Id, status]);
+
+  useEffect(() => {
+    console.log("llm-analysis-interface组件挂载");
+    return
+  }, []);
 
   return (
     <div className="flex flex-col w-full max-h-screen ">
-
+      <div className="flex flex-col gap-4 px-6 pt-6 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <Link href="/taskmanage">
+              <Button variant="outline" size="icon" className="h-8 w-8">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
+            <h2 className="text-3xl font-bold tracking-tight">
+              {currentTask?.name}
+            </h2>
+          </div>
+          {/* <p className="text-muted-foreground">{taskData.description}</p> */}
+        </div>
+        <div className="flex gap-2">
+          <AlertDialog
+            open={showExportDialog}
+            onOpenChange={setShowExportDialog}
+          >
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Download className="h-4 w-4" />
+                导出结果
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>导出测试结果</AlertDialogTitle>
+                <AlertDialogDescription>
+                  请选择导出格式：
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="grid grid-cols-2 gap-4 py-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowExportDialog(false)}
+                >
+                  导出为Excel
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowExportDialog(false)}
+                >
+                  导出为PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowExportDialog(false)}
+                >
+                  导出为CSV
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowExportDialog(false)}
+                >
+                  导出为JSON
+                </Button>
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <Button className="gap-2">
+            <Save className="h-4 w-4" />
+            保存结果
+          </Button>
+        </div>
+      </div>
       {/* Main content */}
       <div className="flex flex-auto p-6 gap-4 h-dvh overflow-auto">
         <div className="flex flex-col w-1/2 gap-4 h-full">
@@ -108,31 +187,15 @@ export function LLMAnalysisInterface() {
               isRecording={isRecording}
               isAnalyzing={loading}
               disabled={selectedSample.length === 0}
+              goToPreviousResult={goToPreviousResult}
+              hasPreviousResult={hasPreviousResult}
+              goToNextResult={goToNextResult}
+              hasNextResult={hasNextResult}
             />
           </div>
           <div className="flex flex-col flex-1">
             {/* 添加结果导航按钮 */}
             <div className="flex flex-none items-center justify-between mb-2">
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToPreviousResult}
-                  disabled={!hasPreviousResult()}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  上一条
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToNextResult}
-                  disabled={!hasNextResult()}
-                >
-                  下一条
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
               <div className="text-sm text-muted-foreground">
                 {selectedSample.length > 0 && (
                   <>

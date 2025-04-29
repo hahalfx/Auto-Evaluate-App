@@ -11,7 +11,6 @@ import {
   updateSampleResult,
   deleteSample,
 } from "@/store/samplesSlice";
-import { setAutoStart } from "@/store/taskSlice";
 
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { set } from "date-fns";
@@ -25,7 +24,6 @@ export function useAutoTest() {
   const samples = useAppSelector(selectAllSamples);
   const selectedSample = useAppSelector(selectSelectedSampleIds);
   const Task = useAppSelector((state) => state.tasks.currentTask);
-  const autoStart = useAppSelector((state) => state.tasks.autoStart);
   const dispatch = useAppDispatch();
 
   // 机器响应相关状态
@@ -34,7 +32,8 @@ export function useAutoTest() {
   // 分析结果相关状态
   const [analysisResults, setAnalysisResults] =
     useState<Record<number, AnalysisResult>>();
-  const [currentResultIndex, setCurrentResultIndex] = useState<number>(0);
+  const sampleList = Task?.test_samples_ids
+  const [currentSampleIndex, setCurrentSampleIndex] = useState<number>(0);
 
   // 进度和状态相关
   const [loading, setLoading] = useState<boolean>(false);
@@ -66,14 +65,6 @@ export function useAutoTest() {
   const handleDeleteSample = (id: number) => {
     dispatch(deleteSample(id));
   };
-
-  // 监听其他页面的开始自动测试流程事件
-  useEffect(() => {
-    if (Task && autoStart) {
-      startAutoTest();
-      dispatch(setAutoStart(false));
-    }
-  }, [Task, autoStart]);
 
   const startAutoTest = () => {
     // 使用自定义Hook播放匹配的音频
@@ -137,7 +128,6 @@ export function useAutoTest() {
       } catch (error) {
         toast.toast({
           title: "音频播放失败",
-          description: error,
           variant: "destructive",
         });
       }
@@ -147,6 +137,8 @@ export function useAutoTest() {
       RecognitionStable ? ()
     }
   };
+
+
 
   return {
     startAutoTest,

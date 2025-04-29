@@ -121,7 +121,7 @@ export default function SettingsView() {
                       >
                         <Sun className="h-6 w-6 mb-2" />
                         <span>浅色</span>
-                        {theme === "light" && <Check className="absolute top-2 right-2 h-4 w-4 text-primary" />}
+                        {theme === "light" && <Check className="h-4 w-4 text-primary" />}
                       </div>
                       <div
                         className={`flex flex-col items-center justify-center p-3 border rounded-md cursor-pointer hover:border-primary ${theme === "dark" ? "border-primary bg-primary/10" : ""}`}
@@ -129,7 +129,7 @@ export default function SettingsView() {
                       >
                         <Moon className="h-6 w-6 mb-2" />
                         <span>深色</span>
-                        {theme === "dark" && <Check className="absolute top-2 right-2 h-4 w-4 text-primary" />}
+                        {theme === "dark" && <Check className="h-4 w-4 text-primary" />}
                       </div>
                       <div
                         className={`flex flex-col items-center justify-center p-3 border rounded-md cursor-pointer hover:border-primary ${theme === "system" ? "border-primary bg-primary/10" : ""}`}
@@ -137,7 +137,7 @@ export default function SettingsView() {
                       >
                         <LayoutGrid className="h-6 w-6 mb-2" />
                         <span>系统</span>
-                        {theme === "system" && <Check className="absolute top-2 right-2 h-4 w-4 text-primary" />}
+                        {theme === "system" && <Check className="h-4 w-4 text-primary" />}
                       </div>
                     </div>
                   </div>

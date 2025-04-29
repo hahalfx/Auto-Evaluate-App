@@ -14,7 +14,6 @@ interface TaskState {
   items: Task[];
   currentTask: Task | null;
   status: "idle" | "loading" | "succeeded" | "failed";
-  autoStart: number | null;
   error: string | null;
 }
 
@@ -22,7 +21,6 @@ const initialState: TaskState = {
   items: [],
   currentTask: null,
   status: "idle",
-  autoStart: null,
   error: null,
 };
 
@@ -79,10 +77,6 @@ const taskSlice = createSlice({
     // 设置当前任务
     setCurrentTask: (state, action) => {
       state.currentTask = action.payload;
-    },
-    //设置是否开启自动化测试
-    setAutoStart: (state, action) => {
-      state.autoStart = action.payload;
     },
     // 更新任务状态
     updateTaskStatus: (state, action) => {
@@ -227,7 +221,6 @@ const taskSlice = createSlice({
 // 导出 actions
 export const {
   setCurrentTask,
-  setAutoStart,
   updateTaskStatus,
   updateMachineResponse,
   updateTestResult,
