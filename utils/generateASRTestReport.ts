@@ -56,14 +56,14 @@ export interface ASRTestReport {
  */
 export function generateASRTestReport(
   reportData: ASRTestReport,
-  fileName: string = "ASR测试报告.xlsx"
+  fileName: string = reportData.taskName+"测试报告.xlsx"
 ): void {
   // Create a new workbook
   const wb = XLSX.utils.book_new();
 
   // Format the header data for the report
   const headerData = [
-    ["ASR测试报告"],
+    ["车机语音大模型测试报告"],
     [
       "任务详情",
       "任务名称",
@@ -217,20 +217,20 @@ export function generateASRTestReport(
     { wch: 10 }, // 识别设备
     { wch: 10 }, // 唤醒结果
     { wch: 8 }, // 插入错误
-    { wch: 8 }, // 删除错误
+    { wch: 15 }, // 删除错误
     { wch: 8 }, // 替换错误
     { wch: 8 }, // 总字数
     { wch: 15 }, // 标注文本
     { wch: 15 }, // 识别文本
     { wch: 10 }, // 识别结果
     { wch: 12 }, // 识别时间
-    { wch: 50 },// 车机响应
+    { wch: 60 },// 车机响应
     { wch: 10 },// 车机响应间隔时长
     { wch: 10 },
     { wch: 10 },
     { wch: 10 },
     { wch: 10 },
-    { wch: 18 }, // 测试时间
+    { wch: 30 }, // 测试时间
   ];
   ws["!cols"] = colWidths;
 

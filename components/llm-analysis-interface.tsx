@@ -23,6 +23,7 @@ import {
   AlertDialogTrigger,
 } from "./ui/alert-dialog";
 import Link from "next/link";
+import OCRPage from "./ocr";
 
 export function LLMAnalysisInterface() {
   const {
@@ -156,14 +157,15 @@ export function LLMAnalysisInterface() {
         </div>
       </div>
       {/* Main content */}
-      <div className="flex flex-auto p-6 gap-4 h-dvh overflow-auto">
+      <div className="flex flex-auto px-6 pt-4 gap-4 h-dvh overflow-auto">
         <div className="flex flex-col w-1/2 gap-4 h-full">
-          <div className="flex-1 basis-2/3">
+          <div className="flex-1">
             {/* <TestSamples
               initialPageSize={4}
               onDeleteSample={handleDeleteSample}
             /> */}
-            <CV />
+            {/* <CV /> */}
+            <OCRPage  />
           </div>
           <div className="flex-1 h-full">
             <MachineResponse

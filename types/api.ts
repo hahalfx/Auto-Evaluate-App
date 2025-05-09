@@ -72,6 +72,9 @@ export interface AnalysisResult {
   recognitionFile?: string;
   device?: string;
   recognitionResult?: string;
+  insertionErrors?: number | null;
+  deletionErrors?: number | null;
+  substitutionErrors?: number | null;
   totalWords?: number | null;
   referenceText?: string;
   recognizedText?: string;

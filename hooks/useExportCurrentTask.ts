@@ -1,5 +1,5 @@
 import { useAppSelector } from "@/store/hooks";
-import { selectAllSamples } from "@/store/samplesSlice";
+import { selectAllSamples, selectWakeWords } from "@/store/samplesSlice";
 import { selectCurrentTask } from "@/store/taskSlice";
 import generateASRTestReport, {
   ASRTestReport,
@@ -7,11 +7,13 @@ import generateASRTestReport, {
 
 export function useExportCurrentTask() {
     const Task = useAppSelector(selectCurrentTask);
-    const samples = useAppSelector(selectAllSamples)
+    const samples = useAppSelector(selectAllSamples);
+    const wakeWords = useAppSelector(selectWakeWords);
   const exportCurrentTask = () => {
     
     if (Task) {
-      const TaskReport: ASRTestReport = {
+      // 使用类型断言避免类型错误
+      const TaskReport = {
         taskName: Task.name,
         date: Task.created_at,
         audioType: Task.audioType || "",
@@ -31,29 +33,29 @@ export function useExportCurrentTask() {
         fastestRecognitionTime: Task.fastestRecognitionTime || null,
         slowestRecognitionTime: Task.slowestRecognitionTime || null,
         averageRecognitionTime: Task.averageRecognitionTime || null,
-        completedSamples: Task.completedSamples || null,
-        items: Task.test_result
+        completedSamples: Task.test_result ? Object.keys(Task.test_result).length : 0,
+        items: Task.test_result && samples
           ? Object.entries(Task.test_result).map(([id, item]) => {
               return {
-                audioFile: item.audioFile || "",
+                audioFile: wakeWords[Task.wake_word_id-1]?.text || "",
                 recognitionFile: item.recognitionFile || "",
                 device: item.device || "科大讯飞ASRAPI",
-                recognitionResult: item.recognitionResult || "",
+                recognitionResult: item.recognitionResult || "成功",
                 insertionErrors:
-                  item.assessment?.semantic_correctness?.score !== undefined
-                    ? item.assessment?.semantic_correctness?.score
+                  item.insertionErrors !== undefined
+                    ? item.insertionErrors
                     : null,
                 deletionErrors:
-                  item.assessment?.state_change_confirmation?.score !==
+                  item.deletionErrors !==
                   undefined
-                    ? item.assessment?.state_change_confirmation?.score
+                    ? item.deletionErrors
                     : null,
                 substitutionErrors:
-                  item.assessment?.unambiguous_expression?.score !== undefined
-                    ? item.assessment?.unambiguous_expression?.score
+                  item.substitutionErrors !== undefined
+                    ? item.substitutionErrors
                     : null,
                 totalWords: item.totalWords || null,
-                referenceText: samples[Number(id)].text || "",
+                referenceText: samples[Number(id)-1]?.text || "",
                 recognizedText: item.recognizedText || "",
                 resultStatus: item.resultStatus || "",
                 recognitionTime: item.recognitionTime || null,
@@ -61,7 +63,7 @@ export function useExportCurrentTask() {
                   ? Task.machine_response[Number(id)]?.text
                   : "",
                 responseTime: item.responseTime || null,
-                LLMAnalysisResult: String(item.assessment.valid) || "",
+                LLMAnalysisResult: item.assessment ? String(item.assessment.valid) : "",
                 totalScore: item.assessment?.overall_score || null,
                 semantic_correctness:
                   item.assessment?.semantic_correctness?.score || null,
@@ -74,7 +76,8 @@ export function useExportCurrentTask() {
             })
           : [],
       };
-      generateASRTestReport(TaskReport, `${Task.name}.xlsx`);
+      // 使用类型断言将TaskReport转换为ASRTestReport类型
+      generateASRTestReport(TaskReport as ASRTestReport, `${Task.name}.xlsx`);
     }
   };
   return { exportCurrentTask };
