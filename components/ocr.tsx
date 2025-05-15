@@ -236,8 +236,10 @@ export function OCRVideoComponent() {
               if (message.config.ocr_interval !== undefined) {
                 const newInterval = Number(message.config.ocr_interval);
                 if (!isNaN(newInterval)) {
-                    setOcrInterval(newInterval);
-                    // ocrIntervalRef will be updated by its own useEffect
+                    console.log(
+                      `Server init suggested ocr_interval: ${newInterval}. Client's current ocr_interval (${ocrIntervalRef.current}) will be maintained if set by user before starting.`
+                    );
+                    // setOcrInterval(newInterval); // 注释掉此行
                 }
               }
             }
@@ -769,13 +771,6 @@ export function OCRVideoComponent() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
         {/* Connection & Device Controls */}
         <div className="space-y-2">
-          {/* <Input
-            type="text"
-            value={serverUrl}
-            onChange={(e) => setServerUrl(e.target.value)}
-            placeholder="WebSocket URL (e.g., ws://localhost:8765)"
-            className="w-full p-2 text-black bg-white"
-          /> */}
           <Select
             value={selectedDevice}
             onValueChange={(value) => setSelectedDevice(value)}
@@ -827,9 +822,9 @@ export function OCRVideoComponent() {
             </Button>
           </div>
           <div className="flex items-center space-x-2 text-sm">
-            <label htmlFor="ocrInterval" className="whitespace-nowrap">
+            <span>
               OCR 间隔 (秒):
-            </label>
+            </span>
             <Select
               value={ocrInterval.toString()}
               onValueChange={(value) => updateOcrInterval(value)}
@@ -839,6 +834,7 @@ export function OCRVideoComponent() {
                 <SelectValue placeholder="选择间隔" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="0">0 (30 FPS)</SelectItem>
                 <SelectItem value="0.1">0.1 (10 FPS)</SelectItem>
                 <SelectItem value="0.2">0.2 (5 FPS)</SelectItem>
                 <SelectItem value="0.5">0.5 (2 FPS)</SelectItem>
@@ -911,7 +907,7 @@ export function OCRVideoComponent() {
                 key={index}
                 className="flex justify-between items-center p-1.5 rounded"
               >
-                <span className="text-gray-200">{result.text}</span>
+                <span className="text-gray-600">{result.text}</span>
                 <span className="text-green-400 font-mono text-xs">
                   {(result.confidence * 100).toFixed(1)}%
                 </span>

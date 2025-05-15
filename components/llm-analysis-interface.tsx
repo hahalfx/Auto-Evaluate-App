@@ -87,7 +87,7 @@ export function LLMAnalysisInterface() {
 
   return (
     <div className="flex flex-col w-full max-h-screen ">
-      <div className="flex flex-col gap-4 px-6 pt-6 md:flex-row md:items-center md:justify-between">
+      {/* <div className="flex flex-col gap-4 px-6 pt-6 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <Link href="/taskmanage">
@@ -99,7 +99,6 @@ export function LLMAnalysisInterface() {
               {currentTask?.name}
             </h2>
           </div>
-          {/* <p className="text-muted-foreground">{taskData.description}</p> */}
         </div>
         <div className="flex gap-2">
           <AlertDialog
@@ -155,7 +154,7 @@ export function LLMAnalysisInterface() {
             保存结果
           </Button>
         </div>
-      </div>
+      </div> */}
       {/* Main content */}
       <div className="flex flex-auto px-6 pt-4 gap-4 h-dvh overflow-auto">
         <div className="flex flex-col w-1/2 gap-4 h-full">
