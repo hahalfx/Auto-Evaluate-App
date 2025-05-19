@@ -1,3 +1,4 @@
+'use client'
 import { TestSamples } from "@/components/test-samples";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 

@@ -1,3 +1,5 @@
+export const dynamic = "force-static"
+
 import { NextResponse } from "next/server"
 import type { WakeWord } from "@/types/api"
 import path from "path";
@@ -7,8 +9,8 @@ const filePath = path.join(process.cwd(), "public", "mock", "wakewords.json");
 // 模拟数据
 const wakeWords: WakeWord[] = [
   { id: 1, text: "小艺小艺"},
-  { id: 2, text: "小欧小欧"},
-  { id: 3, text: "你好奕派"},
+  { id: 2, text: "小欧小"},
+  { id: 3, text: "你好奕派"}
 ]
 
 export async function GET() {
@@ -19,5 +21,4 @@ export async function GET() {
     console.error("Error reading wakewords.json:", error);
     return NextResponse.json(wakeWords)
   }
-
 }
