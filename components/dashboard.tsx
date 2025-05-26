@@ -44,7 +44,7 @@ export default function DashBoard() {
   };
 
   return (
-    <div>
+    <div className="w-full">
       <div className="min-h-screen bg-background p-6">
         <div className="w-full mx-auto">
           <h1 className="text-3xl font-bold mb-6">

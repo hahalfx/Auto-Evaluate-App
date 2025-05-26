@@ -11,6 +11,15 @@ import {
 } from "./ui/select";
 import { Button } from "./ui/button";
 import { useToast } from "./ui/use-toast";
+import {
+  Dialog,
+  DialogHeader,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
+import { Eraser, MonitorUp, Scan, Settings, SquareDashedMousePointer } from "lucide-react";
 
 // Define types for better type safety
 interface OCRResultItem {
@@ -67,6 +76,8 @@ export function OCRVideoComponent() {
   const [ocrInterval, setOcrInterval] = useState<number>(0.5);
   const [serverUrl, setServerUrl] = useState<string>("ws://localhost:8765");
   const { toast } = useToast();
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [devicesLoaded, setDevicesLoaded] = useState(false);
 
   const frameRateRef = useRef<{
     lastFrameTime: number;
@@ -83,6 +94,7 @@ export function OCRVideoComponent() {
   });
   const activeStreamRef = useRef<MediaStream | null>(null);
   const isDrawingRef = useRef<{ x: number; y: number } | null>(null);
+  const initializationPromiseRef = useRef<Promise<void> | null>(null);
 
   const roiRef = useRef(roi);
   const ocrIntervalRef = useRef(ocrInterval);
@@ -102,59 +114,194 @@ export function OCRVideoComponent() {
   // 获取可用的摄像头设备
   const getVideoDevices = useCallback(async () => {
     try {
-      // const stream = await navigator.mediaDevices.getUserMedia({
-      //   video: true,
-      // });
+      // 首先请求摄像头权限以获取设备标签
+      await navigator.mediaDevices
+        .getUserMedia({ video: true })
+        .then((stream) => {
+          // 立即停止流，我们只是为了获取权限
+          stream.getTracks().forEach((track) => track.stop());
+        });
 
-      // // 关闭流（我们只需要触发权限）
-      // stream.getTracks().forEach((track) => track.stop());
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = devices.filter(
-        (device) => device.kind === "videoinput"
+        (device) => device.kind === "videoinput" && device.deviceId
       );
+
+      console.log("Available video devices:", videoInputs);
       setVideoDevices(videoInputs);
+
+      // 只在没有选中设备时自动选择第一个有效设备
       if (videoInputs.length > 0 && !selectedDevice) {
-        // Select first device only if none is selected
-        setSelectedDevice(videoInputs[0].deviceId);
-        console.log("Selected device:", videoInputs[0].deviceId);
+        const firstDevice = videoInputs[0];
+        const firstDeviceId = firstDevice.deviceId || "default";
+        console.log(
+          "Selected device:",
+          firstDeviceId,
+          "Label:",
+          firstDevice.label
+        );
+        setSelectedDevice(firstDeviceId);
       }
+
+      setDevicesLoaded(true); // 标记设备加载完成
     } catch (error) {
       console.error("Error enumerating devices:", error);
+
+      // 如果权限被拒绝，尝试使用默认设备
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
+        console.log("Camera permission denied, trying with default device");
+        setVideoDevices([
+          {
+            deviceId: "default",
+            kind: "videoinput",
+            label: "默认摄像头",
+            groupId: "default",
+          } as MediaDeviceInfo,
+        ]);
+        setSelectedDevice("default");
+      }
+
+      setDevicesLoaded(true); // 即使出错也标记为完成，避免无限等待
     }
-  }, [selectedDevice]);
+  }, []); // 移除循环依赖
 
   // 初始化摄像头
   const initCamera = useCallback(async () => {
-    try {
-      if (activeStreamRef.current) {
-        activeStreamRef.current.getTracks().forEach((track) => track.stop());
+    // 如果已有初始化在进行中，等待完成
+    if (initializationPromiseRef.current) {
+      try {
+        await initializationPromiseRef.current;
+      } catch (error) {
+        // 忽略之前的错误，继续新的初始化
       }
-
-      const constraints: MediaStreamConstraints = {
-        video: {
-          deviceId: selectedDevice ? { exact: selectedDevice } : undefined,
-          width: { ideal: 854 },
-          height: { ideal: 480 },
-          frameRate: { ideal: 30 },
-        },
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        activeStreamRef.current = stream;
-        await videoRef.current.play();
-        console.log("Camera initialized");
-      }
-    } catch (error) {
-      console.error("Error initializing camera:", error);
-      toast({
-        title: "初始化摄像头失败",
-        description: "请检查摄像头设置",
-        variant: "destructive",
-      });
     }
-  }, [selectedDevice]);
+
+    // 确保有选中的设备
+    if (!selectedDevice) {
+      console.log("No device selected, skipping camera init");
+      return;
+    }
+
+    // 创建新的初始化Promise
+    initializationPromiseRef.current = (async () => {
+      setIsInitializing(true);
+      try {
+        // 停止现有流
+        if (activeStreamRef.current) {
+          activeStreamRef.current.getTracks().forEach((track) => track.stop());
+          activeStreamRef.current = null;
+        }
+
+        // 清理视频元素
+        if (videoRef.current) {
+          videoRef.current.pause();
+          videoRef.current.srcObject = null;
+        }
+
+        let constraints: MediaStreamConstraints = {
+          video: {
+            deviceId:
+              selectedDevice && selectedDevice !== "default"
+                ? { exact: selectedDevice }
+                : undefined,
+            width: { ideal: 854 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 30 },
+          },
+        };
+
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (error) {
+          console.warn(
+            "Failed with exact device constraint, trying without deviceId:",
+            error
+          );
+          // Fallback: try without deviceId constraint
+          constraints = {
+            video: {
+              width: { ideal: 854 },
+              height: { ideal: 480 },
+              frameRate: { ideal: 30 },
+            },
+          };
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        }
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          activeStreamRef.current = stream;
+
+          // 等待视频准备就绪
+          await new Promise<void>((resolve, reject) => {
+            const video = videoRef.current!;
+            const timeout = setTimeout(() => {
+              reject(new Error("Video load timeout"));
+            }, 10000);
+
+            const onLoadedMetadata = () => {
+              clearTimeout(timeout);
+              video.removeEventListener("loadedmetadata", onLoadedMetadata);
+              resolve();
+            };
+
+            video.addEventListener("loadedmetadata", onLoadedMetadata);
+          });
+
+          await videoRef.current.play();
+          console.log("Camera initialized successfully");
+        }
+      } catch (error) {
+        console.error("Error initializing camera:", error);
+
+        // 根据错误类型提供不同的用户提示
+        if (error instanceof DOMException) {
+          switch (error.name) {
+            case "NotAllowedError":
+              toast({
+                title: "摄像头权限被拒绝",
+                description: "请在系统设置中允许应用访问摄像头",
+                variant: "destructive",
+              });
+              break;
+            case "NotFoundError":
+              toast({
+                title: "未找到摄像头设备",
+                description: "请检查摄像头是否正确连接",
+                variant: "destructive",
+              });
+              break;
+            case "AbortError":
+              toast({
+                title: "摄像头初始化被中断",
+                description: "请重试或检查应用权限设置",
+                variant: "destructive",
+              });
+              break;
+            default:
+              toast({
+                title: "摄像头初始化失败",
+                description: `错误: ${error.message}`,
+                variant: "destructive",
+              });
+          }
+        } else {
+          toast({
+            title: "摄像头初始化失败",
+            description: "请检查摄像头设置",
+            variant: "destructive",
+          });
+        }
+        throw error;
+      } finally {
+        setIsInitializing(false);
+        initializationPromiseRef.current = null;
+      }
+    })();
+
+    return initializationPromiseRef.current;
+  }, [selectedDevice, toast]);
 
   // 连接到WebSocket服务器
   const connectToServer = useCallback(() => {
@@ -534,10 +681,12 @@ export function OCRVideoComponent() {
     };
   }, [getVideoDevices, disconnectFromServer]); // Empty dependency array means this runs once on mount and cleans up on unmount
 
-  // 当选择设备变化时初始化摄像头
+  // 当设备加载完成且有选中设备时初始化摄像头
   useEffect(() => {
-    initCamera();
-  }, [selectedDevice]);
+    if (devicesLoaded && selectedDevice) {
+      initCamera();
+    }
+  }, [devicesLoaded, selectedDevice, initCamera]);
 
   // 当画面显示开始时，启动显示循环
   useEffect(() => {
@@ -691,12 +840,12 @@ export function OCRVideoComponent() {
       });
     }
 
-    // 绘制FPS和推理时间
-    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-    ctx.fillRect(10, canvas.height - 60, 220, 50); // Positioned at bottom-left
-    ctx.fillStyle = "lime";
-    ctx.font = "16px Arial";
-    ctx.fillText(`FPS: ${fps}`, 20, canvas.height - 40);
+    // // 绘制FPS和推理时间
+    // ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    // ctx.fillRect(10, canvas.height - 60, 220, 50); // Positioned at bottom-left
+    // ctx.fillStyle = "lime";
+    // ctx.font = "16px Arial";
+    // ctx.fillText(`FPS: ${fps}`, 20, canvas.height - 40);
 
     // 只在捕获时显示推理时间
     if (isCapturing) {
@@ -822,114 +971,138 @@ export function OCRVideoComponent() {
   );
 
   return (
-    <div className="flex flex-col p-4 rounded-lg shadow-md bg-white space-y-4 h-full">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-        {/* Connection & Device Controls */}
-        <div className="space-y-2">
-          <Select
-            value={selectedDevice}
-            onValueChange={(value) => setSelectedDevice(value)}
-            disabled={videoDevices.length === 0}
-          >
-            <SelectTrigger className="bg-white text-black">
-              <SelectValue placeholder="Select a camera" />
-            </SelectTrigger>
-            <SelectContent>
-              {videoDevices.map((device) => (
-                <SelectItem
-                  value={device.deviceId || `device-${device.groupId}`}
-                  key={device.deviceId}
+    <div className="flex flex-col p-4 rounded-lg border bg-white space-y-2 h-full">
+      <div className="flex items-center bg-gray-50 rounded-lg p-1">
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant={"ghost"}>
+              <Settings className="h-4 w-4" />
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>OCR设置</DialogTitle>
+              <DialogDescription>
+                对摄像头源，以及OCR识别间隔进行设置
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3">
+              <Select
+                value={selectedDevice}
+                onValueChange={(value) => setSelectedDevice(value)}
+                disabled={videoDevices.length === 0}
+              >
+                <SelectTrigger className="bg-white text-black">
+                  <SelectValue placeholder="Select a camera" />
+                </SelectTrigger>
+                <SelectContent>
+                  {videoDevices.map((device) => (
+                    <SelectItem
+                      value={device.deviceId || `device-${device.groupId}`}
+                      key={device.deviceId}
+                    >
+                      {device.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex items-center space-x-2 text-sm">
+                <span>OCR 间隔 (秒):</span>
+                <Select
+                  value={ocrInterval.toString()}
+                  onValueChange={(value) => updateOcrInterval(value)}
+                  disabled={isCapturing}
                 >
-                  {device.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                  <SelectTrigger className="bg-white text-black w-32">
+                    <SelectValue placeholder="选择间隔" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">0 (30 FPS)</SelectItem>
+                    <SelectItem value="0.1">0.1 (10 FPS)</SelectItem>
+                    <SelectItem value="0.2">0.2 (5 FPS)</SelectItem>
+                    <SelectItem value="0.5">0.5 (2 FPS)</SelectItem>
+                    <SelectItem value="1.0">1.0 (1 FPS)</SelectItem>
+                    <SelectItem value="2.0">2.0 (0.5 FPS)</SelectItem>
+                    <SelectItem value="5.0">5.0 (0.2 FPS)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+        
+
+        {/* ROI & Interval Controls */}
+        <div className="grid grid-cols-2 space-x-2">
+          <Button
+            variant={"ghost"}
+            onClick={startSelectingROI}
+            className="font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isCapturing}
+          >
+            <SquareDashedMousePointer className="h-4 w-4 mr-2"></SquareDashedMousePointer>
+            {roi ? "重新选择 ROI" : "选择 ROI 区域"}
+          </Button>
+          <Button
+          variant={"ghost"}
+            onClick={clearRoi}
+            className="font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!roi || isCapturing}
+          >
+            <Eraser className="h-4 w-4 mr-2"></Eraser>
+            清除 ROI 区域
+          </Button>
+        </div>
+
+        {/* Connection & Device Controls */}
+        <div className="ml-4 space-y-2">
           {!isCapturing ? (
             <Button
               onClick={startCapturing}
-              className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              className="font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={videoDevices.length === 0 || !selectedDevice}
             >
+              <Scan className="h-4 w-4 mr-2"></Scan>
               开始 OCR 识别
             </Button>
           ) : (
-            <button
+            <Button
               onClick={stopCapturing}
               className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded"
             >
               停止 OCR 识别
-            </button>
+            </Button>
           )}
         </div>
 
-        {/* ROI & Interval Controls */}
-        <div className="h-full space-y-2">
-          <div className="grid grid-cols-2 space-x-2">
-            <Button
-              onClick={startSelectingROI}
-              className=" bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isCapturing}
-            >
-              {roi ? "重新选择 ROI" : "选择 ROI 区域"}
-            </Button>
-            <Button
-              onClick={clearRoi}
-              className=" bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!roi || isCapturing}
-            >
-              清除 ROI 区域
-            </Button>
-          </div>
-          <div className="flex items-center space-x-2 text-sm">
-            <span>OCR 间隔 (秒):</span>
-            <Select
-              value={ocrInterval.toString()}
-              onValueChange={(value) => updateOcrInterval(value)}
-              disabled={isCapturing}
-            >
-              <SelectTrigger className="bg-white text-black w-32">
-                <SelectValue placeholder="选择间隔" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="0">0 (30 FPS)</SelectItem>
-                <SelectItem value="0.1">0.1 (10 FPS)</SelectItem>
-                <SelectItem value="0.2">0.2 (5 FPS)</SelectItem>
-                <SelectItem value="0.5">0.5 (2 FPS)</SelectItem>
-                <SelectItem value="1.0">1.0 (1 FPS)</SelectItem>
-                <SelectItem value="2.0">2.0 (0.5 FPS)</SelectItem>
-                <SelectItem value="5.0">5.0 (0.2 FPS)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="text-sm">
-            连接状态:{" "}
-            <span
-              className={`font-semibold ${
-                isConnected ? "text-green-400" : "text-red-400"
-              }`}
-            >
-              {isConnected ? "已连接" : "未连接"}
+        <div className=" flex items-center text-sm ml-6">
+          <MonitorUp className="h-4 w-4 mr-2"></MonitorUp>
+          连接状态:{" "}
+          <span
+            className={`font-semibold ${
+              isConnected ? "text-green-400" : "text-red-400"
+            }`}
+          >
+            {isConnected ? "已连接" : "未连接"}
+          </span>
+          {isCapturing && (
+            <span className="ml-2 text-blue-400">
+              OCR识别中 (发送频率: {(1 / ocrInterval).toFixed(1)}帧/秒)
             </span>
-            {isCapturing && (
-              <span className="ml-2 text-blue-400">
-                OCR识别中 (发送频率: {(1 / ocrInterval).toFixed(1)}帧/秒)
-              </span>
-            )}
-            {!isCapturing && (
-              <span className="ml-2 text-yellow-400">
-                实时预览中 (未进行OCR识别)
-              </span>
-            )}
-          </div>
+          )}
+          {!isCapturing && (
+            <span className="ml-2 text-yellow-400">
+              实时预览中 (未进行OCR识别)
+            </span>
+          )}
         </div>
       </div>
 
       {/* Video and Canvas Container */}
-      <div className="flex-grow relative flex flex-col justify-center items-center bg-white rounded-lg overflow-hidden">
+      <div className="flex-grow relative flex flex-col justify-center items-center bg-white rounded-lg">
         <video
           ref={videoRef}
-          className="max-w-full max-h-full object-contain" // Scales video within container
+          className="max-w-full max-h-full object-contain rounded-lg" // Scales video within container
           playsInline
           autoPlay // Added autoPlay
           muted

@@ -80,7 +80,7 @@ export function LLMAnalysisInterface() {
   }, [Id, status]);
 
   return (
-    <div className="w-full max-h-full ">
+    <div>
       {/* <div className="flex flex-col gap-4 px-6 pt-6 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -150,8 +150,8 @@ export function LLMAnalysisInterface() {
         </div>
       </div> */}
       {/* Main content */}
-      <div className="grid grid-cols-2 px-6 pt-4 gap-4 h-full">
-        <div className="row-span-3 row-start-1 col-start-1">
+      <div className="grid grid-cols-3 p-6 gap-7 h-full">
+        <div className="row-span-3 row-start-1 col-start-1 col-span-2">
           {/* <TestSamples
               initialPageSize={4}
               onDeleteSample={handleDeleteSample}
@@ -159,7 +159,7 @@ export function LLMAnalysisInterface() {
           {/* <CV /> */}
           <OCRPage />
         </div>
-        <div className="row-start-1 col-start-2">
+        <div className="row-start-1 col-start-3">
           <ProgressBar
             progress={taskProgress}
             progressname={progressName}
@@ -175,7 +175,7 @@ export function LLMAnalysisInterface() {
             hasNextResult={hasNextResult}
           />
         </div>
-        <div className="row-start-4 col-start-1">
+        <div className="row-start-4 col-start-1 col-span-2">
           <MachineResponse
             ref={machineResponseRef}
             value={machineResponse}
@@ -186,7 +186,7 @@ export function LLMAnalysisInterface() {
           />
         </div>
         
-        <div className="row-span-3">
+        <div className="row-span-3 col-start-3">
           {/* 添加结果导航按钮 */}
           <div className="flex flex-none items-center justify-between">
             <div className="text-sm text-muted-foreground">

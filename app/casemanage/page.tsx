@@ -4,8 +4,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function TestSamplePage() {
   return (
-    <main className="h-dvh w-full bg-background pt-6">
+    <main className="h-dvh w-full bg-background">
       <div className="flex flex-col w-full max-h-screen">
+        <h1 className="text-3xl font-bold mx-6 mt-6 mb-3">
+            测试语料管理
+          </h1>
         <div className="flex flex-1 mx-6">
           <Tabs defaultValue="case" className="w-full">
             <TabsList>

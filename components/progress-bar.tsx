@@ -3,6 +3,8 @@ import {
   CardHeader,
   CardContent,
   CardFooter,
+  CardTitle,
+  CardDescription,
 } from "@/components/ui/card";
 
 import { Progress } from "@/components/ui/progress";
@@ -60,14 +62,17 @@ export function ProgressBar({
 
   return (
     <Card className="shadow-sm rounded-lg h-full">
-      <CardHeader className="bg-white p-3 rounded-lg flex-row items-center justify-between space-y-0 border-b">
-        <h3 className="font-semibold text-foreground">测试进度</h3>
+      <CardHeader className="bg-white p-4 rounded-t-lg flex justify-between space-y-0 border-b">
+        <CardTitle className="text-2xl  font-semibold text-gray-800 dark:text-gray-100">
+          {currentTask?.name ? currentTask?.name : "请在任务列表中选择一个测试任务"}
+        </CardTitle>
+        <CardDescription className="text-gray-500  dark:text-gray-400 pt-1">
+          {currentTask?.name ? currentTask?.name : "当前没有被选中的测试任务"}
+        </CardDescription>
+
       </CardHeader>
       <CardContent className="p-4">
-        <p className="text-sm justify-start text-muted-foreground py-1">
-          当前测试任务：{currentTask?.name}
-        </p>
-        <Progress value={progress.value} />
+        <Progress value={progress.value} className="h-3"/>
         <div className="flex justify-between">
           <p className="text-sm text-muted-foreground py-1">
             {progress.value}%
@@ -79,7 +84,7 @@ export function ProgressBar({
           </p>
         </div>
       </CardContent>
-      <CardFooter className="grid grid-cols-5 gap-2 justify-between px-3 pb-3">
+      <CardFooter className="grid grid-cols-5 gap-2 justify-between px-4 pb-3">
         <Button
           variant="outline"
           size="sm"

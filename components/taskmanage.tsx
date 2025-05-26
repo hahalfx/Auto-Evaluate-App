@@ -34,6 +34,7 @@ import {
   Clock,
   PlayCircle,
   Plus,
+  CircleCheck,
 } from "lucide-react";
 import {
   Dialog,
@@ -239,8 +240,8 @@ export default function TaskManage() {
   }
 
   return (
-    <div>
-      <div className="min-h-screen bg-background p-6">
+    <div >
+      <div className="h-full bg-background p-6">
         <div className="w-full mx-auto gap-4">
           <div className="space-y-4 pb-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -488,16 +489,16 @@ export default function TaskManage() {
                           }}
                         >
                           <div className="flex items-center space-x-4">
-                            <div
-                              className={`h-3 w-3 rounded-full ${
+                            <CircleCheck
+                              color={
                                 result.status === "completed"
-                                  ? "bg-green-500"
+                                  ? "green"
                                   : result.status === "failed"
-                                  ? "bg-red-500"
+                                  ? "red"
                                   : result.status === "in_progress"
-                                  ? "bg-blue-500"
-                                  : "bg-yellow-500"
-                              }`}
+                                  ? "blue"
+                                  : "yellow"
+                              }
                             />
                             <div>
                               <p className="font-medium">
