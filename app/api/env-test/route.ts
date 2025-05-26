@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+
+export const dynamic = "force-static";
 export async function GET(request: NextRequest) {
   // 不返回实际的密钥值，只返回是否设置了环境变量
   return NextResponse.json({

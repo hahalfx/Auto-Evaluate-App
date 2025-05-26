@@ -549,7 +549,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         {/* 主内容区域，添加左边距以避免被固定侧边栏遮挡 */}
         <main
           className={cn(
-            "flex-1 overflow-auto",
+            "flex-1 transition-all duration-300 ease-in-out",
             "md:ml-[70px]",
             !sidebarCollapsed && "md:ml-64"
           )}

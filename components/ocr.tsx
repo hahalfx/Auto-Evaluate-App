@@ -79,7 +79,7 @@ export function OCRVideoComponent() {
     frames: 0,
     lastSendTime: 0,
     displayLastFrameTime: 0,
-    displayFrames: 0
+    displayFrames: 0,
   });
   const activeStreamRef = useRef<MediaStream | null>(null);
   const isDrawingRef = useRef<{ x: number; y: number } | null>(null);
@@ -89,13 +89,25 @@ export function OCRVideoComponent() {
   const isCapturingRef = useRef(isCapturing);
   const frameIdRef = useRef(0);
 
-  useEffect(() => { roiRef.current = roi; }, [roi]);
-  useEffect(() => { ocrIntervalRef.current = ocrInterval; }, [ocrInterval]);
-  useEffect(() => { isCapturingRef.current = isCapturing; }, [isCapturing]);
+  useEffect(() => {
+    roiRef.current = roi;
+  }, [roi]);
+  useEffect(() => {
+    ocrIntervalRef.current = ocrInterval;
+  }, [ocrInterval]);
+  useEffect(() => {
+    isCapturingRef.current = isCapturing;
+  }, [isCapturing]);
 
   // 获取可用的摄像头设备
   const getVideoDevices = useCallback(async () => {
     try {
+      // const stream = await navigator.mediaDevices.getUserMedia({
+      //   video: true,
+      // });
+
+      // // 关闭流（我们只需要触发权限）
+      // stream.getTracks().forEach((track) => track.stop());
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = devices.filter(
         (device) => device.kind === "videoinput"
@@ -104,6 +116,7 @@ export function OCRVideoComponent() {
       if (videoInputs.length > 0 && !selectedDevice) {
         // Select first device only if none is selected
         setSelectedDevice(videoInputs[0].deviceId);
+        console.log("Selected device:", videoInputs[0].deviceId);
       }
     } catch (error) {
       console.error("Error enumerating devices:", error);
@@ -112,7 +125,6 @@ export function OCRVideoComponent() {
 
   // 初始化摄像头
   const initCamera = useCallback(async () => {
-    if (!selectedDevice) return;
     try {
       if (activeStreamRef.current) {
         activeStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -120,7 +132,7 @@ export function OCRVideoComponent() {
 
       const constraints: MediaStreamConstraints = {
         video: {
-          deviceId: { exact: selectedDevice },
+          deviceId: selectedDevice ? { exact: selectedDevice } : undefined,
           width: { ideal: 854 },
           height: { ideal: 480 },
           frameRate: { ideal: 30 },
@@ -177,11 +189,13 @@ export function OCRVideoComponent() {
             })
           );
         }
-        
+
         // 提示用户OCR识别已开始，并且无法修改ROI
         toast({
           title: "OCR识别已开始",
-          description: roiRef.current ? "使用已设置的ROI区域识别" : "使用整个画面进行识别",
+          description: roiRef.current
+            ? "使用已设置的ROI区域识别"
+            : "使用整个画面进行识别",
           variant: "default",
         });
       };
@@ -219,10 +233,12 @@ export function OCRVideoComponent() {
             });
           } else if (message.type === "init") {
             // Safer handling of potentially undefined optional properties
-            if (message.config.hasOwnProperty('roi')) {
+            if (message.config.hasOwnProperty("roi")) {
               // If client currently has no ROI, accept server's. Otherwise, client's current ROI takes precedence for this new session.
               if (roiRef.current === null) {
-                setRoi(message.config.roi === undefined ? null : message.config.roi);
+                setRoi(
+                  message.config.roi === undefined ? null : message.config.roi
+                );
               } else {
                 console.log(
                   "Client has an active ROI, ignoring ROI from server init message. Client ROI:",
@@ -232,14 +248,14 @@ export function OCRVideoComponent() {
                 );
               }
             }
-            if (message.config.hasOwnProperty('ocr_interval')) {
+            if (message.config.hasOwnProperty("ocr_interval")) {
               if (message.config.ocr_interval !== undefined) {
                 const newInterval = Number(message.config.ocr_interval);
                 if (!isNaN(newInterval)) {
-                    console.log(
-                      `Server init suggested ocr_interval: ${newInterval}. Client's current ocr_interval (${ocrIntervalRef.current}) will be maintained if set by user before starting.`
-                    );
-                    // setOcrInterval(newInterval); // 注释掉此行
+                  console.log(
+                    `Server init suggested ocr_interval: ${newInterval}. Client's current ocr_interval (${ocrIntervalRef.current}) will be maintained if set by user before starting.`
+                  );
+                  // setOcrInterval(newInterval); // 注释掉此行
                 }
               }
             }
@@ -277,13 +293,23 @@ export function OCRVideoComponent() {
 
     const video = videoRef.current;
     // Double check video status, though loop manager should also check
-    if (!video || video.videoWidth === 0 || video.videoHeight === 0 || video.paused || video.ended) {
-      return; 
+    if (
+      !video ||
+      video.videoWidth === 0 ||
+      video.videoHeight === 0 ||
+      video.paused ||
+      video.ended
+    ) {
+      return;
     }
-    
+
     // socketRef and isCapturingRef should also be valid here if loop is running
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !isCapturingRef.current) {
-        return;
+    if (
+      !socketRef.current ||
+      socketRef.current.readyState !== WebSocket.OPEN ||
+      !isCapturingRef.current
+    ) {
+      return;
     }
 
     const now = performance.now();
@@ -297,9 +323,9 @@ export function OCRVideoComponent() {
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("2d");
       if (!context) {
-        return; 
+        return;
       }
-      
+
       const currentRoi = roiRef.current;
 
       if (currentRoi && currentRoi[2] > 0 && currentRoi[3] > 0) {
@@ -307,8 +333,14 @@ export function OCRVideoComponent() {
         canvas.height = currentRoi[3];
         context.drawImage(
           video,
-          currentRoi[0], currentRoi[1], currentRoi[2], currentRoi[3],
-          0, 0, currentRoi[2], currentRoi[3]
+          currentRoi[0],
+          currentRoi[1],
+          currentRoi[2],
+          currentRoi[3],
+          0,
+          0,
+          currentRoi[2],
+          currentRoi[3]
         );
       } else {
         canvas.width = video.videoWidth;
@@ -317,33 +349,46 @@ export function OCRVideoComponent() {
       }
 
       try {
-        canvas.toBlob(async (blob) => {
-          if (blob && socketRef.current?.readyState === WebSocket.OPEN && isCapturingRef.current) {
-            const currentFrameId = frameIdRef.current;
-            frameIdRef.current++; // Increment ref
+        canvas.toBlob(
+          async (blob) => {
+            if (
+              blob &&
+              socketRef.current?.readyState === WebSocket.OPEN &&
+              isCapturingRef.current
+            ) {
+              const currentFrameId = frameIdRef.current;
+              frameIdRef.current++; // Increment ref
 
-            const metadata = JSON.stringify({
-              type: "frame",
-              frame_id: currentFrameId,
-              width: canvas.width,
-              height: canvas.height,
-              is_roi: !!currentRoi,
-              original_width: video.videoWidth,
-              original_height: video.videoHeight,
-              roi_coords: currentRoi
-            });
-            const metaBuffer = new TextEncoder().encode(metadata);
-            const blobBuffer = await blob.arrayBuffer();
-            const combined = new Uint8Array(metaBuffer.length + blobBuffer.byteLength);
-            combined.set(metaBuffer);
-            combined.set(new Uint8Array(blobBuffer), metaBuffer.length);
-            
-            socketRef.current.send(combined);
-          }
-        }, 'image/jpeg', 0.7);
+              const metadata = JSON.stringify({
+                type: "frame",
+                frame_id: currentFrameId,
+                width: canvas.width,
+                height: canvas.height,
+                is_roi: !!currentRoi,
+                original_width: video.videoWidth,
+                original_height: video.videoHeight,
+                roi_coords: currentRoi,
+              });
+              const metaBuffer = new TextEncoder().encode(metadata);
+              const blobBuffer = await blob.arrayBuffer();
+              const combined = new Uint8Array(
+                metaBuffer.length + blobBuffer.byteLength
+              );
+              combined.set(metaBuffer);
+              combined.set(new Uint8Array(blobBuffer), metaBuffer.length);
+
+              socketRef.current.send(combined);
+            }
+          },
+          "image/jpeg",
+          0.7
+        );
       } catch (error) {
         console.error("Error sending frame:", error);
-        if (error instanceof DOMException && error.name === "InvalidStateError") {
+        if (
+          error instanceof DOMException &&
+          error.name === "InvalidStateError"
+        ) {
           toast({
             title: "WebSocket 连接已断开",
             description: "请检查服务器设置",
@@ -368,16 +413,18 @@ export function OCRVideoComponent() {
           newSocket.send(
             JSON.stringify({
               type: "config",
-              config: { 
+              config: {
                 roi: roiRef.current,
-                ocr_interval: ocrIntervalRef.current
+                ocr_interval: ocrIntervalRef.current,
               },
             })
           );
-          
+
           toast({
             title: "OCR识别已开始",
-            description: `${roiRef.current ? "使用已设置的ROI区域" : "使用整个画面"}进行识别，间隔${ocrIntervalRef.current}秒`,
+            description: `${
+              roiRef.current ? "使用已设置的ROI区域" : "使用整个画面"
+            }进行识别，间隔${ocrIntervalRef.current}秒`,
             variant: "default",
           });
         };
@@ -390,21 +437,23 @@ export function OCRVideoComponent() {
       }
     } else {
       setIsCapturing(true);
-      
+
       // 发送配置到服务器
       socketRef.current.send(
         JSON.stringify({
           type: "config",
-          config: { 
+          config: {
             roi: roiRef.current,
-            ocr_interval: ocrIntervalRef.current
+            ocr_interval: ocrIntervalRef.current,
           },
         })
       );
-      
+
       toast({
         title: "OCR识别已开始",
-        description: `${roiRef.current ? "使用已设置的ROI区域" : "使用整个画面"}进行识别，间隔${ocrIntervalRef.current}秒`,
+        description: `${
+          roiRef.current ? "使用已设置的ROI区域" : "使用整个画面"
+        }进行识别，间隔${ocrIntervalRef.current}秒`,
         variant: "default",
       });
     }
@@ -430,7 +479,7 @@ export function OCRVideoComponent() {
       });
       return;
     }
-    
+
     setRoi(null);
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
@@ -442,7 +491,7 @@ export function OCRVideoComponent() {
         })
       );
     }
-    
+
     // 提示用户ROI已清除
     toast({
       title: "ROI区域已清除",
@@ -487,34 +536,37 @@ export function OCRVideoComponent() {
 
   // 当选择设备变化时初始化摄像头
   useEffect(() => {
-    if (selectedDevice) {
-      initCamera();
-    }
-  }, [selectedDevice, initCamera]);
+    initCamera();
+  }, [selectedDevice]);
 
   // 当画面显示开始时，启动显示循环
   useEffect(() => {
     if (!videoRef.current) return;
-    
+
     const updateDisplayFps = () => {
-      if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
-      
+      if (
+        !videoRef.current ||
+        videoRef.current.paused ||
+        videoRef.current.ended
+      )
+        return;
+
       // 更新显示FPS计数 - 这里始终计算FPS，无论是否正在OCR识别
       const now = performance.now();
       frameRateRef.current.displayFrames++;
-      
+
       if (now - frameRateRef.current.displayLastFrameTime >= 1000) {
         setFps(frameRateRef.current.displayFrames);
         frameRateRef.current.displayFrames = 0;
         frameRateRef.current.displayLastFrameTime = now;
       }
-      
+
       requestAnimationFrame(updateDisplayFps);
     };
-    
+
     // 启动显示FPS计算循环，这会始终运行，即使未开始OCR捕获也会显示画面FPS
     requestAnimationFrame(updateDisplayFps);
-    
+
     return () => {
       // 清理工作
     };
@@ -605,7 +657,10 @@ export function OCRVideoComponent() {
     }
 
     // 绘制OCR结果
-    if (ocrResults.length > 0 && (roiRef.current ? isCapturingRef.current : true)) {
+    if (
+      ocrResults.length > 0 &&
+      (roiRef.current ? isCapturingRef.current : true)
+    ) {
       // Only draw if capturing OR if no ROI (global OCR)
       ctx.lineWidth = 2;
       ctx.font = "bold 16px Arial";
@@ -642,7 +697,7 @@ export function OCRVideoComponent() {
     ctx.fillStyle = "lime";
     ctx.font = "16px Arial";
     ctx.fillText(`FPS: ${fps}`, 20, canvas.height - 40);
-    
+
     // 只在捕获时显示推理时间
     if (isCapturing) {
       ctx.fillText(
@@ -755,7 +810,7 @@ export function OCRVideoComponent() {
       setIsSelectingROI(false);
       setRoiStartPoint(null);
       isDrawingRef.current = null;
-      
+
       // 提示用户ROI已设置成功
       toast({
         title: "ROI区域已设置",
@@ -767,7 +822,7 @@ export function OCRVideoComponent() {
   );
 
   return (
-    <div className="flex flex-col p-4 rounded-lg shadow-md bg-white space-y-4">
+    <div className="flex flex-col p-4 rounded-lg shadow-md bg-white space-y-4 h-full">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
         {/* Connection & Device Controls */}
         <div className="space-y-2">
@@ -781,7 +836,12 @@ export function OCRVideoComponent() {
             </SelectTrigger>
             <SelectContent>
               {videoDevices.map((device) => (
-                <SelectItem value={device.deviceId} key={device.deviceId}>{device.label}</SelectItem>
+                <SelectItem
+                  value={device.deviceId || `device-${device.groupId}`}
+                  key={device.deviceId}
+                >
+                  {device.label}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -805,26 +865,24 @@ export function OCRVideoComponent() {
 
         {/* ROI & Interval Controls */}
         <div className="h-full space-y-2">
-          <div className="flex space-x-2">
+          <div className="grid grid-cols-2 space-x-2">
             <Button
               onClick={startSelectingROI}
-              className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              className=" bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isCapturing}
             >
               {roi ? "重新选择 ROI" : "选择 ROI 区域"}
             </Button>
             <Button
               onClick={clearRoi}
-              className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              className=" bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!roi || isCapturing}
             >
               清除 ROI 区域
             </Button>
           </div>
           <div className="flex items-center space-x-2 text-sm">
-            <span>
-              OCR 间隔 (秒):
-            </span>
+            <span>OCR 间隔 (秒):</span>
             <Select
               value={ocrInterval.toString()}
               onValueChange={(value) => updateOcrInterval(value)}
@@ -855,7 +913,7 @@ export function OCRVideoComponent() {
             </span>
             {isCapturing && (
               <span className="ml-2 text-blue-400">
-                OCR识别中 (发送频率: {(1/ocrInterval).toFixed(1)}帧/秒)
+                OCR识别中 (发送频率: {(1 / ocrInterval).toFixed(1)}帧/秒)
               </span>
             )}
             {!isCapturing && (

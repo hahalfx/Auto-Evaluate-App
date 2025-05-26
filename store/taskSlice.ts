@@ -13,6 +13,7 @@ import type { RootState } from "./index";
 interface TaskState {
   items: Task[];
   currentTask: Task | null;
+  activeTasks: number[];
   status: "idle" | "loading" | "succeeded" | "failed";
   error: string | null;
 }
@@ -20,6 +21,7 @@ interface TaskState {
 const initialState: TaskState = {
   items: [],
   currentTask: null,
+  activeTasks: [],
   status: "idle",
   error: null,
 };
@@ -77,6 +79,14 @@ const taskSlice = createSlice({
     // 设置当前任务
     setCurrentTask: (state, action) => {
       state.currentTask = action.payload;
+    },
+    addActiveTasks: (state, action) => {
+      state.activeTasks = [...state.activeTasks, action.payload];
+    },
+    deleteActiveTask: (state, action) => {
+      state.activeTasks = state.activeTasks.filter(
+        (taskId) => taskId !== action.payload
+      );
     },
     // 更新任务状态
     updateTaskStatus: (state, action) => {
@@ -221,6 +231,8 @@ const taskSlice = createSlice({
 // 导出 actions
 export const {
   setCurrentTask,
+  addActiveTasks,
+  deleteActiveTask,
   updateTaskStatus,
   updateMachineResponse,
   updateTestResult,
