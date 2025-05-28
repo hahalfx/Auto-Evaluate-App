@@ -44,7 +44,7 @@ export default function DashBoard() {
   };
 
   return (
-    <div>
+    <div className="w-full">
       <div className="min-h-screen bg-background p-6">
         <div className="w-full mx-auto">
           <h1 className="text-3xl font-bold mb-6">
@@ -106,11 +106,11 @@ export default function DashBoard() {
               <CardTitle>最近验证记录</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {stats.recentResults.map((result) => (
                   <div
                     key={result.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
+                    className="flex items-center justify-between p-3 border rounded-lg h-20"
                   >
                     <div className="flex items-center space-x-4">
                       <div

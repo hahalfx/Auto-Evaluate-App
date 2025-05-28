@@ -1,3 +1,4 @@
+'use client'
 import TaskManage from "@/components/taskmanage";
 
 export default function TaskManagePage() {

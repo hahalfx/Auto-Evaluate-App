@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 
+export const dynamic = "force-static";
+
 // 讯飞语音听写API配置 - 从环境变量或硬编码的备用值获取
 const API_CONFIG = {
   // 尝试从多个可能的环境变量名称获取，如果都不存在则使用.env.local中的值

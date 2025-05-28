@@ -57,7 +57,6 @@ export function LLMAnalysisInterface() {
   const currentTask = store.getState().tasks.currentTask;
   // 获取Redux dispatch函数，用于派发actions
   const dispatch = useAppDispatch();
-  const [showExportDialog, setShowExportDialog] = useState(false);
 
   useEffect(() => {
     if (Id && status === "succeeded") {
@@ -80,13 +79,8 @@ export function LLMAnalysisInterface() {
     }
   }, [Id, status]);
 
-  useEffect(() => {
-    console.log("llm-analysis-interface组件挂载");
-    return
-  }, []);
-
   return (
-    <div className="flex flex-col w-full max-h-screen ">
+    <div>
       {/* <div className="flex flex-col gap-4 px-6 pt-6 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -156,66 +150,61 @@ export function LLMAnalysisInterface() {
         </div>
       </div> */}
       {/* Main content */}
-      <div className="flex flex-auto px-6 pt-4 gap-4 h-dvh overflow-auto">
-        <div className="flex flex-col w-1/2 gap-4 h-full">
-          <div className="flex-1">
-            {/* <TestSamples
+      <div className="grid grid-cols-3 p-6 gap-7 bg-background">
+        <div className="row-span-3 row-start-1 col-start-1 col-span-2">
+          {/* <TestSamples
               initialPageSize={4}
               onDeleteSample={handleDeleteSample}
             /> */}
-            {/* <CV /> */}
-            <OCRPage  />
-          </div>
-          <div className="flex-1 h-full">
-            <MachineResponse
-              ref={machineResponseRef}
-              value={machineResponse}
-              onChange={setMachineResponse}
-              onSubmit={handleAnalysis}
-              isAnalyzing={loading}
-              currentSampleText={getCurrentTestSampleText()}
-            />
-          </div>
+          {/* <CV /> */}
+          <OCRPage />
         </div>
-        <div className="flex flex-col w-1/2 gap-y-2">
-          <div className="flex-none">
-            <ProgressBar
-              progress={taskProgress}
-              progressname={progressName}
-              samplelength={selectedSample.length}
-              onStartAutomatedTest={handleStartAutomatedTest}
-              isPlaying={isPlaying}
-              isRecording={isRecording}
-              isAnalyzing={loading}
-              disabled={selectedSample.length === 0}
-              goToPreviousResult={goToPreviousResult}
-              hasPreviousResult={hasPreviousResult}
-              goToNextResult={goToNextResult}
-              hasNextResult={hasNextResult}
-            />
+        <div className="row-start-1 col-start-3">
+          <ProgressBar
+            progress={taskProgress}
+            progressname={progressName}
+            samplelength={selectedSample.length}
+            onStartAutomatedTest={handleStartAutomatedTest}
+            isPlaying={isPlaying}
+            isRecording={isRecording}
+            isAnalyzing={loading}
+            disabled={selectedSample.length === 0}
+            goToPreviousResult={goToPreviousResult}
+            hasPreviousResult={hasPreviousResult}
+            goToNextResult={goToNextResult}
+            hasNextResult={hasNextResult}
+          />
+        </div>
+        <div className="row-start-4 col-start-1 col-span-2">
+          <MachineResponse
+            ref={machineResponseRef}
+            value={machineResponse}
+            onChange={setMachineResponse}
+            onSubmit={handleAnalysis}
+            isAnalyzing={loading}
+            currentSampleText={getCurrentTestSampleText()}
+          />
+        </div>
+        
+        <div className="row-span-3 col-start-3">
+          {/* 添加结果导航按钮 */}
+          <div className="flex flex-none items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              {selectedSample.length > 0 && (
+                <>
+                  该结果的指令:{" "}
+                  <span className="font-medium">{getCurrentSampleText()}</span>
+                </>
+              )}
+            </div>
           </div>
-          <div className="flex flex-col flex-1">
-            {/* 添加结果导航按钮 */}
-            <div className="flex flex-none items-center justify-between mb-2">
-              <div className="text-sm text-muted-foreground">
-                {selectedSample.length > 0 && (
-                  <>
-                    该结果的指令:{" "}
-                    <span className="font-medium">
-                      {getCurrentSampleText()}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
 
-            <div className="flex-1 h-full overflow-auto">
-              <AnalysisResults
-                result={getCurrentResult()}
-                loading={loading}
-                error={error}
-              />
-            </div>
+          <div className="flex-1 h-full overflow-auto">
+            <AnalysisResults
+              result={getCurrentResult()}
+              loading={loading}
+              error={error}
+            />
           </div>
         </div>
       </div>

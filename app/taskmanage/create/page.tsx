@@ -1,3 +1,4 @@
+'use client'
 import CreateTask from "@/components/create-task";
 
 export default function CreateTaskPage() {

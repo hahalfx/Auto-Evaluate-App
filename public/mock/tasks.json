@@ -626,13 +626,84 @@
     "id": 1019
   },
   {
-    "name": "小米",
+    "name": "小艺大艺",
     "test_samples_ids": [
-      3
+      1,
+      2
     ],
-    "wake_word_id": 3,
-    "task_status": "pending",
-    "created_at": "2025/4/25 10:28:47",
-    "id": 1020
+    "wake_word_id": 1,
+    "task_status": "completed",
+    "created_at": "2025/5/26 16:03:14",
+    "id": 1021,
+    "machine_response": {
+      "1": {
+        "connected": true,
+        "text": "100年不放过这样的歌曲"
+      },
+      "2": {
+        "connected": true,
+        "text": "你未能打开空调"
+      }
+    },
+    "test_result": {
+      "1": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 0,
+            "comment": "响应未匹配核心功能需求（空调控制），仅反馈识别失败。"
+          },
+          "state_change_confirmation": {
+            "score": 0,
+            "comment": "未执行空调开关操作，未提供状态变更信息。"
+          },
+          "unambiguous_expression": {
+            "score": 1,
+            "comment": "响应文本本身无歧义，但未解决原始指令意图。"
+          },
+          "overall_score": 0.33,
+          "valid": false,
+          "suggestions": [
+            "应优先执行空调开关指令，而非直接进入语音识别错误处理流程",
+            "若识别失败，建议补充引导（如：'您是要打开空调吗？'）以确认意图"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "deepseek&星火大模型分析",
+          "content": "从响应内容来看，车机未能正确理解用户的空调控制指令，而是将其视为无法识别的语音输入。这种响应方式不符合用户期望，无法满足用户的实际需求。",
+          "context": false,
+          "multiRound": false
+        },
+        "test_time": "2025/5/26 16:03:41"
+      },
+      "2": {
+        "assessment": {
+          "semantic_correctness": {
+            "score": 0,
+            "comment": "响应未匹配核心功能需求（空调控制），仅反馈识别失败。"
+          },
+          "state_change_confirmation": {
+            "score": 0,
+            "comment": "未执行空调开关操作，未提供状态变更信息。"
+          },
+          "unambiguous_expression": {
+            "score": 1,
+            "comment": "响应文本本身无歧义，但未解决原始指令意图。"
+          },
+          "overall_score": 0.33,
+          "valid": false,
+          "suggestions": [
+            "应优先执行空调开关指令，而非直接进入语音识别错误处理流程",
+            "若识别失败，建议补充引导（如：'您是要打开空调吗？'）以确认意图"
+          ]
+        },
+        "llmAnalysis": {
+          "title": "deepseek&星火大模型分析",
+          "content": "从响应内容来看，车机未能正确理解用户的空调控制指令，而是将其视为无法识别的语音输入。这种响应方式不符合用户期望，无法满足用户的实际需求。",
+          "context": false,
+          "multiRound": false
+        },
+        "test_time": "2025/5/26 16:03:54"
+      }
+    }
   }
 ]

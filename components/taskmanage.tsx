@@ -34,6 +34,7 @@ import {
   Clock,
   PlayCircle,
   Plus,
+  CircleCheck,
 } from "lucide-react";
 import {
   Dialog,
@@ -239,8 +240,8 @@ export default function TaskManage() {
   }
 
   return (
-    <div>
-      <div className="min-h-screen bg-background p-6">
+    <div >
+      <div className="h-full bg-background p-6">
         <div className="w-full mx-auto gap-4">
           <div className="space-y-4 pb-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -252,28 +253,24 @@ export default function TaskManage() {
                   创建、编辑和管理测试任务，查看任务执行状态和结果。
                 </p>
               </div>
-              <Button size="lg" onClick={() => router.push("/taskmanage/create")} className="gap-2">
-                <Plus className="h-5 w-5" />
-                创建任务
-              </Button>
             </div>
 
             {/* 统计卡片 */}
             <div className="grid gap-4 md:grid-cols-4">
-              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
+              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800 cursor-pointer" onClick={() => handleFilter("all")}>
                 <CardHeader className="pb-2">
                   <CardDescription>总任务数</CardDescription>
                   <CardTitle className="text-3xl">{taskStats.total}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center text-blue-600 dark:text-blue-400">
+                  <div className="flex items-center text-blue-600 dark:text-blue-400" >
                     <BarChart3 className="mr-2 h-4 w-4" />
                     <span className="text-sm font-medium">全部测试任务</span>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950 dark:to-amber-900 border-amber-200 dark:border-amber-800">
+              <Card className="hover:bg-amber-50 transition-all duration-300 ease-in-out cursor-pointer" onClick={() => handleFilter("pending")}>
                 <CardHeader className="pb-2">
                   <CardDescription>待执行</CardDescription>
                   <CardTitle className="text-3xl">
@@ -288,7 +285,7 @@ export default function TaskManage() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-indigo-900 border-indigo-200 dark:border-indigo-800">
+              <Card className="hover:bg-indigo-50 transition-all duration-300 ease-in-out cursor-pointer" onClick={() => handleFilter("in_progress")}>
                 <CardHeader className="pb-2">
                   <CardDescription>进行中</CardDescription>
                   <CardTitle className="text-3xl">
@@ -303,7 +300,7 @@ export default function TaskManage() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950 dark:to-emerald-900 border-emerald-200 dark:border-emerald-800">
+              <Card className="hover:bg-emerald-50 transition-all duration-300 ease-in-out cursor-pointer" onClick={() => handleFilter("completed")}>
                 <CardHeader className="pb-2">
                   <CardDescription>已完成</CardDescription>
                   <CardTitle className="text-3xl">
@@ -478,7 +475,7 @@ export default function TaskManage() {
                       {filteredAndSortedTasks.map((result) => (
                         <div
                           key={result.id}
-                          className="flex h-24 bg-white items-center justify-between p-5 border rounded-xl hover:bg-accent cursor-pointer"
+                          className="flex h-24 bg-white items-center justify-between p-5 border rounded-xl hover:bg-accent cursor-pointer transition-all duration-300 ease-in-out"
                           onClick={() => {
                             const task = tasks.find((t) => t.id === result.id);
                             if (task) {
@@ -488,16 +485,16 @@ export default function TaskManage() {
                           }}
                         >
                           <div className="flex items-center space-x-4">
-                            <div
-                              className={`h-3 w-3 rounded-full ${
+                            <CircleCheck
+                              color={
                                 result.status === "completed"
-                                  ? "bg-green-500"
+                                  ? "green"
                                   : result.status === "failed"
-                                  ? "bg-red-500"
+                                  ? "red"
                                   : result.status === "in_progress"
-                                  ? "bg-blue-500"
-                                  : "bg-yellow-500"
-                              }`}
+                                  ? "blue"
+                                  : "yellow"
+                              }
                             />
                             <div>
                               <p className="font-medium">

@@ -59,7 +59,7 @@ export function ActiveTasksProvider({ children }: { children: ReactNode }) {
     })
 
     // 导航到任务执行页面
-    router.push(`/llm-analysis/${task.id}`)
+    router.push(`/llm-analysis`)
   }
 
   // 移除活跃任务
@@ -68,7 +68,7 @@ export function ActiveTasksProvider({ children }: { children: ReactNode }) {
 
     // 如果当前在该任务页面，则返回任务列表
     const currentPath = window.location.pathname
-    if (currentPath === `/llm-analysis/${taskId}`) {
+    if (currentPath === `/llm-analysis`) {
       router.push("/taskmanage")
     }
   }
@@ -80,7 +80,7 @@ export function ActiveTasksProvider({ children }: { children: ReactNode }) {
 
   // 导航到任务
   const navigateToTask = (taskId: string) => {
-    router.push(`/llm-analysis/${taskId}`)
+    router.push(`/llm-analysis`)
   }
 
   return (
