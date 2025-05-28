@@ -304,7 +304,7 @@ export function AnalysisResults({
             </div>
           ) : error || !result ? (
             <div className="flex justify-center items-center my-6">
-              <div className="bg-card px-8 py-3 rounded-lg border border-muted shadow-sm">
+              <div className="bg-gray-50 px-8 py-3 rounded-lg ">
                 <span className="text-muted-foreground text-xl">等待分析</span>
               </div>
             </div>
@@ -357,7 +357,7 @@ export function AnalysisResults({
               <Skeleton className="h-4 w-full" />
             </div>
           ) : error || !result ? (
-            <div className="bg-muted/30 p-4 rounded-lg shadow-sm border">
+            <div className="bg-muted/30 p-4 rounded-lg shadow-sm ">
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <p className="text-muted-foreground">
                   请选择测试语料并提交车机响应进行分析

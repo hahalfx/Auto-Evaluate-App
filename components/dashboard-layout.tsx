@@ -6,19 +6,12 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BarChart3,
   FileText,
   History,
   Home,
-  Menu,
   Settings,
-  X,
-  Search,
-  Bell,
   Calendar,
   PlaySquare,
-  ChevronLeft,
-  ChevronRight,
   ListTodo,
   ChartColumnBig,
   Plus,
@@ -162,7 +155,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
       <aside
         className={cn(
           "flex flex-col bg-gray-100 transition-all duration-300 ease-in-out h-screen z-30",
-          sidebarCollapsed ? "w-[70px]" : "w-64"
+          sidebarCollapsed ? "w-[60px]" : "w-60"
         )}
       >
         <div className="flex h-full flex-col gap-2 p-3 overflow-y-auto transition-all duration-300 ease-in-out">
@@ -200,7 +193,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
               </Button>
             </div>
           ) : (
-            <div className="p-2 items-center">
+            <div className="items-center">
               <Button
                 variant="ghost"
                 size="icon"
@@ -211,8 +204,11 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
               </Button>
             </div>
           )}
-          <nav className="grid gap-1 py-4">
-            <div className="pl-3 text-xs font-semibold text-muted-foreground">
+          <nav className="grid gap-1 py-2">
+                 
+            <div className={cn(
+              "text-xs font-semibold text-muted-foreground transition-all duration-300 ease-in-out",
+              sidebarCollapsed ? "text-center" : "px-3" )}>
               目录
             </div>
             {navItems.map((item) => (
@@ -313,7 +309,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           {!sidebarCollapsed ? (
             <Popover>
               <PopoverTrigger asChild>
-                <div className="flex flex-row items-center gap-2 rounded-lg bg-card px-2 py-2 text-sm mt-auto">
+                <div className="flex flex-row items-center gap-2 rounded-lg bg-card px-2 py-2 text-sm mt-auto hover:bg-slate-50 transition-all duration-300 ease-in-out cursor-pointer">
                   <Avatar className="h-8 w-8">
                     <AvatarImage
                       src="/placeholder.svg?height=32&width=32"
@@ -327,12 +323,6 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                       engineer@example.com
                     </span>
                   </div>
-                  <Link href={"/settings"}>
-                    <Settings
-                      size={30}
-                      className="hover:bg-background p-1 rounded-md"
-                    />
-                  </Link>
                 </div>
               </PopoverTrigger>
               <PopoverContent className="w-80" side="right">
@@ -376,6 +366,13 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                         className="col-span-2 h-8"
                       />
                     </div>
+                    <div className="grid grid-cols-3 items-center gap-4">
+                      <Label htmlFor="settings">设置</Label>
+                      <Link href={"/settings"}>
+                      <Settings size={20} className="rounded-md" />
+                    </Link>
+                    </div>
+                    
                   </div>
                 </div>
               </PopoverContent>
@@ -399,7 +396,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           "flex flex-1 transition-all duration-300 ease-in-out py-3 pr-3 "
         }
       >
-        <div className="w-full overflow-y-auto border rounded-lg">
+        <div className="w-full overflow-y-auto border rounded-xl">
           {children}
         </div>
       </main>

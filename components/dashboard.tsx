@@ -106,11 +106,11 @@ export default function DashBoard() {
               <CardTitle>最近验证记录</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {stats.recentResults.map((result) => (
                   <div
                     key={result.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
+                    className="flex items-center justify-between p-3 border rounded-lg h-20"
                   >
                     <div className="flex items-center space-x-4">
                       <div

@@ -150,7 +150,7 @@ export function LLMAnalysisInterface() {
         </div>
       </div> */}
       {/* Main content */}
-      <div className="grid grid-cols-3 p-6 gap-7 h-full">
+      <div className="grid grid-cols-3 p-6 gap-7 bg-background">
         <div className="row-span-3 row-start-1 col-start-1 col-span-2">
           {/* <TestSamples
               initialPageSize={4}

@@ -117,7 +117,7 @@ export function ProgressBar({
           ) : (
             <Play className="h-4 w-4" />
           )}
-          开始自动化测试任务
+          开始任务
         </Button>
       </CardFooter>
     </Card>

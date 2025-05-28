@@ -19,7 +19,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
-import { Eraser, MonitorUp, Scan, Settings, SquareDashedMousePointer } from "lucide-react";
+import {
+  Eraser,
+  MonitorUp,
+  Scan,
+  Settings,
+  SquareDashedMousePointer,
+} from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Separator } from "./ui/separator";
 
 // Define types for better type safety
 interface OCRResultItem {
@@ -972,81 +980,82 @@ export function OCRVideoComponent() {
 
   return (
     <div className="flex flex-col p-4 rounded-lg border bg-white space-y-2 h-full">
-      <div className="flex items-center bg-gray-50 rounded-lg p-1">
-        <Dialog>
-          <DialogTrigger asChild>
+      <div className="flex items-center">
+        <Popover>
+          <PopoverTrigger asChild>
             <Button variant={"ghost"}>
               <Settings className="h-4 w-4" />
             </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>OCR设置</DialogTitle>
-              <DialogDescription>
-                对摄像头源，以及OCR识别间隔进行设置
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-3">
-              <Select
-                value={selectedDevice}
-                onValueChange={(value) => setSelectedDevice(value)}
-                disabled={videoDevices.length === 0}
-              >
-                <SelectTrigger className="bg-white text-black">
-                  <SelectValue placeholder="Select a camera" />
-                </SelectTrigger>
-                <SelectContent>
-                  {videoDevices.map((device) => (
-                    <SelectItem
-                      value={device.deviceId || `device-${device.groupId}`}
-                      key={device.deviceId}
-                    >
-                      {device.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex items-center space-x-2 text-sm">
-                <span>OCR 间隔 (秒):</span>
-                <Select
-                  value={ocrInterval.toString()}
-                  onValueChange={(value) => updateOcrInterval(value)}
-                  disabled={isCapturing}
-                >
-                  <SelectTrigger className="bg-white text-black w-32">
-                    <SelectValue placeholder="选择间隔" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">0 (30 FPS)</SelectItem>
-                    <SelectItem value="0.1">0.1 (10 FPS)</SelectItem>
-                    <SelectItem value="0.2">0.2 (5 FPS)</SelectItem>
-                    <SelectItem value="0.5">0.5 (2 FPS)</SelectItem>
-                    <SelectItem value="1.0">1.0 (1 FPS)</SelectItem>
-                    <SelectItem value="2.0">2.0 (0.5 FPS)</SelectItem>
-                    <SelectItem value="5.0">5.0 (0.2 FPS)</SelectItem>
-                  </SelectContent>
-                </Select>
+          </PopoverTrigger>
+          <PopoverContent className="w-80" align="start">
+            <div className="gird gap-3 space-y-3">
+              <div className="space-y-2">
+                <h4 className="font-medium leading-none">OCR设置</h4>
+              </div>
+
+              <div className="grid gap-3">
+                <div className="flex items-center space-x-2 text-sm">
+                  <span className="text-nowrap">选择摄像头：</span>
+                  <Select
+                    value={selectedDevice}
+                    onValueChange={(value) => setSelectedDevice(value)}
+                    disabled={videoDevices.length === 0}
+                  >
+                    <SelectTrigger className="bg-white text-black">
+                      <SelectValue placeholder="Select a camera" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {videoDevices.map((device) => (
+                        <SelectItem
+                          value={device.deviceId || `device-${device.groupId}`}
+                          key={device.deviceId}
+                        >
+                          {device.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center space-x-2 text-sm">
+                  <span>OCR 间隔 (秒):</span>
+                  <Select
+                    value={ocrInterval.toString()}
+                    onValueChange={(value) => updateOcrInterval(value)}
+                    disabled={isCapturing}
+                  >
+                    <SelectTrigger className="bg-white text-black w-32">
+                      <SelectValue placeholder="选择间隔" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">0 (30 FPS)</SelectItem>
+                      <SelectItem value="0.1">0.1 (10 FPS)</SelectItem>
+                      <SelectItem value="0.2">0.2 (5 FPS)</SelectItem>
+                      <SelectItem value="0.5">0.5 (2 FPS)</SelectItem>
+                      <SelectItem value="1.0">1.0 (1 FPS)</SelectItem>
+                      <SelectItem value="2.0">2.0 (0.5 FPS)</SelectItem>
+                      <SelectItem value="5.0">5.0 (0.2 FPS)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
-        
-
+          </PopoverContent>
+        </Popover>
         {/* ROI & Interval Controls */}
         <div className="grid grid-cols-2 space-x-2">
           <Button
             variant={"ghost"}
             onClick={startSelectingROI}
-            className="font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            className="font-bold py-2 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isCapturing}
           >
             <SquareDashedMousePointer className="h-4 w-4 mr-2"></SquareDashedMousePointer>
             {roi ? "重新选择 ROI" : "选择 ROI 区域"}
           </Button>
           <Button
-          variant={"ghost"}
+            variant={"ghost"}
             onClick={clearRoi}
-            className="font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            className="font-bold py-2 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={!roi || isCapturing}
           >
             <Eraser className="h-4 w-4 mr-2"></Eraser>
@@ -1059,7 +1068,7 @@ export function OCRVideoComponent() {
           {!isCapturing ? (
             <Button
               onClick={startCapturing}
-              className="font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              className="font-bold py-2 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={videoDevices.length === 0 || !selectedDevice}
             >
               <Scan className="h-4 w-4 mr-2"></Scan>
@@ -1068,14 +1077,14 @@ export function OCRVideoComponent() {
           ) : (
             <Button
               onClick={stopCapturing}
-              className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded"
+              className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4"
             >
               停止 OCR 识别
             </Button>
           )}
         </div>
 
-        <div className=" flex items-center text-sm ml-6">
+        <div className="flex items-center text-sm ml-6">
           <MonitorUp className="h-4 w-4 mr-2"></MonitorUp>
           连接状态:{" "}
           <span
