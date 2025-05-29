@@ -173,7 +173,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                   href="/"
                   className="flex justify-center gap-2 font-semibold"
                 >
-                  <span className="hidden md:inline-block">
+                  <span className="text-nowrap hidden md:inline-block">
                     语音自动化验证工具
                   </span>
                 </Link>
@@ -207,7 +207,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           <nav className="grid gap-1 py-2">
                  
             <div className={cn(
-              "text-xs font-semibold text-muted-foreground transition-all duration-300 ease-in-out",
+              "text-xs font-semibold text-muted-foreground",
               sidebarCollapsed ? "text-center" : "px-3" )}>
               目录
             </div>
@@ -227,7 +227,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                 {item.icon}
                 {!sidebarCollapsed && (
                   <>
-                    <span>{item.title}</span>
+                    <span className="text-nowrap">{item.title}</span>
                     {item.badge && (
                       <Badge
                         variant="outline"
