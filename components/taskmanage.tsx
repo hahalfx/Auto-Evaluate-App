@@ -44,17 +44,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { useState, useEffect } from "react";
-import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import {
-  fetchTasks,
-  selectAllTasks,
-  selectCurrentTask,
-  setCurrentTask,
-  selectTasksStatus,
-  updateTaskAsync,
-  deleteTaskAsync,
-} from "@/store/taskSlice";
+import { useState, useEffect, useCallback } from "react"; // Added useCallback
+import { useTauriTasks } from "@/hooks/useTauriTasks"; // New hook
+import { useAppDispatch, useAppSelector } from "@/store/hooks"; // Keep for samplesSlice if still needed
+// Remove taskSlice imports for tasks, currentTask, status, update, delete
+// Keep for samplesSlice if still needed
 import {
   selectAllSamples,
   fetchSamples,
@@ -89,59 +83,59 @@ export default function TaskManage() {
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [sortType, setSortType] = useState<SortType>("id-desc");
   const [filterType, setFilterType] = useState<FilterType>("all");
-  const dispatch = useAppDispatch();
-  const tasks = useAppSelector(selectAllTasks);
-  const currentTask = useAppSelector(selectCurrentTask);
-  const tasksStatus = useAppSelector(selectTasksStatus);
+  const { 
+    tasks, 
+    currentTask, 
+    isLoading: tasksLoading, // Renamed to avoid conflict if samples also have isLoading
+    error: tasksError, 
+    fetchAllTasks, 
+    // fetchTaskById, // Not used directly in this component yet
+    // createTask, // For create task page
+    updateTaskStatus, 
+    deleteTask,
+    setCurrentTask,
+  } = useTauriTasks();
+  const dispatch = useAppDispatch(); // Keep for samplesSlice
   const samples = useAppSelector(selectAllSamples);
   const samplesStatus = useAppSelector(selectSamplesStatus);
   const { playMatchedAudio } = useAudioPlayer();
   const router = useRouter();
-  const { exportCurrentTask } = useExportCurrentTask();
+  const { exportCurrentTask: exportTaskHook } = useExportCurrentTask(); // Renamed to avoid conflict
   const { toast } = useToast();
   const { addActiveTask, isTaskActive } = useActiveTasks()
-  const wakeWords = useAppSelector(selectWakeWords);
-  
+  const wakeWords = useAppSelector(selectWakeWords); // Assuming this comes from samplesSlice or another slice
 
   const handleExportReport = () => {
     currentTask
-      ? exportCurrentTask()
-      : console.warn("No current task to export");
+      ? exportTaskHook() // Use renamed hook
+      : toast({ variant: "destructive", title: "无当前任务", description: "请先选择一个任务再导出报告。" });
   };
 
-  // 处理开始任务
-  const handleStartTask = (taskId: number) => {
+  // 处理开始任务 (now uses updateTaskStatus from useTauriTasks)
+  const handleStartTask = async (taskId: number) => {
     setIsDetailDialogOpen(false);
-
-    dispatch(setSelectedSamples(currentTask?.test_samples_ids || []));
-
-    // dispatch(
-    //   updateTaskAsync({
-    //     id: taskId,
-    //     task_status: "in_progress",
-    //   })
-    // );
-
-    //dispatch(setAutoStart(taskId)); // 添加一个新的Redux action用于开始自动化测试流程
+    // setSelectedSamples might still be relevant if it's for UI state not directly tied to task data
+    if (currentTask) {
+       dispatch(setSelectedSamples(currentTask.test_samples_ids || []));
+       await updateTaskStatus(taskId, "in_progress");
+    }
     router.push("/llm-analysis/" + taskId);
   };
 
   useEffect(() => {
     if (isDetailDialogOpen === false) {
-      dispatch(setCurrentTask(null));
+      setCurrentTask(null); // Use setCurrentTask from useTauriTasks
     }
-  }, [isDetailDialogOpen]);
+  }, [isDetailDialogOpen, setCurrentTask]);
 
-  // 获取任务数据
-  useEffect(() => {
-    if (tasksStatus === "idle") {
-      dispatch(fetchTasks());
-    }
-  }, [dispatch, tasksStatus]);
+  // 获取任务数据 - Handled by useTauriTasks's own useEffect
+  // useEffect(() => {
+  // fetchAllTasks(); // Called initially by the hook
+  // }, [fetchAllTasks]);
 
-  // 获取测试语料数据
+  // 获取测试语料数据 (Keep this if samples/wakeWords are separate)
   useEffect(() => {
-    if (samplesStatus === "idle" && samples.length === 0 && wakeWords.length ===0) {
+    if (samplesStatus === "idle" && samples.length === 0 && wakeWords.length === 0) {
       dispatch(fetchSamples());
       dispatch(fetchWakeWords());
     }
@@ -421,7 +415,7 @@ export default function TaskManage() {
               </div>
             </CardHeader>
             <CardContent>
-              {tasksStatus === "loading" ? (
+              {tasksLoading ? (
                 <div className="flex justify-center items-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <span className="ml-2">加载任务中...</span>
@@ -479,7 +473,7 @@ export default function TaskManage() {
                           onClick={() => {
                             const task = tasks.find((t) => t.id === result.id);
                             if (task) {
-                              dispatch(setCurrentTask(task));
+                              setCurrentTask(task); // Use setCurrentTask from hook
                               setIsDetailDialogOpen(true);
                             }
                           }}
@@ -543,17 +537,18 @@ export default function TaskManage() {
                                   <DropdownMenuItem>编辑任务</DropdownMenuItem>
                                   <DropdownMenuItem
                                     className="text-destructive"
-                                    onClick={(e) => {
+                                    onClick={async (e) => { // Make async
                                       e.stopPropagation(); // 阻止事件冒泡
                                       setIsDetailDialogOpen(false); // 显式设置对话框为关闭状态
-                                      dispatch(deleteTaskAsync(result.id));
-                                      toast({
-                                        variant: "destructive",
-                                        title: "任务删除成功",
-                                        description:
-                                          "任务" + result.name + "已被删除",
-                                        duration: 3000,
-                                      });
+                                      await deleteTask(result.id); // Use deleteTask from hook
+                                      // Toast is now handled by the hook
+                                      // toast({
+                                      //   variant: "destructive",
+                                      //   title: "任务删除成功",
+                                      //   description:
+                                      //     "任务" + result.name + "已被删除",
+                                      //   duration: 3000,
+                                      // });
                                       console.log("delete task", result.id);
                                     }}
                                   >
@@ -614,7 +609,12 @@ export default function TaskManage() {
 
                 <div className="space-y-2">
                   <p className="text-sm font-medium">唤醒词</p>
-                  <Badge variant="outline">{wakeWords[currentTask.wake_word_id-1].text}</Badge>
+                  {/* Ensure wakeWords and currentTask.wake_word_id are valid before accessing */}
+                  <Badge variant="outline">
+                    {wakeWords && wakeWords[currentTask.wake_word_id - 1]
+                      ? wakeWords[currentTask.wake_word_id - 1].text
+                      : "N/A"}
+                  </Badge>
                 </div>
 
                 {/* 测试语料 */}
@@ -783,11 +783,13 @@ export default function TaskManage() {
                 <div className="flex justify-end space-x-2 pt-4">
                   <Button
                     variant="destructive"
-                    onClick={() => {
+                    onClick={async () => { // Make async
                       if (isDetailDialogOpen === true) {
                         setIsDetailDialogOpen(false);
                       }
-                      dispatch(deleteTaskAsync(currentTask.id));
+                      if (currentTask) { // Ensure currentTask is not null
+                        await deleteTask(currentTask.id); // Use deleteTask from hook
+                      }
                     }}
                   >
                     删除任务

@@ -81,6 +81,11 @@ const navItems: NavItem[] = [
     href: "/schedule",
     icon: <Calendar className="h-5 w-5" />,
   },
+  {
+    title: "Tauri后端测试",
+    href: "/tauri-test",
+    icon: <Calendar className="h-5 w-5" />,
+  },
 ];
 
 // 路径到面包屑的映射
