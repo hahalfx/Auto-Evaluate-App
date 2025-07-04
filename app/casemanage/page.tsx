@@ -1,10 +1,11 @@
 'use client'
 import { TestSamples } from "@/components/test-samples";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { WakeSamples } from "@/components/wake-samples";
 
 export default function TestSamplePage() {
   return (
-    <main className="flex flex-1 w-full bg-background p-6 ">
+    <main className="flex flex-1 w-full bg-background p-8 ">
       <div className="flex flex-col w-full ">
         <h1 className="text-3xl font-bold mb-3">
             测试语料管理
@@ -17,8 +18,10 @@ export default function TestSamplePage() {
             </TabsList>
             <TabsContent value="case">
               <TestSamples initialPageSize={8} />
+            </TabsContent >
+            <TabsContent value="wake">
+              <WakeSamples initialPageSize={8} />
             </TabsContent>
-            <TabsContent value="wake">Change your password here.</TabsContent>
           </Tabs>
         </div>
       </div>

@@ -1,7 +1,7 @@
 mod models;
-mod database;
+mod db;
 mod state;
-mod analysis_service;
+mod services;
 mod commands;
 
 use state::AppState;
@@ -54,6 +54,8 @@ pub fn run() {
                     return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("数据库初始化失败: {}", e))));
                 }
             }
+
+
             
             Ok(())
         })
@@ -79,7 +81,8 @@ pub fn run() {
             commands::delete_sample,
             commands::delete_sample_safe,
             commands::get_samples_by_task_id,
-            commands::update_task_samples
+            commands::update_task_samples,
+            commands::play_match_audio
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

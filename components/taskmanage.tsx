@@ -7,15 +7,6 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from "./ui/breadcrumb";
-import { SidebarTrigger } from "./ui/sidebar";
-import { ChartComponent } from "./chartsample";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -62,11 +53,10 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { generateASRTestReport } from "@/utils/generateASRTestReport";
-import { Task } from "@/types/api";
 import { useExportCurrentTask } from "@/hooks/useExportCurrentTask";
 import { useToast } from "./ui/use-toast";
-import { useActiveTasks } from "@/lib/contexts/active-tasks-context"
+import { useActiveTasks } from "@/lib/contexts/active-tasks-context";
+import CreateTask from "@/components/create-task";
 
 // 定义排序类型
 type SortType =
@@ -81,17 +71,18 @@ type FilterType = "all" | "completed" | "failed" | "in_progress" | "pending";
 
 export default function TaskManage() {
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [sortType, setSortType] = useState<SortType>("id-desc");
   const [filterType, setFilterType] = useState<FilterType>("all");
-  const { 
-    tasks, 
-    currentTask, 
+  const {
+    tasks,
+    currentTask,
     isLoading: tasksLoading, // Renamed to avoid conflict if samples also have isLoading
-    error: tasksError, 
-    fetchAllTasks, 
+    error: tasksError,
+    fetchAllTasks,
     // fetchTaskById, // Not used directly in this component yet
     // createTask, // For create task page
-    updateTaskStatus, 
+    updateTaskStatus,
     deleteTask,
     setCurrentTask,
   } = useTauriTasks();
@@ -102,13 +93,17 @@ export default function TaskManage() {
   const router = useRouter();
   const { exportCurrentTask: exportTaskHook } = useExportCurrentTask(); // Renamed to avoid conflict
   const { toast } = useToast();
-  const { addActiveTask, isTaskActive } = useActiveTasks()
+  const { addActiveTask, isTaskActive } = useActiveTasks();
   const wakeWords = useAppSelector(selectWakeWords); // Assuming this comes from samplesSlice or another slice
 
   const handleExportReport = () => {
     currentTask
       ? exportTaskHook() // Use renamed hook
-      : toast({ variant: "destructive", title: "无当前任务", description: "请先选择一个任务再导出报告。" });
+      : toast({
+          variant: "destructive",
+          title: "无当前任务",
+          description: "请先选择一个任务再导出报告。",
+        });
   };
 
   // 处理开始任务 (now uses updateTaskStatus from useTauriTasks)
@@ -116,8 +111,8 @@ export default function TaskManage() {
     setIsDetailDialogOpen(false);
     // setSelectedSamples might still be relevant if it's for UI state not directly tied to task data
     if (currentTask) {
-       dispatch(setSelectedSamples(currentTask.test_samples_ids || []));
-       await updateTaskStatus(taskId, "in_progress");
+      dispatch(setSelectedSamples(currentTask.test_samples_ids || []));
+      await updateTaskStatus(taskId, "in_progress");
     }
     router.push("/llm-analysis/" + taskId);
   };
@@ -135,7 +130,11 @@ export default function TaskManage() {
 
   // 获取测试语料数据 (Keep this if samples/wakeWords are separate)
   useEffect(() => {
-    if (samplesStatus === "idle" && samples.length === 0 && wakeWords.length === 0) {
+    if (
+      samplesStatus === "idle" &&
+      samples.length === 0 &&
+      wakeWords.length === 0
+    ) {
       dispatch(fetchSamples());
       dispatch(fetchWakeWords());
     }
@@ -230,12 +229,12 @@ export default function TaskManage() {
       id: task.id,
       name: task.name,
       type: task.type,
-    })
-  }
+    });
+  };
 
   return (
-    <div >
-      <div className="h-full bg-background p-6">
+    <div>
+      <div className="h-full bg-background p-8">
         <div className="w-full mx-auto gap-4">
           <div className="space-y-4 pb-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -251,20 +250,26 @@ export default function TaskManage() {
 
             {/* 统计卡片 */}
             <div className="grid gap-4 md:grid-cols-4">
-              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800 cursor-pointer" onClick={() => handleFilter("all")}>
+              <Card
+                className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800 cursor-pointer"
+                onClick={() => handleFilter("all")}
+              >
                 <CardHeader className="pb-2">
                   <CardDescription>总任务数</CardDescription>
                   <CardTitle className="text-3xl">{taskStats.total}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center text-blue-600 dark:text-blue-400" >
+                  <div className="flex items-center text-blue-600 dark:text-blue-400">
                     <BarChart3 className="mr-2 h-4 w-4" />
                     <span className="text-sm font-medium">全部测试任务</span>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="hover:bg-amber-50 transition-all duration-300 ease-in-out cursor-pointer" onClick={() => handleFilter("pending")}>
+              <Card
+                className="hover:bg-amber-50 transition-all duration-300 ease-in-out cursor-pointer"
+                onClick={() => handleFilter("pending")}
+              >
                 <CardHeader className="pb-2">
                   <CardDescription>待执行</CardDescription>
                   <CardTitle className="text-3xl">
@@ -279,7 +284,10 @@ export default function TaskManage() {
                 </CardContent>
               </Card>
 
-              <Card className="hover:bg-indigo-50 transition-all duration-300 ease-in-out cursor-pointer" onClick={() => handleFilter("in_progress")}>
+              <Card
+                className="hover:bg-indigo-50 transition-all duration-300 ease-in-out cursor-pointer"
+                onClick={() => handleFilter("in_progress")}
+              >
                 <CardHeader className="pb-2">
                   <CardDescription>进行中</CardDescription>
                   <CardTitle className="text-3xl">
@@ -294,7 +302,10 @@ export default function TaskManage() {
                 </CardContent>
               </Card>
 
-              <Card className="hover:bg-emerald-50 transition-all duration-300 ease-in-out cursor-pointer" onClick={() => handleFilter("completed")}>
+              <Card
+                className="hover:bg-emerald-50 transition-all duration-300 ease-in-out cursor-pointer"
+                onClick={() => handleFilter("completed")}
+              >
                 <CardHeader className="pb-2">
                   <CardDescription>已完成</CardDescription>
                   <CardTitle className="text-3xl">
@@ -315,17 +326,16 @@ export default function TaskManage() {
           <Card className="bg-background">
             <CardHeader className="flex flex-row items-center justify-between px-6 py-4">
               <CardTitle>所有任务</CardTitle>
-              <div className="flex space-x-2">
+              <div className="flex space-x-1">
                 {/* 筛选下拉菜单 */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       className="flex items-center"
                     >
                       <Filter className="h-4 w-4 mr-1" />
-                      筛选
                       {filterType !== "all" && (
                         <span className="ml-1 text-xs bg-primary text-primary-foreground rounded-full px-1.5">
                           1
@@ -365,12 +375,11 @@ export default function TaskManage() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       className="flex items-center"
                     >
                       <ArrowUpDown className="h-4 w-4 mr-1" />
-                      排序
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -409,9 +418,9 @@ export default function TaskManage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                <Link href="/taskmanage/create">
-                  <Button size="sm">创建新任务</Button>
-                </Link>
+                <Button size="sm" onClick={() => setIsCreateDialogOpen(true)}>
+                  创建新任务
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
@@ -537,7 +546,8 @@ export default function TaskManage() {
                                   <DropdownMenuItem>编辑任务</DropdownMenuItem>
                                   <DropdownMenuItem
                                     className="text-destructive"
-                                    onClick={async (e) => { // Make async
+                                    onClick={async (e) => {
+                                      // Make async
                                       e.stopPropagation(); // 阻止事件冒泡
                                       setIsDetailDialogOpen(false); // 显式设置对话框为关闭状态
                                       await deleteTask(result.id); // Use deleteTask from hook
@@ -782,17 +792,24 @@ export default function TaskManage() {
 
                 <div className="flex justify-end space-x-2 pt-4">
                   <Button
-                    variant="destructive"
-                    onClick={async () => { // Make async
+                    variant="ghost"
+                    onClick={async () => {
+                      // Make async
                       if (isDetailDialogOpen === true) {
                         setIsDetailDialogOpen(false);
                       }
-                      if (currentTask) { // Ensure currentTask is not null
+                      if (currentTask) {
+                        // Ensure currentTask is not null
                         await deleteTask(currentTask.id); // Use deleteTask from hook
                       }
                     }}
+                    className="hover:text-red-500 hover:bg-white"
                   >
                     删除任务
+                  </Button>
+
+                  <Button variant="secondary" onClick={handleExportReport}>
+                    导出报告
                   </Button>
 
                   {currentTask.task_status === "pending" && (
@@ -801,16 +818,24 @@ export default function TaskManage() {
                       className="bg-blue-600 hover:bg-blue-700"
                       // onClick={() => handleStartTask(currentTask.id)}
                       onClick={() => handleExecuteTask(currentTask)}
-                            disabled={isTaskActive(String(currentTask.id))}
+                      disabled={isTaskActive(String(currentTask.id))}
                     >
                       开始任务
                     </Button>
                   )}
-
-                  <Button onClick={handleExportReport}>导出报告</Button>
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <DialogContent className="max-w-6xl h-[800px] overflow-auto p-9">
+            <DialogTitle>
+              <div className="text-3xl font-bold mb-3">新建测试任务</div>
+            </DialogTitle>
+            <div className="flex">
+              <CreateTask />
+            </div>
           </DialogContent>
         </Dialog>
       </div>

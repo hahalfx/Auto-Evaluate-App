@@ -173,7 +173,7 @@ export default function TauriTestPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 space-y-6 bg-white">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Tauri 后端测试</h1>
         <Button onClick={loadData} disabled={loading}>

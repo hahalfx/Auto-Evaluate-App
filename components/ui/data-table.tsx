@@ -189,10 +189,10 @@ export function DataTable<TData, TValue>({
         </div>
         <div className="flex items-center space-x-2">
           <Button variant="outline" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-            Previous
+            上一页
           </Button>
           <Button variant="outline" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-            Next
+            下一页
           </Button>
         </div>
       </div>

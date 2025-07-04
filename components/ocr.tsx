@@ -21,6 +21,8 @@ import {
 } from "./ui/dialog";
 import {
   Eraser,
+  MonitorCheck,
+  MonitorOff,
   MonitorUp,
   Scan,
   Settings,
@@ -28,6 +30,11 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Separator } from "./ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Define types for better type safety
 interface OCRResultItem {
@@ -1042,29 +1049,41 @@ export function OCRVideoComponent() {
           </PopoverContent>
         </Popover>
         {/* ROI & Interval Controls */}
-        <div className="grid grid-cols-2 space-x-2">
-          <Button
-            variant={"ghost"}
-            onClick={startSelectingROI}
-            className="font-bold py-2 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isCapturing}
-          >
-            <SquareDashedMousePointer className="h-4 w-4 mr-2"></SquareDashedMousePointer>
-            {roi ? "重新选择 ROI" : "选择 ROI 区域"}
-          </Button>
-          <Button
-            variant={"ghost"}
-            onClick={clearRoi}
-            className="font-bold py-2 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={!roi || isCapturing}
-          >
-            <Eraser className="h-4 w-4 mr-2"></Eraser>
-            清除 ROI 区域
-          </Button>
+        <div className="grid grid-cols-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={"ghost"}
+                onClick={startSelectingROI}
+                className="font-bold py-2 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isCapturing}
+              >
+                <SquareDashedMousePointer className="h-4 w-4"></SquareDashedMousePointer>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>选择 ROI 区域</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={"ghost"}
+                onClick={clearRoi}
+                className="font-bold py-2 px-4 disabled:opacity-30 disabled:cursor-not-allowed"
+                disabled={!roi || isCapturing}
+              >
+                <Eraser className="h-4 w-4"></Eraser>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>清除 ROI 区域</p>
+            </TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Connection & Device Controls */}
-        <div className="ml-4 space-y-2">
+        <div className="ml-2 space-y-2">
           {!isCapturing ? (
             <Button
               onClick={startCapturing}
@@ -1085,15 +1104,11 @@ export function OCRVideoComponent() {
         </div>
 
         <div className="flex items-center text-sm ml-6">
-          <MonitorUp className="h-4 w-4 mr-2"></MonitorUp>
-          连接状态:{" "}
-          <span
-            className={`font-semibold ${
-              isConnected ? "text-green-400" : "text-red-400"
-            }`}
-          >
-            {isConnected ? "已连接" : "未连接"}
-          </span>
+          {isConnected ? (
+            <MonitorCheck className="h-4 w-4" color="green" />
+          ) : (
+            <MonitorOff className="h-4 w-4" color="red" />
+          )}
           {isCapturing && (
             <span className="ml-2 text-blue-400">
               OCR识别中 (发送频率: {(1 / ocrInterval).toFixed(1)}帧/秒)

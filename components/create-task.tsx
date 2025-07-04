@@ -128,11 +128,8 @@ export default function CreateTask() {
   };
 
   return (
-    <div>
-      <div className="min-h-screen bg-background p-6">
-        <div className="w-full mx-auto">
-          <h1 className="text-3xl font-bold mb-3">新建测试任务</h1>
-        </div>
+    <div className="flex flex-1 justify-center items-center bg-white">
+      <div className="flex-1 bg-background">
         <div className="flex gap-x-3">
           <div className="flex-1 mb-3">
             <div className="text-sm text-gray-500 mb-1">1. 输入任务名称</div>

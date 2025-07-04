@@ -52,6 +52,11 @@ pub struct Task {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeatCase {
+    
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssessmentItem {
     pub score: f64,
     pub comment: String,

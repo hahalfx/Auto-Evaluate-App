@@ -16,6 +16,7 @@ import {
   ChartColumnBig,
   Plus,
   MenuIcon,
+  TestTube,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -84,7 +85,7 @@ const navItems: NavItem[] = [
   {
     title: "Tauri后端测试",
     href: "/tauri-test",
-    icon: <Calendar className="h-5 w-5" />,
+    icon: <TestTube className="h-5 w-5" />,
   },
 ];
 

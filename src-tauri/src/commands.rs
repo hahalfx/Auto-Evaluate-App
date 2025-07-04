@@ -1,5 +1,5 @@
 use crate::state::AppState;
-use crate::analysis_service::AnalysisService;
+use crate::services::analysis_service::AnalysisService;
 use crate::models::*;
 use std::sync::Arc;
 use tauri::State;
@@ -294,4 +294,10 @@ pub async fn update_task_samples(
     let sample_ids_i64: Vec<i64> = sample_ids.into_iter().map(|id| id as i64).collect();
     state.db.update_task_samples(task_id as i64, sample_ids_i64).await
         .map_err(|e| format!("更新任务 {} 的样本关联失败: {}", task_id, e))
+}
+
+#[tauri::command]
+pub async fn play_match_audio(state: State<'_, Arc<AppState>>, keyword: String) -> Result<(), String> {
+    state.audio_controller.play_matching(keyword).await
+        .map_err(|e| format!("播放匹配音频失败: {}", e))
 }

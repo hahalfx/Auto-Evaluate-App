@@ -71,7 +71,7 @@ export function AnalysisResults({
         </h3>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="flex-none">
+            <Button variant="ghost" className="flex-none">
               <FileUp className="mr-2 h-4 w-4" />
               导出结果
             </Button>
