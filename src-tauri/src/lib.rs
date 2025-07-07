@@ -82,7 +82,11 @@ pub fn run() {
             commands::delete_sample_safe,
             commands::get_samples_by_task_id,
             commands::update_task_samples,
-            commands::play_match_audio
+            commands::play_match_audio,
+            commands::new_workflow,
+            commands::pause_workflow,
+            commands::resume_workflow,
+            commands::stop_workflow,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

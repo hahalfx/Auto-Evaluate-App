@@ -68,21 +68,6 @@ const navItems: NavItem[] = [
     icon: <ChartColumnBig className="h-5 w-5" />,
   },
   {
-    title: "详细报告",
-    href: "/reports",
-    icon: <FileText className="h-5 w-5" />,
-  },
-  {
-    title: "历史数据",
-    href: "/history",
-    icon: <History className="h-5 w-5" />,
-  },
-  {
-    title: "日程安排",
-    href: "/schedule",
-    icon: <Calendar className="h-5 w-5" />,
-  },
-  {
     title: "Tauri后端测试",
     href: "/tauri-test",
     icon: <TestTube className="h-5 w-5" />,

@@ -417,9 +417,12 @@ export function TestSamples({
                   导入Excel
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                请确保Excel文件包含"序号"和"语料"列
-              </p>
+              <div className="flex flex-row items-center">
+                <p className="text-xs text-muted-foreground text-center">
+                  请确保Excel文件包含"序号"和"语料"列
+                </p>
+                <Button variant={"link"} size={"sm"}>打开模版</Button>
+              </div>
             </div>
           </div>
         </DialogContent>

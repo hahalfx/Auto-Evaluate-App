@@ -478,7 +478,7 @@ export default function TaskManage() {
                       {filteredAndSortedTasks.map((result) => (
                         <div
                           key={result.id}
-                          className="flex h-24 bg-white items-center justify-between p-5 border rounded-xl hover:bg-accent cursor-pointer transition-all duration-300 ease-in-out"
+                          className="flex h-24 bg-white items-center justify-between p-5 border rounded-xl hover:bg-accent hover:shadow-lg hover:scale-102 cursor-pointer transition-all duration-200 ease-in-out"
                           onClick={() => {
                             const task = tasks.find((t) => t.id === result.id);
                             if (task) {

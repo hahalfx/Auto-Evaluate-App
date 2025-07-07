@@ -249,7 +249,7 @@ export default function TaskList() {
                   <div
                     key={result.id}
                     className={
-                      "flex h-24 items-center justify-between p-5 border rounded-xl hover:bg-accent cursor-pointer " +
+                      "flex h-24 items-center justify-between p-5 border rounded-xl hover:bg-accent  cursor-pointer " +
                       (result.id === currentTask?.id ? "bg-accent" : "bg-white")
                     }
                     onClick={() => {
