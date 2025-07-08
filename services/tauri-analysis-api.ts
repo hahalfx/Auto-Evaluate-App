@@ -91,3 +91,15 @@ export async function tauriSetCurrentTask(taskId: number): Promise<void> {
 export async function tauriGetCurrentTask(): Promise<TauriTask | null> {
   return await invoke('get_current_task');
 }
+
+export async function tauriPauseWorkflow(): Promise<void> {
+  await invoke('pause_workflow');
+}
+
+export async function tauriResumeWorkflow(): Promise<void> {
+  await invoke('resume_workflow');
+}
+
+export async function tauriStopWorkflow(): Promise<void> {
+  await invoke('stop_workflow');
+}

@@ -349,7 +349,10 @@ pub async fn play_match_audio(
 }
 
 #[tauri::command]
-pub async fn new_workflow(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub async fn new_workflow(
+    state: State<'_, Arc<AppState>>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
     let (mut workflow, _handle) = Workflow::new();
     if let Some(task_id) = *state.current_task_id.read().await {
         // We check if the task exists, but we don't need to use it further in this function.
@@ -380,7 +383,7 @@ pub async fn new_workflow(state: State<'_, Arc<AppState>>) -> Result<(), String>
         workflow.add_dependency("analysis_task", "asr_task");
 
         // 开始工作流
-        let handle = workflow.run().await;
+        let handle = workflow.run(app_handle).await;
 
         // 将控制器 handle 交给全局状态 AppState
         let mut workflow_handle_guard = state.workflow_handle.lock().await;
