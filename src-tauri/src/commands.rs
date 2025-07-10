@@ -1,9 +1,9 @@
 use crate::models::*;
 use crate::permissions;
-use crate::services::analysis_service::AnalysisService;
 use crate::services::analysis_task::analysis_task;
 use crate::services::asr_task::AsrTask;
 use crate::services::audio_task::audio_task;
+use crate::services::finish_task::finish_task;
 use crate::services::workflow::Workflow;
 use crate::state::AppState;
 use chrono::Utc;
@@ -111,28 +111,6 @@ pub async fn create_task(
         .create_task(&task)
         .await
         .map_err(|e| format!("创建任务失败: {}", e))
-}
-
-#[tauri::command]
-pub async fn start_automated_test(
-    state: State<'_, Arc<AppState>>,
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
-    let service = AnalysisService::new(state.inner().clone());
-    service.start_automated_test(app_handle).await
-}
-
-#[tauri::command]
-pub async fn submit_analysis(
-    state: State<'_, Arc<AppState>>,
-    app_handle: tauri::AppHandle,
-    sample_id: u32,
-    machine_response: String,
-) -> Result<AnalysisResult, String> {
-    let service = AnalysisService::new(state.inner().clone());
-    service
-        .submit_analysis(app_handle, sample_id, machine_response)
-        .await
 }
 
 #[tauri::command]
@@ -368,6 +346,9 @@ pub async fn new_workflow(
             .map(|sample| sample.text.clone())
             .ok_or("任务样本列表为空")?;
 
+        // 为第一个样本创建工作流（简化版本，后续可以扩展为多样本）
+        let sample_id = task_samples.first().map(|s| s.id).unwrap_or(0);
+        
         workflow.add_task(audio_task {
             id: "audio_task".to_string(),
             keyword: keyword.clone(),
@@ -379,9 +360,13 @@ pub async fn new_workflow(
         workflow.add_task(analysis_task {
             id: "analysis_task".to_string(),
             dependency_id: "asr_task".to_string(),
+            http_client: state.http_client.clone(),
         });
+        workflow.add_task(finish_task::new("finish_task".to_string(), task_id, sample_id, state.db.clone()));
+        
         workflow.add_dependency("asr_task", "audio_task");
         workflow.add_dependency("analysis_task", "asr_task");
+        workflow.add_dependency("finish_task", "analysis_task");
 
         // 开始工作流
         let handle = workflow.run(app_handle).await;

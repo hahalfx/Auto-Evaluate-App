@@ -4,6 +4,7 @@ use crate::services::workflow::ControlHandle;
 use std::sync::Arc;
 use serde::de::Expected;
 use tokio::sync::Mutex;
+use reqwest::Client;
 
 #[derive(Debug, Clone)]
 pub struct AppState {
@@ -12,6 +13,7 @@ pub struct AppState {
     pub is_testing: Arc<tokio::sync::RwLock<bool>>,
     pub audio_controller: AudioController,// 这个音频控制器如果后面不用可以删掉
     pub workflow_handle: Arc<Mutex<Option<ControlHandle>>>,
+    pub http_client: Client,
 }
 
 impl AppState {
@@ -29,6 +31,7 @@ impl AppState {
             is_testing: Arc::new(tokio::sync::RwLock::new(false)),
             audio_controller,
             workflow_handle: Arc::new(Mutex::new(None)),
+            http_client: Client::new(),
         })
     }
 }

@@ -28,16 +28,13 @@ import { selectAllSamples } from "@/store/samplesSlice";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { generateASRTestReport, example } from "../utils/generateASRTestReport";
 import { useExportCurrentTask } from "@/hooks/useExportCurrentTask";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
 interface AnalysisResultsProps {
-  result: AnalysisResult | null;
-  loading: boolean;
   error: string | null;
 }
 
 export function AnalysisResults({
-  result,
-  loading,
   error,
 }: AnalysisResultsProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -45,6 +42,58 @@ export function AnalysisResults({
   const samples = useAppSelector(selectAllSamples);
   const playMatchedAudio = useAudioPlayer();
   const  {exportCurrentTask}  = useExportCurrentTask();
+  const [loading, setLoading] = useState(false);
+
+  //设置tauri后端监听
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    let unlistenevent: UnlistenFn | undefined;
+    const setupListeners = async () => {
+      try {
+        unlisten = await listen<AnalysisResult>("llm_analysis_result", (event) => {
+          console.log("React Component 收到 llm_analysis_result:", event.payload);
+          setResult(
+            event.payload
+          );
+          setLoading(false);
+        });;
+      } catch (error) {
+        console.error("监听 llm_analysis_result 失败:", error);
+      }
+
+      try {
+        unlistenevent = await listen("llm_analysis_event", (event) => {
+          console.log("React Component 收到 llm_analysis_event:", event.payload);
+          event.payload === "start" && setLoading(true);
+        });;
+      } catch (error) {
+        console.error("监听 llm_analysis_event 失败:", error);
+      }
+
+      return () => {
+        if (unlisten) {
+          try {
+            unlisten();
+            console.log("已取消监听");
+          } catch (error) {
+            console.error("取消监听失败:", error);
+          }
+        }
+        if (unlistenevent) {
+          try {
+            unlistenevent();
+            console.log("已取消监听");
+          } catch (error) {
+            console.error("取消监听失败:", error);
+          }
+        }
+      };
+    };
+    
+    setupListeners();
+  }, []);
 
   const handleExportReport = () => {
     if (currentTask) {
@@ -302,7 +351,13 @@ export function AnalysisResults({
             <div className="flex justify-center items-center my-6">
               <Skeleton className="h-20 w-40" />
             </div>
-          ) : error || !result ? (
+          ) : error ? (
+            <div className="flex justify-center items-center my-6">
+              <div className="bg-gray-50 px-8 py-3 rounded-lg ">
+                <span className="text-muted-foreground text-xl">错误: {error}</span>
+              </div>
+            </div>
+          ) : !result?.assessment ? (
             <div className="flex justify-center items-center my-6">
               <div className="bg-gray-50 px-8 py-3 rounded-lg ">
                 <span className="text-muted-foreground text-xl">等待分析</span>

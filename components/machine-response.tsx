@@ -43,7 +43,6 @@ export const MachineResponse = forwardRef<
   { value, onChange, onSubmit, isAnalyzing, currentSampleText },
   ref
 ) {
-  const toast = useToast();
 
   // // Use custom hooks for voice recognition and audio playback
   // const { isRecording, error, startRecording, stopRecording } =
@@ -123,24 +122,6 @@ export const MachineResponse = forwardRef<
     setupListeners();
   }, []);
 
-  // // Handle voice recognition button click
-  // const handleVoiceRecognition = () => {
-  //   if (!isRecording) {
-  //     onChange(""); // Clear UI text
-  //     startRecording();
-  //   } else {
-  //     stopRecording();
-  //   }
-  // };
-
-  // // Expose methods to parent component
-  // useImperativeHandle(ref, () => ({
-  //   startRecording: async () => {
-  //     startRecording();
-  //   },
-  //   isRecording,
-  // }));
-
   return (
     <>
       <Card className="shadow-sm rounded-lg h-full">
@@ -200,7 +181,7 @@ export const MachineResponse = forwardRef<
             disabled={!value.trim() || isAnalyzing}
             className="gap-2"
           >
-            {isAnalyzing ? (
+            {asrEvent == "started" ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />
@@ -209,12 +190,6 @@ export const MachineResponse = forwardRef<
           </Button>
         </CardFooter>
       </Card>
-      {backendMessage == "finished" &&
-        toast.toast({
-          title: "识别结果已稳定",
-          description: "自动停止录音并提交分析",
-          variant: "default",
-        })}
     </>
   );
 });
