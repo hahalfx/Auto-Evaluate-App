@@ -1,7 +1,8 @@
 use crate::models::*;
+use crate::permissions;
 use crate::services::analysis_service::AnalysisService;
 use crate::services::analysis_task::analysis_task;
-use crate::services::asr_task::asr_task;
+use crate::services::asr_task::AsrTask;
 use crate::services::audio_task::audio_task;
 use crate::services::workflow::Workflow;
 use crate::state::AppState;
@@ -369,12 +370,12 @@ pub async fn new_workflow(
 
         workflow.add_task(audio_task {
             id: "audio_task".to_string(),
-            keyword: keyword,
+            keyword: keyword.clone(),
         });
-        workflow.add_task(asr_task {
-            id: "asr_task".to_string(),
-            example: "".to_string(),
-        });
+        workflow.add_task(AsrTask::new(
+            "asr_task".to_string(),
+            keyword.clone(),
+        ));
         workflow.add_task(analysis_task {
             id: "analysis_task".to_string(),
             dependency_id: "asr_task".to_string(),
@@ -423,4 +424,116 @@ pub async fn stop_workflow(state: State<'_, Arc<AppState>>) -> Result<(), String
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn test_audio_permissions() -> Result<String, String> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    use log::{error, info};
+
+    let mut result = String::new();
+
+    let permission_result = request_microphone_permission().await;
+    match permission_result {
+        Ok(granted) => {
+            if granted {
+                info!("✅ 麦克风权限已授予");
+                result.push_str("✅ 麦克风权限已授予\n");
+            } else {
+                error!("❌ 麦克风权限被拒绝");
+                result.push_str("❌ 麦克风权限被拒绝\n");
+            }
+        }
+        Err(e) => {
+            error!("权限请求失败: {}", e);
+        }
+    }
+
+    // 测试音频主机
+    let host = cpal::default_host();
+    result.push_str(&format!("音频主机: {:?}\n", host.id()));
+
+    // 列出输入设备
+    match host.input_devices() {
+        Ok(devices) => {
+            let devices: Vec<_> = devices.collect();
+            result.push_str(&format!("可用输入设备数量: {}\n", devices.len()));
+
+            for (i, device) in devices.iter().enumerate() {
+                let name = device.name().unwrap_or_else(|_| format!("Device {}", i));
+                result.push_str(&format!("设备 {}: {}\n", i, name));
+
+                // 测试设备配置
+                match device.supported_input_configs() {
+                    Ok(configs) => {
+                        for config in configs {
+                            result.push_str(&format!(
+                                "  - 采样率: {:?}, 通道数: {}, 格式: {:?}\n",
+                                config.min_sample_rate(),
+                                config.channels(),
+                                config.sample_format()
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        result.push_str(&format!("  - 获取配置失败: {}\n", e));
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            result.push_str(&format!("获取输入设备失败: {}\n", e));
+        }
+    }
+
+    // 测试默认输入设备
+    match host.default_input_device() {
+        Some(device) => {
+            let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
+            result.push_str(&format!("默认输入设备: {}\n", name));
+
+            // 尝试创建音频流
+            use cpal::{SampleRate, StreamConfig};
+            let config = StreamConfig {
+                channels: 1,
+                sample_rate: SampleRate(16000),
+                buffer_size: cpal::BufferSize::Fixed(1024),
+            };
+
+            match device.build_input_stream(
+                &config,
+                |_data: &[f32], _: &cpal::InputCallbackInfo| {
+                    // 空回调
+                },
+                |err| {
+                    error!("音频流错误: {}", err);
+                },
+                None,
+            ) {
+                Ok(_stream) => {
+                    result.push_str("✅ 音频流创建成功\n");
+                }
+                Err(e) => {
+                    result.push_str(&format!("❌ 音频流创建失败: {}\n", e));
+                    result.push_str("这可能是权限问题，请检查系统设置中的麦克风权限\n");
+                }
+            }
+        }
+        None => {
+            result.push_str("❌ 未找到默认输入设备\n");
+        }
+    }
+
+    info!("音频权限测试结果:\n{}", result);
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn request_microphone_permission() -> Result<bool, String> {
+    permissions::request_microphone_permission()
+}
+
+#[tauri::command]
+pub async fn check_microphone_permission() -> Result<bool, String> {
+    Ok(permissions::check_microphone_permission())
 }

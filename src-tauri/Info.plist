@@ -5,8 +5,8 @@
         <key>NSCameraUsageDescription</key>
         <string>Request camera access for WebRTC</string>
         <key>NSMicrophoneUsageDescription</key>
-        <string>Request microphone access for WebRTC</string>
+        <string>此应用需要访问麦克风以进行语音识别和ASR功能测试</string>
         <key>NSCameraUseContinuityCameraDeviceType</key>
-        <true/>
+        <string>此应用需要访问摄像头以进行语音识别和OCR功能测试</string>
     </dict>
 </plist>

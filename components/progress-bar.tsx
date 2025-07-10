@@ -10,16 +10,6 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Play, Loader2, ChevronLeft, ChevronRight, Pause } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
-import { DialogTrigger } from "@radix-ui/react-dialog";
-import TaskList from "./custom/task-list";
 import { useAppSelector } from "@/store/hooks";
 import { selectCurrentTask } from "@/store/taskSlice";
 import { use, useEffect, useState } from "react";

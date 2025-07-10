@@ -18,6 +18,7 @@ impl Task for audio_task {
         &mut self,
         control_rx: &mut watch::Receiver<ControlSignal>,
         context: WorkflowContext,
+        app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         println!("开始播放音频文件 {} .", self.keyword);
 

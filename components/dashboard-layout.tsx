@@ -72,6 +72,11 @@ const navItems: NavItem[] = [
     href: "/tauri-test",
     icon: <TestTube className="h-5 w-5" />,
   },
+  {
+    title: "Tauri麦克风测试",
+    href: "/audio-test",
+    icon: <TestTube className="h-5 w-5" />,
+  },
 ];
 
 // 路径到面包屑的映射

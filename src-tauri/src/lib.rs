@@ -3,6 +3,7 @@ mod db;
 mod state;
 mod services;
 mod commands;
+mod permissions;
 
 use state::AppState;
 use std::sync::Arc;
@@ -10,6 +11,13 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 加载环境变量
+    if let Err(e) = dotenv::dotenv() {
+        log::warn!("无法加载.env文件: {}", e);
+    } else {
+        log::info!("成功加载.env文件");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_macos_permissions::init())
@@ -87,6 +95,9 @@ pub fn run() {
             commands::pause_workflow,
             commands::resume_workflow,
             commands::stop_workflow,
+            commands::test_audio_permissions,
+            commands::request_microphone_permission,
+            commands::check_microphone_permission,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

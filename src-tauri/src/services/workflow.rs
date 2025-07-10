@@ -19,7 +19,7 @@ pub type WorkflowContext = Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync>
 // 1. 控制信号与句柄 (Control Signals & Handle)
 // ===================================================================
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ControlSignal {
     Running,
     Paused,
@@ -57,6 +57,7 @@ pub trait Task: Send + Sync {
         &mut self,
         control_rx: &mut watch::Receiver<ControlSignal>,
         context: WorkflowContext,
+        app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>>;
 }
 
@@ -172,10 +173,11 @@ impl WorkflowRunner {
                 if let Some(mut task) = self.tasks.remove(&task_id) {
                     let mut rx = self.control_rx.clone();
                     let ctx_clone = context.clone(); // <--- 克隆 Arc
+                    let app_handle_clone = app_handle.clone();
                     println!("[Workflow] Spawning task '{}'.", task_id);
                     let handle = tokio::spawn(async move {
                         let result = task
-                            .execute(&mut rx, ctx_clone)
+                            .execute(&mut rx, ctx_clone, app_handle_clone)
                             .await
                             .map_err(|e| e.to_string());
                         (task.id(), result)

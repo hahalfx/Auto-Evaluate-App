@@ -1,5 +1,5 @@
 use crate::models::*;
-use crate::services::asr_task::asr_task_output;
+use crate::services::asr_task::AsrTaskOutput;
 use crate::services::workflow::{ControlSignal, Task, WorkflowContext};
 use crate::state::AppState;
 use anyhow::Result;
@@ -120,6 +120,7 @@ impl Task for analysis_task {
         &mut self,
         control_rx: &mut watch::Receiver<ControlSignal>,
         context: WorkflowContext,
+        app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         println!("开始将响应内容发送给大模型");
 
@@ -133,10 +134,10 @@ impl Task for analysis_task {
                     let context_reader = context.read().await;
                     let (sample, response) = if let Some(data) = context_reader.get(&self.dependency_id) {
                         // Downcast to the specific struct type
-                        if let Some(asr_result) = data.downcast_ref::<asr_task_output>() {
+                        if let Some(asr_result) = data.downcast_ref::<AsrTaskOutput>() {
                             (asr_result.example.clone(), asr_result.response.clone())
                         } else {
-                            eprintln!("无法将数据转换为 asr_task_output 类型");
+                            eprintln!("无法将数据转换为 AsrTaskOutput 类型");
                             return Err("数据类型转换失败".into());
                         }
                     } else {
