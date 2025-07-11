@@ -59,7 +59,7 @@ export default function SettingsView() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-6 bg-white">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight">设置</h1>
         <p className="text-muted-foreground">配置应用程序和测试参数</p>

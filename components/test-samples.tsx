@@ -7,15 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import type { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/ui/data-table";
 import type { TestSample } from "@/types/api";
-import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import {
-  selectAllSamples,
-  selectSelectedSampleIds,
-  selectSamplesStatus,
-  setSelectedSamples,
-  setSamples,
-  fetchSamples,
-} from "@/store/samplesSlice";
+import { useTauriSamples } from "@/hooks/useTauriSamples"; // New hook
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +26,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -45,6 +48,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { TauriAudioApiService } from "@/services/tauri-audio-api";
 
 interface TestSamplesProps {
   initialPageSize?: number;
@@ -53,81 +57,71 @@ interface TestSamplesProps {
 
 export function TestSamples({
   initialPageSize,
-  onDeleteSample,
+  onDeleteSample, // This prop might need to be re-evaluated or removed if delete is handled by the hook directly
 }: TestSamplesProps = {}) {
-  const samples = useAppSelector(selectAllSamples);
-  const selectedSample = useAppSelector(selectSelectedSampleIds);
-  const dispatch = useAppDispatch();
+  const {
+    samples,
+    selectedSampleIds,
+    isLoading, // Renamed from loading to avoid conflict with local loading if any
+    error: samplesError, // Renamed to avoid conflict
+    fetchAllSamples,
+    createSample,
+    // createSamplesBatch, // Used by importSamplesFromExcel
+    deleteSample: deleteSampleHook, // Renamed to avoid conflict
+    setSelectedSampleIds: setSelectedSampleIdsHook, // Renamed
+    importSamplesFromExcel,
+  } = useTauriSamples();
+  // const dispatch = useAppDispatch(); // May not be needed if all sample logic moves to hook
   const [newSampleText, setNewSampleText] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // const [loading, setLoading] = useState(true); // Replaced by isLoading from hook
+  // const [error, setError] = useState<string | null>(null); // Replaced by samplesError from hook
   const [importFile, setImportFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { playMatchedAudio } = useAudioPlayer();
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+  const [sampleForDetail, setSampleForDetail] = useState<TestSample | null>(
+    null
+  );
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [sampleToDelete, setSampleToDelete] = useState<TestSample | null>(null);
 
-  const handleAddCustomSample = () => {
+  const handleAddCustomSample = async () => {
     if (!newSampleText.trim()) return;
-
-    const newSample: TestSample = {
-      id: -Date.now(), // 使用负时间戳确保唯一
-      text: newSampleText,
-    };
-
-    dispatch(setSamples([...samples, newSample]));
-    setNewSampleText("");
-    setIsDialogOpen(false);
+    const createdId = await createSample(newSampleText);
+    if (createdId) {
+      setNewSampleText("");
+      setIsDialogOpen(false);
+      // fetchAllSamples(); // createSample in hook already calls fetchAllSamples
+    }
+    // Error handling is done within the hook via toast
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setImportFile(e.target.files[0]);
+      setImportFile(e.target.files[0]); // Keep local state for the file object
     }
   };
 
-  const handleImportExcel = () => {
+  const handleImportExcel = async () => {
     if (!importFile) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: "array" });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json<{
-          序号: number;
-          语料: string;
-        }>(firstSheet);
-
-        if (jsonData.length > 0) {
-          const newSamples = jsonData.map((row) => ({
-            id: -Date.now() - row.序号,
-            text: row.语料,
-          }));
-
-          dispatch(setSamples([...samples, ...newSamples]));
-          setImportFile(null);
-          if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-          }
-        }
-        setIsDialogOpen(false);
-      } catch (error) {
-        setError("Excel文件解析失败");
+    const result = await importSamplesFromExcel(importFile);
+    if (result) {
+      // Successfully imported, toast is handled by hook
+      setImportFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
       }
-    };
-    reader.readAsArrayBuffer(importFile);
+      setIsDialogOpen(false);
+    }
+    // Error handling is done within the hook via toast
   };
 
-  const samplesStatus = useAppSelector(selectSamplesStatus);
+  // const samplesStatus = useAppSelector(selectSamplesStatus); // Removed
 
-  useEffect(() => {
-    if (samples.length === 0 && samplesStatus !== "loading") {
-      dispatch(fetchSamples());
-    }
-    setLoading(false);
-  }, [dispatch, samples.length, samplesStatus]);
+  // useEffect(() => { // This is handled by the useTauriSamples hook's own useEffect
+  //   fetchAllSamples();
+  // }, [fetchAllSamples]);
 
   const columns: ColumnDef<TestSample>[] = [
     {
@@ -138,14 +132,28 @@ export function TestSamples({
             table.getIsAllPageRowsSelected() ||
             (table.getIsSomePageRowsSelected() && "indeterminate")
           }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          onCheckedChange={(value) => {
+            table.toggleAllPageRowsSelected(!!value);
+            const allRowIds = table
+              .getCoreRowModel()
+              .rows.map((r) => r.original.id);
+            setSelectedSampleIdsHook(!!value ? allRowIds : []);
+          }}
           aria-label="Select all"
         />
       ),
       cell: ({ row }) => (
         <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          checked={selectedSampleIds.includes(row.original.id)}
+          onCheckedChange={(value) => {
+            row.toggleSelected(!!value);
+            const currentId = row.original.id;
+            setSelectedSampleIdsHook(
+              !!value
+                ? [...selectedSampleIds, currentId]
+                : selectedSampleIds.filter((id) => id !== currentId)
+            );
+          }}
           aria-label="Select row"
           onClick={(e) => e.stopPropagation()}
         />
@@ -223,7 +231,8 @@ export function TestSamples({
       cell: ({ row }) => {
         const sample = row.original;
         const handlePlay = () => {
-          playMatchedAudio(sample.text).catch(console.error);
+          // playMatchedAudio(sample.text).catch(console.error);
+          TauriAudioApiService.playMatchAudio(sample.text).catch(console.error);
         };
 
         return (
@@ -261,26 +270,33 @@ export function TestSamples({
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>操作</DropdownMenuLabel>
                 <DropdownMenuItem
-                  onClick={() =>
-                    dispatch(setSelectedSamples([...selectedSample, sample.id]))
-                  }
+                  onClick={() => {
+                    if (!selectedSampleIds.includes(sample.id)) {
+                      setSelectedSampleIdsHook([
+                        ...selectedSampleIds,
+                        sample.id,
+                      ]);
+                    }
+                  }}
                 >
                   选择
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={(e)=> {
-                  e.stopPropagation();
-                  setIsDetailDialogOpen(true)}}>详情</DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSampleForDetail(sample); // Set the sample for detail view
+                    setIsDetailDialogOpen(true);
+                  }}
+                >
+                  详情
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (
-                      confirm("确定要删除这条测试语料吗？") &&
-                      onDeleteSample
-                    ) {
-                      onDeleteSample(sample.id);
-                    }
+                    setSampleToDelete(sample);
+                    setIsDeleteConfirmOpen(true);
                   }}
                   className="text-destructive focus:text-destructive"
                 >
@@ -299,28 +315,27 @@ export function TestSamples({
       <CardHeader className="rounded-lg bg-background p-3 flex flex-col space-y-2 border-b">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground">测试语料</h3>
-          <Badge variant="outline" className="bg-muted">
-            {loading ? "加载中..." : `${samples.length} 条记录`}
-          </Badge>
+          <Button onClick={() => setIsDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            添加自定义指令
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="flex-1 p-4 overflow-auto">
-        {loading ? (
+        {isLoading && samples.length === 0 ? ( // Show skeleton only on initial load
           <div className="space-y-3">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
-        ) : error ? (
+        ) : samplesError ? (
           <div className="p-4 text-center text-destructive">
-            <p>{error}</p>
+            <p>{samplesError}</p>
             <Button
               variant="outline"
               className="mt-2"
-              onClick={() =>
-                dispatch(fetchSamples()).catch(() => setError("重试失败"))
-              }
+              onClick={fetchAllSamples} // Retry fetching
             >
               重试
             </Button>
@@ -331,34 +346,38 @@ export function TestSamples({
             initialPageSize={initialPageSize}
             data={samples || []}
             onRowClick={(row) => {
-              // 如果行已经被选中，则取消选择；否则添加到选择中
-              if (selectedSample.includes(row.id)) {
-                dispatch(
-                  setSelectedSamples(
-                    selectedSample.filter((id) => id !== row.id)
-                  )
+              const currentId = row.id as number;
+              if (selectedSampleIds.includes(currentId)) {
+                setSelectedSampleIdsHook(
+                  selectedSampleIds.filter((id) => id !== currentId)
                 );
               } else {
-                dispatch(setSelectedSamples([...selectedSample, row.id]));
+                setSelectedSampleIdsHook([...selectedSampleIds, currentId]);
               }
             }}
-            selectedRowId={selectedSample}
+            // selectedRowId prop might need adjustment based on DataTable's API if it expects a single ID
+            // For multiple selections, DataTable's internal state or rowSelection prop is usually used.
+            // The Checkbox in columns now directly updates selectedSampleIdsHook.
+            // The DataTable component itself will need to be configured to use an external row selection state
+            // if we want to control it fully from selectedSampleIds.
+            // For now, removing these props as they are causing TS errors and selection is handled by checkboxes.
+            // rowSelection={
+            //   samples.reduce((acc, sample) => {
+            //     acc[sample.id.toString()] = selectedSampleIds.includes(sample.id);
+            //     return acc;
+            //   }, {} as Record<string, boolean>)
+            // }
+            // setRowSelection={(updater: any) => { // Added 'any' to temporarily resolve TS error, but this needs proper typing or removal
+            //     // This logic needs to be robust if DataTable provides functional updater
+            // }}
             filterPlaceholder="搜索语音指令..."
-            onSelectRows={(selectedRows) => {
-              // Extract IDs from selected rows and update the selection state
-              const selectedIds = selectedRows.map((row) => row.id as number);
-              dispatch(setSelectedSamples(selectedIds));
-            }}
+            // onSelectRows prop might be part of a custom DataTable or an older version.
+            // Standard TanStack Table uses `onRowSelectionChange` or direct state management.
+            // For now, individual checkbox clicks and toggleAllPageRowsSelected handle selection.
           />
         )}
       </CardContent>
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogTrigger asChild>
-          <Button size="sm" className="flex mx-4 mb-4 gap-1">
-            <Plus className="h-4 w-4" />
-            添加自定义指令
-          </Button>
-        </DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>添加自定义语音指令</DialogTitle>
@@ -398,20 +417,86 @@ export function TestSamples({
                   导入Excel
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                请确保Excel文件包含"序号"和"语料"列
-              </p>
+              <div className="flex flex-row items-center">
+                <p className="text-xs text-muted-foreground text-center">
+                  请确保Excel文件包含"序号"和"语料"列
+                </p>
+                <Button variant={"link"} size={"sm"}>打开模版</Button>
+              </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
-      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
-        <DialogContent>
+      <Dialog
+        open={isDetailDialogOpen}
+        onOpenChange={(isOpen) => {
+          setIsDetailDialogOpen(isOpen);
+          if (!isOpen) {
+            setSampleForDetail(null); // Clear sample when dialog closes
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>详情</DialogTitle>
+            <DialogTitle>样本详情</DialogTitle>
           </DialogHeader>
+          {sampleForDetail && (
+            <div className="grid gap-4 py-4">
+              <div>
+                <h4 className="font-medium mb-1">ID:</h4>
+                <p className="text-sm text-muted-foreground">
+                  {sampleForDetail.id}
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium mb-1">指令文本:</h4>
+                <p className="text-sm text-muted-foreground bg-gray-100 dark:bg-gray-800 p-2 rounded">
+                  {sampleForDetail.text}
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium mb-1">状态:</h4>
+                <p className="text-sm text-muted-foreground">
+                  {sampleForDetail.status || "N/A"}
+                </p>
+              </div>
+              {/* Add more details as needed, e.g., associated tasks, creation date */}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={isDeleteConfirmOpen}
+        onOpenChange={setIsDeleteConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              您确定要删除测试语料 "<strong>{sampleToDelete?.text}</strong>"
+              (ID: {sampleToDelete?.id})吗?
+              此操作无法撤销。如果此语料正被某些任务使用，安全删除可能会失败。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSampleToDelete(null)}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (sampleToDelete) {
+                  await deleteSampleHook(sampleToDelete.id, true); // Using safe delete
+                  setSampleToDelete(null);
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

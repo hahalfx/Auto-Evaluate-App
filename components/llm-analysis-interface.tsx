@@ -4,25 +4,27 @@ import { AnalysisResults } from "./analysis-results";
 import { MachineResponse } from "./machine-response";
 import { ProgressBar } from "./progress-bar";
 import { useLLMAnalysis } from "@/hooks/useLLMAnalysis";
-import { useEffect, useState } from "react";
+import { useEffect } from "react"; // Removed useState as showExportDialog is not used
 import { store } from "@/store";
-import CV from "./custom/cv";
-import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { selectTasksStatus, setCurrentTask } from "@/store/taskSlice";
+// import CV from "./custom/cv"; // Commented out as not used
+// import { useParams } from "next/navigation"; // Removed useParams
+import { setCurrentTask } from "@/store/taskSlice";
 import { useAppDispatch } from "@/store/hooks";
-import { Button } from "./ui/button";
-import { ArrowLeft, Download, Save } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "./ui/alert-dialog";
-import Link from "next/link";
+import { tauriGetCurrentTask } from "@/services/tauri-analysis-api"; // Removed tauriSetCurrentTask
+// import type { Task as TauriTask } from "@/types/tauri"; // TauriTask type not directly used here, taskFromBackend is cast to any
+// import { Button } from "./ui/button"; // Commented out as Button instances are commented
+// import { ArrowLeft, Download, Save } from "lucide-react"; // Commented out
+// import {
+//   AlertDialog,
+//   AlertDialogCancel,
+//   AlertDialogContent,
+//   AlertDialogDescription,
+//   AlertDialogFooter,
+//   AlertDialogHeader,
+//   AlertDialogTitle,
+//   AlertDialogTrigger,
+// } from "./ui/alert-dialog"; // Commented out
+// import Link from "next/link"; // Commented out
 import OCRPage from "./ocr";
 
 export function LLMAnalysisInterface() {
@@ -36,8 +38,8 @@ export function LLMAnalysisInterface() {
     isPlaying,
     isRecording,
     machineResponseRef,
-    handleStartAutomatedTest,
-    handleAnalysis,
+    handleStartAutomatedTest, // This is the name returned by the hook now
+    handleAnalysis,         // This is the name returned by the hook now
     getCurrentResult,
     hasPreviousResult,
     hasNextResult,
@@ -46,115 +48,75 @@ export function LLMAnalysisInterface() {
     getCurrentSampleText,
     getCurrentTestSampleText,
     selectedSample,
-    handleDeleteSample,
+    // handleDeleteSample, // This was from the hook, ensure it's used if needed or remove
   } = useLLMAnalysis();
 
-  // 动态路由获取任务ID
-  const params = useParams();
-
-  const Id = params.Id;
-  const status = store.getState().tasks.status;
-  const currentTask = store.getState().tasks.currentTask;
-  // 获取Redux dispatch函数，用于派发actions
+  // const params = useParams(); // Removed
+  // const Id = params.Id; // Removed
+  // const status = store.getState().tasks.status; // We'll fetch directly, so Redux status less critical here
+  const currentReduxTask = store.getState().tasks.currentTask; // Still useful for comparison
   const dispatch = useAppDispatch();
 
   useEffect(() => {
-    if (Id && status === "succeeded") {
-      console.log("当前任务ID:", Id);
-      const taskId = parseInt(Id as string);
+    // const taskIdFromParam = Id ? parseInt(Id as string) : null; // Removed
 
-      const selectedTask = store
-        .getState()
-        .tasks.items.find((task) => task.id === taskId);
+    // if (taskIdFromParam !== null) { // Removed condition based on URL param
+      // console.log("LLMAnalysisInterface: Attempting to set and fetch task for ID:", taskIdFromParam); // Removed
+      
+      const manageTaskLoading = async () => {
+        try {
+          // await tauriSetCurrentTask(taskIdFromParam); // Removed call to set task
+          // console.log("LLMAnalysisInterface: Backend current task ID set to", taskIdFromParam); // Removed
+          
+          console.log("LLMAnalysisInterface: Attempting to fetch current task from backend...");
+          const taskFromBackend = await tauriGetCurrentTask();
+          console.log("LLMAnalysisInterface: Fetched current task from backend:", taskFromBackend);
 
-      if (status === "succeeded") {
-        if (!selectedTask) {
-          console.error("未找到对应任务");
-          return;
+          if (taskFromBackend) {
+            // Ensure the fetched task ID matches the param ID, as backend's current task might differ // Comment irrelevant now
+            // if set_current_task failed silently or another process changed it. // Comment irrelevant now
+            // However, get_current_task should reflect what was just set by set_current_task. // Comment irrelevant now
+            // if (taskFromBackend.id === taskIdFromParam) { // Removed condition based on URL param
+              // Check if Redux needs update
+              if (!currentReduxTask || currentReduxTask.id !== taskFromBackend.id) {
+                // The fetched task is of type TauriTask. We need to ensure it's compatible
+                // with what setCurrentTask action expects (likely types/api.ts Task).
+                // For now, assuming they are compatible or will be made compatible.
+                // If not, a mapping function would be needed here.
+                dispatch(setCurrentTask(taskFromBackend as any)); // Use 'as any' for now if types differ slightly
+                console.log("LLMAnalysisInterface: Dispatched setCurrentTask with task from backend", taskFromBackend);
+              } else {
+                console.log("LLMAnalysisInterface: Redux task already up-to-date with backend task.");
+              }
+            // } else { // Removed else block for ID mismatch
+              // console.error(`LLMAnalysisInterface: Fetched task ID ${taskFromBackend.id} does not match param ID ${taskIdFromParam}.`);
+              // Handle this discrepancy, e.g. by clearing current task or showing error
+            // }
+          } else {
+            console.error("LLMAnalysisInterface: No current task returned from backend.");
+            // Potentially clear current task in Redux if it's stale
+            // if (currentReduxTask && currentReduxTask.id === taskIdFromParam) { // taskIdFromParam removed
+            //   // dispatch(setCurrentTask(null)); // Or an appropriate action to clear/indicate error
+            // }
+          }
+        } catch (error) {
+          console.error("LLMAnalysisInterface: Error getting current task from backend:", error);
+          // Handle error, e.g., show a toast or set an error state
         }
-      }
-      !currentTask && dispatch(setCurrentTask(selectedTask));
+      };
 
-      return;
-    }
-  }, [Id, status]);
+      manageTaskLoading();
+    // } // Removed closing bracket for URL param condition
+  }, [dispatch, currentReduxTask]); // Depend on dispatch and currentReduxTask
 
   return (
     <div>
-      {/* <div className="flex flex-col gap-4 px-6 pt-6 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <Link href="/taskmanage">
-              <Button variant="outline" size="icon" className="h-8 w-8">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <h2 className="text-3xl font-bold tracking-tight">
-              {currentTask?.name}
-            </h2>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <AlertDialog
-            open={showExportDialog}
-            onOpenChange={setShowExportDialog}
-          >
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <Download className="h-4 w-4" />
-                导出结果
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>导出测试结果</AlertDialogTitle>
-                <AlertDialogDescription>
-                  请选择导出格式：
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <div className="grid grid-cols-2 gap-4 py-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowExportDialog(false)}
-                >
-                  导出为Excel
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowExportDialog(false)}
-                >
-                  导出为PDF
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowExportDialog(false)}
-                >
-                  导出为CSV
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowExportDialog(false)}
-                >
-                  导出为JSON
-                </Button>
-              </div>
-              <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          <Button className="gap-2">
-            <Save className="h-4 w-4" />
-            保存结果
-          </Button>
-        </div>
-      </div> */}
-      {/* Main content */}
+      {/* Header section commented out, can be restored if needed */}
       <div className="grid grid-cols-3 p-6 gap-7 bg-background">
         <div className="row-span-3 row-start-1 col-start-1 col-span-2">
           {/* <TestSamples
               initialPageSize={4}
-              onDeleteSample={handleDeleteSample}
+              onDeleteSample={handleDeleteSample} // If TestSamples is used, ensure handleDeleteSample is passed
             /> */}
           {/* <CV /> */}
           <OCRPage />
@@ -164,15 +126,15 @@ export function LLMAnalysisInterface() {
             progress={taskProgress}
             progressname={progressName}
             samplelength={selectedSample.length}
-            onStartAutomatedTest={handleStartAutomatedTest}
+            onStartAutomatedTest={handleStartAutomatedTest} // Use the correct function from the hook
             isPlaying={isPlaying}
             isRecording={isRecording}
             isAnalyzing={loading}
             disabled={selectedSample.length === 0}
             goToPreviousResult={goToPreviousResult}
-            hasPreviousResult={hasPreviousResult}
+            hasPreviousResult={hasPreviousResult} // Pass function reference
             goToNextResult={goToNextResult}
-            hasNextResult={hasNextResult}
+            hasNextResult={hasNextResult}     // Pass function reference
           />
         </div>
         <div className="row-start-4 col-start-1 col-span-2">
@@ -180,14 +142,13 @@ export function LLMAnalysisInterface() {
             ref={machineResponseRef}
             value={machineResponse}
             onChange={setMachineResponse}
-            onSubmit={handleAnalysis}
+            onSubmit={handleAnalysis} // Use the correct function from the hook
             isAnalyzing={loading}
             currentSampleText={getCurrentTestSampleText()}
           />
         </div>
         
         <div className="row-span-3 col-start-3">
-          {/* 添加结果导航按钮 */}
           <div className="flex flex-none items-center justify-between">
             <div className="text-sm text-muted-foreground">
               {selectedSample.length > 0 && (

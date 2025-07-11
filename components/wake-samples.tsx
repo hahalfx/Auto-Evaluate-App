@@ -299,9 +299,10 @@ export function WakeSamples({
       <CardHeader className="rounded-lg bg-background p-3 flex flex-col space-y-2 border-b">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground">测试语料</h3>
-          <Badge variant="outline" className="bg-muted">
-            {loading ? "加载中..." : `${samples.length} 条记录`}
-          </Badge>
+          <Button onClick={() => setIsDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            添加自定义指令
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="flex-1 p-4 overflow-auto">
@@ -353,12 +354,6 @@ export function WakeSamples({
         )}
       </CardContent>
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogTrigger asChild>
-          <Button size="sm" className="flex mx-4 mb-4 gap-1">
-            <Plus className="h-4 w-4" />
-            添加自定义指令
-          </Button>
-        </DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>添加自定义语音指令</DialogTitle>

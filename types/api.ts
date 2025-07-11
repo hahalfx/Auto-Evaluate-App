@@ -2,6 +2,7 @@
 export interface TestSample {
   id: number
   text: string
+  audio_file?: string | null; // Added audio_file
   status?: string
   repeats?: number
   result?: Record<number, AnalysisResult>
@@ -10,6 +11,7 @@ export interface TestSample {
 export interface WakeWord {
   id: number
   text: string
+  audio_file?: string | null; // Added audio_file
 }
   
 export interface Task {
@@ -67,18 +69,18 @@ export interface AnalysisResult {
     context: boolean
     multiRound: boolean
   }
-  test_time?: string
-  audioFile?: string;
-  recognitionFile?: string;
-  device?: string;
-  recognitionResult?: string;
+  test_time?: string | null;
+  audioFile?: string | null;
+  recognitionFile?: string | null;
+  device?: string | null;
+  recognitionResult?: string | null;
   insertionErrors?: number | null;
   deletionErrors?: number | null;
   substitutionErrors?: number | null;
   totalWords?: number | null;
-  referenceText?: string;
-  recognizedText?: string;
-  resultStatus?: string;
+  referenceText?: string | null;
+  recognizedText?: string | null;
+  resultStatus?: string | null;
   recognitionTime?: number | null;
   responseTime?: number | null;
 }
@@ -87,4 +89,11 @@ export interface AnalysisResult {
 export interface MachineResponseData {
   text: string
   connected: boolean
+}
+
+// 任务进度类型
+export interface TaskProgress {
+  value: number
+  current: number
+  total: number
 }
