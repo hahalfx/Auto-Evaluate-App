@@ -2,7 +2,7 @@
 "use client";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 // 1. 引入 Tauri API
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 // --- UI 组件引入 (保持不变) ---
 import {
@@ -35,6 +35,12 @@ interface RustOcrResultItem {
   bbox: [number, number, number, number]; // [x, y, width, height]
 }
 
+// 定义从 Channel 接收的事件类型
+interface OcrEvent {
+  data?: RustOcrResultItem[];
+  error?: string;
+}
+
 export function OCRVideoComponent() {
   // --- Refs (基本不变) ---
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -48,6 +54,8 @@ export function OCRVideoComponent() {
   });
   const isDrawingRef = useRef<{ x: number; y: number } | null>(null);
   const lastInitializedDeviceRef = useRef<string>("");
+
+  const messageHandlerRef = useRef<((event: OcrEvent) => void) | null>(null);
 
   // --- State (已简化) ---
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
@@ -80,85 +88,105 @@ export function OCRVideoComponent() {
     isCapturingRef.current = isCapturing;
   }, [isCapturing]);
 
-  // --- 摄像头和设备逻辑 (修复循环依赖) ---
-  const getVideoDevices = useCallback(async () => {
-    try {
-      await navigator.mediaDevices
-        .getUserMedia({ video: true })
-        .then((stream) => {
+  useEffect(() => {
+    // 使用一个变量来防止在组件卸载后继续执行异步代码
+    let isCancelled = false;
+
+    const setupCamera = async () => {
+      // 流程开始时，立即设置“正在初始化”状态，UI可以显示加载动画
+      setIsInitializing(true);
+      
+      try {
+        // --- 第一步：获取并授权设备列表 ---
+        // 为了获取列表，需要先请求一次权限
+        await navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+          // 拿到权限后立刻关闭这个临时的流
           stream.getTracks().forEach((track) => track.stop());
         });
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoInputs = devices.filter(
-        (d) => d.kind === "videoinput" && d.deviceId
-      );
-      setVideoDevices(videoInputs);
-      return videoInputs;
-    } catch (error) {
-      console.error("无法获取摄像头设备:", error);
-      toast({
-        title: "摄像头错误",
-        description: "无法获取视频设备列表，请检查权限。",
-        variant: "destructive",
-      });
-      return [];
-    } finally {
-      setDevicesLoaded(true);
-    }
-  }, [toast]);
 
-  const initCamera = useCallback(async () => {
-    if (!selectedDevice || isInitializing) return;
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoInputs = devices.filter((d) => d.kind === "videoinput" && d.deviceId);
+        
+        // 如果组件此时已被卸载，则中止后续所有操作
+        if (isCancelled) return;
 
-    // 防止重复初始化同一设备
-    if (
-      lastInitializedDeviceRef.current === selectedDevice &&
-      activeStreamRef.current
-    ) {
-      return;
-    }
+        setVideoDevices(videoInputs);
+        setDevicesLoaded(true);
 
-    if (initializationPromiseRef.current) {
-      try {
-        await initializationPromiseRef.current;
-      } catch (e) {}
-    }
+        // --- 第二步：决定要使用哪个设备 ---
+        const deviceToUse = selectedDevice || (videoInputs.length > 0 ? videoInputs[0].deviceId : null);
 
-    const promise = (async () => {
-      setIsInitializing(true);
-      try {
+        if (!deviceToUse) {
+          // 如果没有可用的摄像头，抛出一个明确的错误，会被下面的 catch 捕获
+          throw new Error("没有找到可用的摄像头设备。");
+        }
+        
+        // 如果计算出的设备与当前state中的不一致，更新它
+        // 这通常只在第一次加载时发生
+        if (deviceToUse !== selectedDevice) {
+          setSelectedDevice(deviceToUse);
+        }
+
+        // --- 第三步：真正打开并播放摄像头视频流 ---
+        
+        // 在获取新视频流之前，确保已关闭任何可能存在的旧视频流
         if (activeStreamRef.current) {
           activeStreamRef.current.getTracks().forEach((track) => track.stop());
         }
+        
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            deviceId: { exact: selectedDevice },
+            deviceId: { exact: deviceToUse },
             width: { ideal: 854 },
             height: { ideal: 480 },
           },
         });
+
+        if (isCancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        // 将视频流设置到 video 元素上
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          activeStreamRef.current = stream;
-          lastInitializedDeviceRef.current = selectedDevice;
+          activeStreamRef.current = stream; // 保存对当前活动流的引用
           await videoRef.current.play();
         }
+        
       } catch (error) {
-        console.error("摄像头初始化失败:", error);
+        // 【关键】捕获整个流程中的任何错误
+        if (isCancelled) return;
+        
+        console.error("摄像头设置过程中出错:", error);
+        // 使用 toast 向用户显示一个友好的错误提示，而不是抛出错误导致组件崩溃
         toast({
-          title: "摄像头初始化失败",
+          title: "摄像头错误",
           description: (error as Error).message,
           variant: "destructive",
         });
-        throw error;
+
       } finally {
-        setIsInitializing(false);
-        initializationPromiseRef.current = null;
+        // 无论成功还是失败，最后都将“正在初始化”状态设为 false
+        if (!isCancelled) {
+          setIsInitializing(false);
+        }
       }
-    })();
-    initializationPromiseRef.current = promise;
-    return promise;
-  }, [selectedDevice, toast]);
+    };
+
+    // 执行这个统一的设置函数
+    setupCamera();
+
+    // 这是这个 effect 的清理函数，在组件卸载时执行
+    return () => {
+      isCancelled = true;
+      // 确保在组件卸载时，摄像头一定会被关闭
+      if (activeStreamRef.current) {
+        activeStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      console.log("摄像头设置 effect 已清理，视频流已停止。");
+    };
+  }, [selectedDevice, toast]); // 依赖项现在非常简单和可控：仅在用户手动切换设备时重新运行
 
   /**
    * 辅助函数：将 canvas.toBlob() 的回调方式包装成 Promise
@@ -185,6 +213,7 @@ export function OCRVideoComponent() {
 
   // 3. 核心通讯函数：调用 Rust 后端
   const captureAndSend = useCallback(async () => {
+
     const video = videoRef.current;
     if (!video || video.videoWidth === 0 || video.paused) return;
 
@@ -225,14 +254,10 @@ export function OCRVideoComponent() {
       // C. 创建 Uint8Array 视图。Tauri 会对此进行优化传输。
       const encodedImageBytes = new Uint8Array(arrayBuffer);
 
-      const results = await invoke<RustOcrResultItem[]>("perform_ocr", {
+      invoke("perform_ocr", {
         imageData: encodedImageBytes,
-        width: canvas.width,
-        height: canvas.height,
       });
       const endTime = performance.now();
-
-      setOcrResults(results);
       setLastInferenceTime((endTime - startTime) / 1000);
     } catch (error) {
       console.error("OCR 命令调用失败:", error);
@@ -247,33 +272,86 @@ export function OCRVideoComponent() {
     }
   }, [toast]);
 
-  // 4. 开始/停止OCR识别函数
-  const startCapturing = useCallback(async () => {
-    try {
-      await invoke("perform_ocr_only");
-      toast({
-        title: "OCR 引擎已启动",
-        description: "现在开始进行实时文字识别。",
-      });
-      setIsCapturing(true);
-    } catch (error) {
-      console.error("启动OCR识别失败:", error);
-      toast({
-        title: "OCR识别启动失败",
-        description: String(error),
-        variant: "destructive",
-      });
-    }
-  }, [toast]);
-
+  // 5. 停止 OCR 会话
   const stopCapturing = useCallback(() => {
     setIsCapturing(false);
     setOcrResults([]);
-    toast({
-      title: "OCR 识别已停止",
-      description: "实时文字识别已停止。",
-    });
+
+    if (messageHandlerRef.current) {
+      messageHandlerRef.current = null;
+    }
+
+    invoke('stop_ocr_session').catch(console.error);
+
+    console.log("Channel and handler have been cleaned up.");
+    toast({ title: "OCR识别已停止" });
   }, [toast]);
+
+  useEffect(() => {
+    // 这个 Effect 只在组件第一次挂载时运行一次
+
+    // 返回一个清理函数，这个函数将在组件被卸载时自动执行
+    return () => {
+      console.log("OCR component unmounting. Cleaning up all resources.");
+      // 调用 stopCapturing 可以完美地停止所有正在运行的流程并清理 channel
+      stopCapturing();
+
+      // 确保摄像头也被关闭
+      if (activeStreamRef.current) {
+        activeStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [stopCapturing]); // 依赖 stopCapturing
+
+  // 4. 开始 OCR 会话
+  const startCapturing = useCallback(async () => {
+
+    const startTime = performance.now();
+    toast({ title: "正在启动 OCR 引擎..." });
+
+    // 创建持久的消息处理器
+    const messageHandler = (event: OcrEvent) => {
+      console.log("Raw channel event:", event);
+
+      if (event.data) {
+        console.log("Received OCR data:", event.data);
+        setOcrResults(event.data);
+      } else if (event.error) {
+        console.error("Backend OCR Error:", event.error);
+        toast({
+          title: "OCR执行失败",
+          description: event.error,
+          variant: "destructive",
+        });
+        stopCapturing();
+      } else {
+        console.warn("Unknown event format:", event);
+      }
+    };
+
+    // 保存处理器引用
+    messageHandlerRef.current = messageHandler;
+
+    // Create and configure the channel using the `.onmessage` property
+    const newChannel = new Channel<OcrEvent>();
+    newChannel.onmessage = messageHandler;
+
+    try {
+      // 可以保留一个预热/检查引擎状态的命令
+      await invoke("start_ocr_session", { channel: newChannel });
+    } catch (error) {
+      toast({
+        title: "OCR 引擎初始化失败",
+        description: String(error),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // D. 更新 UI 状态，激活 useEffect 中的循环
+    setIsCapturing(true);
+    toast({ title: "OCR 识别已启动", description: "实时文字识别进行中。" });
+  }, [toast, stopCapturing]);
 
   // --- ROI 和间隔设置函数 (保持不变) ---
   const clearRoi = useCallback(() => {
@@ -304,34 +382,6 @@ export function OCRVideoComponent() {
   const updateOcrInterval = useCallback((value: string) => {
     setOcrInterval(parseFloat(value));
   }, []);
-
-  // --- Effect Hooks (修复循环依赖) ---
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadDevices = async () => {
-      const devices = await getVideoDevices();
-      // 只在组件仍然挂载且没有选中设备时设置默认设备
-      if (isMounted && devices.length > 0 && !selectedDevice) {
-        setSelectedDevice(devices[0].deviceId || "default");
-      }
-    };
-
-    loadDevices();
-
-    return () => {
-      isMounted = false;
-      if (activeStreamRef.current) {
-        activeStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, []); // 移除依赖，只在组件挂载时执行一次
-
-  useEffect(() => {
-    if (devicesLoaded && selectedDevice) {
-      initCamera();
-    }
-  }, [devicesLoaded, selectedDevice]); // 移除 initCamera 依赖
 
   useEffect(() => {
     let animationFrameId: number;
@@ -391,7 +441,7 @@ export function OCRVideoComponent() {
       ctx.setLineDash([]);
     }
 
-    if (ocrResults.length > 0) {
+    if (ocrResults?.length || 0) {
       ocrResults.forEach((result) => {
         const { bbox, text, confidence } = result;
         const [x, y, w, h] = bbox;
@@ -559,6 +609,7 @@ export function OCRVideoComponent() {
                     <SelectValue placeholder="选择间隔" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="0">0 (30 FPS)</SelectItem>
                     <SelectItem value="0.1">0.1 (10 FPS)</SelectItem>
                     <SelectItem value="0.2">0.2 (5 FPS)</SelectItem>
                     <SelectItem value="0.5">0.5 (2 FPS)</SelectItem>
@@ -655,7 +706,7 @@ export function OCRVideoComponent() {
       </div>
 
       <div className="h-24 overflow-y-auto text-sm pr-2">
-        {ocrResults.length > 0 ? (
+        {ocrResults?.length || 0 ? (
           ocrResults.map((result, index) => (
             <div
               key={index}

@@ -6,25 +6,9 @@ import { ProgressBar } from "./progress-bar";
 import { useLLMAnalysis } from "@/hooks/useLLMAnalysis";
 import { useEffect } from "react"; // Removed useState as showExportDialog is not used
 import { store } from "@/store";
-// import CV from "./custom/cv"; // Commented out as not used
-// import { useParams } from "next/navigation"; // Removed useParams
 import { setCurrentTask } from "@/store/taskSlice";
 import { useAppDispatch } from "@/store/hooks";
 import { tauriGetCurrentTask } from "@/services/tauri-analysis-api"; // Removed tauriSetCurrentTask
-// import type { Task as TauriTask } from "@/types/tauri"; // TauriTask type not directly used here, taskFromBackend is cast to any
-// import { Button } from "./ui/button"; // Commented out as Button instances are commented
-// import { ArrowLeft, Download, Save } from "lucide-react"; // Commented out
-// import {
-//   AlertDialog,
-//   AlertDialogCancel,
-//   AlertDialogContent,
-//   AlertDialogDescription,
-//   AlertDialogFooter,
-//   AlertDialogHeader,
-//   AlertDialogTitle,
-//   AlertDialogTrigger,
-// } from "./ui/alert-dialog"; // Commented out
-// import Link from "next/link"; // Commented out
 import OCRPage from "./ocr";
 
 export function LLMAnalysisInterface() {
@@ -162,8 +146,6 @@ export function LLMAnalysisInterface() {
 
           <div className="flex-1 h-full overflow-auto">
             <AnalysisResults
-              result={getCurrentResult()}
-              loading={loading}
               error={error}
             />
           </div>

@@ -3,6 +3,7 @@ use crate::services::audio_controller::AudioController;
 use crate::services::workflow::ControlHandle;
 use std::sync::Arc;
 use serde::de::Expected;
+use tauri::ipc::Channel;
 use tokio::sync::Mutex;
 use reqwest::Client;
 use parking_lot::Mutex as ParkingLotMutex;
@@ -17,6 +18,7 @@ pub struct AppState {
     pub workflow_handle: Arc<Mutex<Option<ControlHandle>>>,
     pub http_client: Client,
     pub ocr_engine: Arc<ParkingLotMutex<Option<Tesseract>>>,
+    pub ocr_channel: Arc<Mutex<Option<Channel>>>, 
 }
 
 impl AppState {
@@ -36,6 +38,7 @@ impl AppState {
             workflow_handle: Arc::new(Mutex::new(None)),
             http_client: Client::new(),
             ocr_engine: Arc::new(ParkingLotMutex::new(None)),
+            ocr_channel: Arc::new(Mutex::new(None)),
         })
     }
 }

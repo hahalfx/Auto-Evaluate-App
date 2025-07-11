@@ -94,10 +94,8 @@ pub fn run() {
             commands::pause_workflow,
             commands::resume_workflow,
             commands::stop_workflow,
-            commands::test_audio_permissions,
-            commands::request_microphone_permission,
-            commands::check_microphone_permission,
-            commands::perform_ocr_only,
+            commands::start_ocr_session,
+            commands::stop_ocr_session,
             perform_ocr,
         ])
         .run(tauri::generate_context!())

@@ -10,6 +10,7 @@ use crate::services::ocr_engine::OcrResultItem;
 use crate::services::workflow::Workflow;
 use crate::state::AppState;
 use chrono::Utc;
+use tauri::ipc::Channel;
 use std::sync::Arc;
 use tauri::State;
 
@@ -415,124 +416,25 @@ pub async fn stop_workflow(state: State<'_, Arc<AppState>>) -> Result<(), String
 }
 
 #[tauri::command]
-pub async fn test_audio_permissions() -> Result<String, String> {
-    use cpal::traits::{DeviceTrait, HostTrait};
-    use log::{error, info};
-
-    let mut result = String::new();
-
-    let permission_result = request_microphone_permission().await;
-    match permission_result {
-        Ok(granted) => {
-            if granted {
-                info!("✅ 麦克风权限已授予");
-                result.push_str("✅ 麦克风权限已授予\n");
-            } else {
-                error!("❌ 麦克风权限被拒绝");
-                result.push_str("❌ 麦克风权限被拒绝\n");
-            }
-        }
-        Err(e) => {
-            error!("权限请求失败: {}", e);
-        }
-    }
-
-    // 测试音频主机
-    let host = cpal::default_host();
-    result.push_str(&format!("音频主机: {:?}\n", host.id()));
-
-    // 列出输入设备
-    match host.input_devices() {
-        Ok(devices) => {
-            let devices: Vec<_> = devices.collect();
-            result.push_str(&format!("可用输入设备数量: {}\n", devices.len()));
-
-            for (i, device) in devices.iter().enumerate() {
-                let name = device.name().unwrap_or_else(|_| format!("Device {}", i));
-                result.push_str(&format!("设备 {}: {}\n", i, name));
-
-                // 测试设备配置
-                match device.supported_input_configs() {
-                    Ok(configs) => {
-                        for config in configs {
-                            result.push_str(&format!(
-                                "  - 采样率: {:?}, 通道数: {}, 格式: {:?}\n",
-                                config.min_sample_rate(),
-                                config.channels(),
-                                config.sample_format()
-                            ));
-                        }
-                    }
-                    Err(e) => {
-                        result.push_str(&format!("  - 获取配置失败: {}\n", e));
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            result.push_str(&format!("获取输入设备失败: {}\n", e));
-        }
-    }
-
-    // 测试默认输入设备
-    match host.default_input_device() {
-        Some(device) => {
-            let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
-            result.push_str(&format!("默认输入设备: {}\n", name));
-
-            // 尝试创建音频流
-            use cpal::{SampleRate, StreamConfig};
-            let config = StreamConfig {
-                channels: 1,
-                sample_rate: SampleRate(16000),
-                buffer_size: cpal::BufferSize::Fixed(1024),
-            };
-
-            match device.build_input_stream(
-                &config,
-                |_data: &[f32], _: &cpal::InputCallbackInfo| {
-                    // 空回调
-                },
-                |err| {
-                    error!("音频流错误: {}", err);
-                },
-                None,
-            ) {
-                Ok(_stream) => {
-                    result.push_str("✅ 音频流创建成功\n");
-                }
-                Err(e) => {
-                    result.push_str(&format!("❌ 音频流创建失败: {}\n", e));
-                    result.push_str("这可能是权限问题，请检查系统设置中的麦克风权限\n");
-                }
-            }
-        }
-        None => {
-            result.push_str("❌ 未找到默认输入设备\n");
-        }
-    }
-
-    info!("音频权限测试结果:\n{}", result);
-    Ok(result)
-}
-
-#[tauri::command]
-pub async fn request_microphone_permission() -> Result<bool, String> {
-    permissions::request_microphone_permission()
-}
-
-#[tauri::command]
-pub async fn check_microphone_permission() -> Result<bool, String> {
-    Ok(permissions::check_microphone_permission())
-}
-
-#[tauri::command]
-pub async fn perform_ocr_only(
+pub async fn start_ocr_session(
     state: State<'_, Arc<AppState>>,
     app_handle: tauri::AppHandle,
+    channel: Channel,
 ) -> Result<(), String> {
+
+    *state.ocr_channel.lock().await = Some(channel);
+    println!("OCR Session Started. Channel registered.");
     // 只负责加载和初始化OCR引擎
     load_ocr_engine_on_demand(&**state, &app_handle)
         .await
         .map_err(|e| format!("Failed to load OCR engine: {}", e))
+}
+
+#[tauri::command]
+pub async fn stop_ocr_session(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    // 从 AppState 中移除 channel，它会被自动销毁
+    *state.ocr_channel.lock().await = None;
+    println!("OCR Session Stopped. Channel cleaned up.");
+    // 在函数末尾返回 Ok 表示成功
+    Ok(())
 }
