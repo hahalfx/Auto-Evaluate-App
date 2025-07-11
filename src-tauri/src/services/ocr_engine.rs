@@ -1,13 +1,10 @@
-// src-tauri/src/services/ocr_engine.rs
-
-use std::sync::Arc;
-
 use crate::state::AppState;
 use anyhow::anyhow;
+use image::DynamicImage;
+use std::sync::Arc;
 use tauri::{Manager, State};
 use tesseract::Tesseract;
 
-// This struct definition remains correct.
 #[derive(serde::Serialize, Clone)]
 pub struct OcrResultItem {
     text: String,
@@ -15,20 +12,17 @@ pub struct OcrResultItem {
     bbox: [i32; 4], // [x, y, width, height]
 }
 
-/// A helper function to parse the TSV data provided by Tesseract.
+/// Parses the TSV data from Tesseract into a structured Vec.
 fn parse_tsv_data(tsv: &str) -> anyhow::Result<Vec<OcrResultItem>> {
     let mut results = Vec::new();
-    // Split the TSV string into lines and skip the header row.
+    // Skip the header row.
     for line in tsv.lines().skip(1) {
         let columns: Vec<&str> = line.split('\t').collect();
         // A valid data line should have 12 columns.
         if columns.len() == 12 {
-            // Parse confidence, only proceed if it's a valid number.
+            // Only proceed if confidence is a valid number greater than 0.
             if let Ok(confidence) = columns[10].parse::<f32>() {
-                // Tesseract uses -1 for blocks that aren't recognized text.
-                // We only care about lines with actual text and positive confidence.
                 if confidence > 0.0 && !columns[11].trim().is_empty() {
-                    // Parse bounding box dimensions.
                     let left = columns[6].parse::<i32>()?;
                     let top = columns[7].parse::<i32>()?;
                     let width = columns[8].parse::<i32>()?;
@@ -45,54 +39,64 @@ fn parse_tsv_data(tsv: &str) -> anyhow::Result<Vec<OcrResultItem>> {
     }
     Ok(results)
 }
+
 #[tauri::command]
 pub async fn perform_ocr(
-    image_data: Vec<u8>,
-    width: u32,
-    height: u32,
-    state: State<'_, Arc<AppState>>
+    image_data: Vec<u8>, // No longer need width and height from frontend
+    state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<OcrResultItem>, String> {
     let ocr_engine_arc = state.ocr_engine.clone();
 
+    // Spawn a blocking task to avoid freezing the UI.
     let task_result = tokio::task::spawn_blocking(move || {
         let mut engine_guard = ocr_engine_arc.lock();
 
-        if let Some(tesseract) = engine_guard.take() {
-            // --- FIX: Use the correct API based on the documentation ---
+        // Decode the image from the bytes sent by the frontend.
+        // FIX 1: Use anyhow! for proper error conversion with `?`.
+        let img: DynamicImage =
+            image::load_from_memory(&image_data).map_err(|e| anyhow!("图像解码失败: {}", e))?;
 
-            // 1. Set the image using `set_frame`, which is designed for raw pixel data.
-            //    The methods consume `self`, so we chain them.
+        // Extract width and height from the decoded image itself.
+        let width = img.width();
+        let height = img.height();
+
+        // Take ownership of the Tesseract engine from the state.
+        if let Some(tesseract) = engine_guard.take() {
+            // FIX 2: Use `img.as_bytes()` to pass raw pixel data to the Tesseract API.
+            // The tesseract API consumes the instance, so we chain the calls.
             let mut recognized_tesseract = tesseract.set_frame(
-                &image_data,
+                img.as_bytes(),
                 width as i32,
                 height as i32,
-                4, // bytes_per_pixel for RGBA
-                width as i32 * 4, // bytes_per_line
+                4,                // Bytes per pixel for RGBA
+                width as i32 * 4, // Bytes per line
             )?;
 
-            // 2. Get the results as a TSV string.
-            //    The `get_tsv_text` method takes `&mut self`.
+            // Get the recognition result as a TSV string.
             let tsv_data = recognized_tesseract.get_tsv_text(0)?;
 
-            // 3. IMPORTANT: Put the Tesseract instance back into the state so it can be reused.
+            // IMPORTANT: Place the Tesseract instance back into the state for reuse.
             *engine_guard = Some(recognized_tesseract);
 
-            // 4. Parse the TSV data to get structured results.
+            // Parse the TSV data into our structured format.
             parse_tsv_data(&tsv_data)
         } else {
-            Err(anyhow!("OCR engine is not initialized. Please start the workflow first."))
+            Err(anyhow!(
+                "OCR engine not initialized. Please start the workflow first."
+            ))
         }
     })
     .await;
 
+    // Handle the result from the spawned task and map errors to String for the frontend.
     match task_result {
         Ok(ocr_result) => ocr_result.map_err(|e| e.to_string()),
         Err(join_error) => Err(join_error.to_string()),
     }
 }
 
-
-// This function does not need any changes.
+/// Loads the OCR engine on demand and stores it in the application state.
+// This function did not require changes.
 pub async fn load_ocr_engine_on_demand(
     state: &AppState,
     app_handle: &tauri::AppHandle,
@@ -107,11 +111,14 @@ pub async fn load_ocr_engine_on_demand(
     let tessdata_path = app_handle
         .path()
         .resolve("tessdata", tauri::path::BaseDirectory::Resource)?;
-    std::env::set_var("TESSDATA_PREFIX", tessdata_path);
-    
-    let engine = tokio::task::spawn_blocking(|| {
-        Tesseract::new(None, Some("chi_sim"))
-    }).await??;
+
+    // Set the TESSDATA_PREFIX environment variable so Tesseract knows where to find language files.
+    std::env::set_var("TESSDATA_PREFIX", &tessdata_path);
+
+    let engine = tokio::task::spawn_blocking(move || {
+        Tesseract::new(Some(tessdata_path.to_str().unwrap()), Some("chi_sim"))
+    })
+    .await??;
 
     *state.ocr_engine.lock() = Some(engine);
 
