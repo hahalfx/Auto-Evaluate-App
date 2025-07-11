@@ -4,6 +4,7 @@ mod state;
 mod services;
 mod commands;
 mod permissions;
+use crate::services::ocr_engine::perform_ocr;
 
 use state::AppState;
 use std::sync::Arc;
@@ -96,6 +97,8 @@ pub fn run() {
             commands::test_audio_permissions,
             commands::request_microphone_permission,
             commands::check_microphone_permission,
+            commands::perform_ocr_only,
+            perform_ocr,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

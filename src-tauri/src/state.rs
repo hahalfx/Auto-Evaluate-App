@@ -5,8 +5,10 @@ use std::sync::Arc;
 use serde::de::Expected;
 use tokio::sync::Mutex;
 use reqwest::Client;
+use parking_lot::Mutex as ParkingLotMutex;
+use tesseract::Tesseract;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AppState {
     pub db: Arc<DatabaseService>,
     pub current_task_id: Arc<tokio::sync::RwLock<Option<i64>>>,
@@ -14,6 +16,7 @@ pub struct AppState {
     pub audio_controller: AudioController,// 这个音频控制器如果后面不用可以删掉
     pub workflow_handle: Arc<Mutex<Option<ControlHandle>>>,
     pub http_client: Client,
+    pub ocr_engine: Arc<ParkingLotMutex<Option<Tesseract>>>,
 }
 
 impl AppState {
@@ -32,6 +35,7 @@ impl AppState {
             audio_controller,
             workflow_handle: Arc::new(Mutex::new(None)),
             http_client: Client::new(),
+            ocr_engine: Arc::new(ParkingLotMutex::new(None)),
         })
     }
 }

@@ -4,6 +4,9 @@ use crate::services::analysis_task::analysis_task;
 use crate::services::asr_task::AsrTask;
 use crate::services::audio_task::audio_task;
 use crate::services::finish_task::finish_task;
+use crate::services::ocr_engine::load_ocr_engine_on_demand;
+use crate::services::ocr_engine::perform_ocr;
+use crate::services::ocr_engine::OcrResultItem;
 use crate::services::workflow::Workflow;
 use crate::state::AppState;
 use chrono::Utc;
@@ -521,4 +524,15 @@ pub async fn request_microphone_permission() -> Result<bool, String> {
 #[tauri::command]
 pub async fn check_microphone_permission() -> Result<bool, String> {
     Ok(permissions::check_microphone_permission())
+}
+
+#[tauri::command]
+pub async fn perform_ocr_only(
+    state: State<'_, Arc<AppState>>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    // 只负责加载和初始化OCR引擎
+    load_ocr_engine_on_demand(&**state, &app_handle)
+        .await
+        .map_err(|e| format!("Failed to load OCR engine: {}", e))
 }
