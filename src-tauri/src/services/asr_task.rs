@@ -418,6 +418,9 @@ impl Task for AsrTask {
                     if self.session.is_none() {
                         println!("[{}] Initializing ASR session...", self.id);
 
+                        //控制ocr任务同步开始
+                        app_handle.emit("ocr_event", "start".to_string()).ok();
+
                         dotenv::dotenv().ok();
                         let appid = env::var("APPID").map_err(|e| e.to_string())?;
                         let api_key = env::var("API_KEY").map_err(|e| e.to_string())?;
@@ -473,12 +476,17 @@ impl Task for AsrTask {
                                                 context.write().await.insert(self.id(), Box::new(output));
                                                 self.session = None;
                                                 app_handle.emit("asr_event", "complete".to_string()).ok();
+                                                //同时结束osr任务
+                                                app_handle.emit("ocr_event", "stop".to_string()).ok();
                                                 return Ok(());
                                             }
                                         }
                                     }
-                                    Ok(Message::Close(_)) => { self.session = None; return Err("WebSocket closed unexpectedly".into()); }
-                                    Err(e) => { self.session = None; return Err(Box::new(e)); }
+                                    Ok(Message::Close(_)) => { self.session = None;
+                                        app_handle.emit("ocr_event", "stop".to_string()).ok();
+                                        return Err("WebSocket closed unexpectedly".into()); }
+                                    Err(e) => { self.session = None; app_handle.emit("ocr_event", "stop".to_string()).ok();
+                                    return Err(Box::new(e)); }
                                     _ => {}
                                 }
                             }
@@ -490,6 +498,7 @@ impl Task for AsrTask {
                     if self.session.is_some() {
                         println!("[{}] Tearing down session for pause.", self.id);
                         app_handle.emit("asr_event", "pause".to_string()).ok();
+                        app_handle.emit("ocr_event", "stop".to_string()).ok();
                         self.session = None;
                     }
                     if control_rx.changed().await.is_err() {

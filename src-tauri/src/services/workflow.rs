@@ -4,14 +4,12 @@ use std::any::Any;
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::sync::Arc;
-use tokio::io::AsyncBufReadExt;
 use tokio::sync::{watch, RwLock};
 use tokio::task::JoinHandle;
 use tauri::{AppHandle};
 use tauri::Emitter;
 
 use crate::services::audio_controller::AudioController;
-use crate::services::audio_task::audio_task;
 
 pub type WorkflowContext = Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync>>>>;
 
@@ -174,10 +172,11 @@ impl WorkflowRunner {
                     let mut rx = self.control_rx.clone();
                     let ctx_clone = context.clone(); // <--- 克隆 Arc
                     let app_handle_clone = app_handle.clone();
+
                     println!("[Workflow] Spawning task '{}'.", task_id);
                     let handle = tokio::spawn(async move {
                         let result = task
-                            .execute(&mut rx, ctx_clone, app_handle_clone)
+                            .execute(&mut rx, ctx_clone, app_handle_clone)//在这里将任务控制信号接收器，工作流上下文，和应用程序句柄传递给任务执行函数
                             .await
                             .map_err(|e| e.to_string());
                         (task.id(), result)
@@ -229,7 +228,3 @@ impl WorkflowRunner {
         }
     }
 }
-
-// ===================================================================
-// 5. Main 函数 (构建并运行工作流)
-// ===================================================================

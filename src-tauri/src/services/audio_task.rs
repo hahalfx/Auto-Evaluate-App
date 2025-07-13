@@ -6,6 +6,7 @@ use crate::services::workflow::{ControlSignal, Task, WorkflowContext};
 pub struct audio_task {
     pub id: String,
     pub keyword: String,
+    pub url : Option<String>,
 }
 
 #[async_trait]
@@ -32,8 +33,9 @@ impl Task for audio_task {
                     
                     // 使用 tokio::task::block_in_place 在异步上下文中执行同步播放
                     let keyword = self.keyword.clone();
+                    let audio_dir = self.url.clone();
                     let result = tokio::task::block_in_place(|| {
-                        crate::services::audio_controller::play_matching_sync(&keyword)
+                        crate::services::audio_controller::play_matching_sync(&keyword, audio_dir)
                     });
                     
                     match result {

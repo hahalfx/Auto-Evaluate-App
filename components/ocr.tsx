@@ -27,12 +27,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { se } from "date-fns/locale";
 
 // 2. 定义与 Rust 后端匹配的类型
 interface RustOcrResultItem {
   text: string;
-  confidence: number;
-  bbox: [number, number, number, number]; // [x, y, width, height]
+  combined_bbox: [number, number, number, number]; // [x, y, width, height]
 }
 
 // 定义从 Channel 接收的事件类型
@@ -73,6 +74,7 @@ export function OCRVideoComponent() {
   const { toast } = useToast();
   const [isInitializing, setIsInitializing] = useState(false);
   const [devicesLoaded, setDevicesLoaded] = useState(false);
+  const [ocrTaskEvent, setOcrTaskEvent] = useState<string | null>(null);
 
   // --- Refs for Callbacks (保持不变) ---
   const roiRef = useRef(roi);
@@ -95,18 +97,22 @@ export function OCRVideoComponent() {
     const setupCamera = async () => {
       // 流程开始时，立即设置“正在初始化”状态，UI可以显示加载动画
       setIsInitializing(true);
-      
+
       try {
         // --- 第一步：获取并授权设备列表 ---
         // 为了获取列表，需要先请求一次权限
-        await navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
-          // 拿到权限后立刻关闭这个临时的流
-          stream.getTracks().forEach((track) => track.stop());
-        });
+        await navigator.mediaDevices
+          .getUserMedia({ video: true })
+          .then((stream) => {
+            // 拿到权限后立刻关闭这个临时的流
+            stream.getTracks().forEach((track) => track.stop());
+          });
 
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoInputs = devices.filter((d) => d.kind === "videoinput" && d.deviceId);
-        
+        const videoInputs = devices.filter(
+          (d) => d.kind === "videoinput" && d.deviceId
+        );
+
         // 如果组件此时已被卸载，则中止后续所有操作
         if (isCancelled) return;
 
@@ -114,13 +120,15 @@ export function OCRVideoComponent() {
         setDevicesLoaded(true);
 
         // --- 第二步：决定要使用哪个设备 ---
-        const deviceToUse = selectedDevice || (videoInputs.length > 0 ? videoInputs[0].deviceId : null);
+        const deviceToUse =
+          selectedDevice ||
+          (videoInputs.length > 0 ? videoInputs[0].deviceId : null);
 
         if (!deviceToUse) {
           // 如果没有可用的摄像头，抛出一个明确的错误，会被下面的 catch 捕获
           throw new Error("没有找到可用的摄像头设备。");
         }
-        
+
         // 如果计算出的设备与当前state中的不一致，更新它
         // 这通常只在第一次加载时发生
         if (deviceToUse !== selectedDevice) {
@@ -128,12 +136,12 @@ export function OCRVideoComponent() {
         }
 
         // --- 第三步：真正打开并播放摄像头视频流 ---
-        
+
         // 在获取新视频流之前，确保已关闭任何可能存在的旧视频流
         if (activeStreamRef.current) {
           activeStreamRef.current.getTracks().forEach((track) => track.stop());
         }
-        
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             deviceId: { exact: deviceToUse },
@@ -153,11 +161,10 @@ export function OCRVideoComponent() {
           activeStreamRef.current = stream; // 保存对当前活动流的引用
           await videoRef.current.play();
         }
-        
       } catch (error) {
         // 【关键】捕获整个流程中的任何错误
         if (isCancelled) return;
-        
+
         console.error("摄像头设置过程中出错:", error);
         // 使用 toast 向用户显示一个友好的错误提示，而不是抛出错误导致组件崩溃
         toast({
@@ -165,7 +172,6 @@ export function OCRVideoComponent() {
           description: (error as Error).message,
           variant: "destructive",
         });
-
       } finally {
         // 无论成功还是失败，最后都将“正在初始化”状态设为 false
         if (!isCancelled) {
@@ -187,6 +193,43 @@ export function OCRVideoComponent() {
       console.log("摄像头设置 effect 已清理，视频流已停止。");
     };
   }, [selectedDevice, toast]); // 依赖项现在非常简单和可控：仅在用户手动切换设备时重新运行
+
+  //后端任务控制信号监听
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    const setupListeners = async () => {
+      try {
+        unlisten = await listen("ocr_event", (event) => {
+          console.log("React Component 收到 ocr_event:", event.payload);
+          setOcrTaskEvent(String(event.payload));
+        });
+      } catch (error) {
+        console.error("监听 ocr_event 失败:", error);
+      }
+
+      return () => {
+        if (unlisten) {
+          try {
+            unlisten();
+            console.log("已取消监听");
+          } catch (error) {
+            console.error("取消监听失败:", error);
+          }
+        }
+      };
+    };
+
+    setupListeners();
+  }, []);
+
+  //任务状态更新
+  useEffect(() => { 
+    if (ocrTaskEvent === "start") {
+      startCapturing();
+    }else {
+      stopCapturing();
+    }
+  }, [ocrTaskEvent]);
 
   /**
    * 辅助函数：将 canvas.toBlob() 的回调方式包装成 Promise
@@ -213,7 +256,6 @@ export function OCRVideoComponent() {
 
   // 3. 核心通讯函数：调用 Rust 后端
   const captureAndSend = useCallback(async () => {
-
     const video = videoRef.current;
     if (!video || video.videoWidth === 0 || video.paused) return;
 
@@ -275,13 +317,13 @@ export function OCRVideoComponent() {
   // 5. 停止 OCR 会话
   const stopCapturing = useCallback(() => {
     setIsCapturing(false);
-    setOcrResults([]);
+    //setOcrResults([]);
 
     if (messageHandlerRef.current) {
       messageHandlerRef.current = null;
     }
 
-    invoke('stop_ocr_session').catch(console.error);
+    invoke("stop_ocr_session").catch(console.error);
 
     console.log("Channel and handler have been cleaned up.");
     toast({ title: "OCR识别已停止" });
@@ -305,7 +347,6 @@ export function OCRVideoComponent() {
 
   // 4. 开始 OCR 会话
   const startCapturing = useCallback(async () => {
-
     const startTime = performance.now();
     toast({ title: "正在启动 OCR 引擎..." });
 
@@ -443,14 +484,14 @@ export function OCRVideoComponent() {
 
     if (ocrResults?.length || 0) {
       ocrResults.forEach((result) => {
-        const { bbox, text, confidence } = result;
-        const [x, y, w, h] = bbox;
+        const { combined_bbox, text } = result;
+        const [x, y, w, h] = combined_bbox;
 
         ctx.strokeStyle = "red";
         ctx.lineWidth = 2;
         ctx.strokeRect(x, y, w, h);
 
-        const displayText = `${text} (${confidence.toFixed(1)}%)`;
+        const displayText = `${text}`;
         ctx.font = "bold 16px Arial";
         const textMetrics = ctx.measureText(displayText);
 
@@ -713,9 +754,6 @@ export function OCRVideoComponent() {
               className="flex justify-between items-center p-1.5 rounded hover:bg-gray-100"
             >
               <span className="text-gray-800">{result.text}</span>
-              <span className="text-primary font-mono text-xs font-semibold">
-                {result.confidence.toFixed(1)}%
-              </span>
             </div>
           ))
         ) : (

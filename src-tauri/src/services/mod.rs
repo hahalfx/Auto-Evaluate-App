@@ -5,3 +5,4 @@ pub mod asr_task;
 pub mod analysis_task;
 pub mod finish_task;
 pub mod ocr_engine;
+pub mod ocr_task;

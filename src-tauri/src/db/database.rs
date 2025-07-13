@@ -706,6 +706,19 @@ impl DatabaseService {
         Ok(result.last_insert_rowid())
     }
 
+    pub async fn get_wake_word_by_id(&self, wake_word_id: u32) -> Result<Option<WakeWord>> {
+        let row = sqlx::query_as::<_, WakeWordRow>("SELECT * FROM wake_words WHERE id = ?")
+            .bind(wake_word_id)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(row.map(|row| WakeWord {
+            id: row.id as u32,
+            text: row.text,
+            audio_file: row.audio_file,
+        }))
+    }
+
     // 分析结果相关操作
     pub async fn save_analysis_result(
         &self,

@@ -7,11 +7,12 @@ use crate::services::finish_task::finish_task;
 use crate::services::ocr_engine::load_ocr_engine_on_demand;
 use crate::services::ocr_engine::perform_ocr;
 use crate::services::ocr_engine::OcrResultItem;
+use crate::services::ocr_task::ocr_task;
 use crate::services::workflow::Workflow;
 use crate::state::AppState;
 use chrono::Utc;
-use tauri::ipc::Channel;
 use std::sync::Arc;
+use tauri::ipc::Channel;
 use tauri::State;
 
 #[tauri::command]
@@ -350,24 +351,47 @@ pub async fn new_workflow(
             .map(|sample| sample.text.clone())
             .ok_or("任务样本列表为空")?;
 
+        let task = state
+            .db
+            .get_task_by_id(task_id)
+            .await
+            .map_err(|e| format!("获取任务失败: {}", e))?
+            .ok_or("任务不存在")?;
+
+        let wakewordid = task.wake_word_id;
+        let wakeword = state
+            .db.get_wake_word_by_id(wakewordid).await
+            .map_err(|e| format!("获取唤醒词失败: {}", e))?
+            .ok_or("唤醒词不存在")?;
+
         // 为第一个样本创建工作流（简化版本，后续可以扩展为多样本）
         let sample_id = task_samples.first().map(|s| s.id).unwrap_or(0);
-        
+
+        workflow.add_task(audio_task {
+            id: "wakeword_task".to_string(),
+            keyword: wakeword.text.clone(),
+            url: Some("/Volumes/应用/LLM Analysis Interface/public/audio/wakeword".to_string()),
+        });
+
         workflow.add_task(audio_task {
             id: "audio_task".to_string(),
             keyword: keyword.clone(),
+            url: None,
         });
-        workflow.add_task(AsrTask::new(
-            "asr_task".to_string(),
-            keyword.clone(),
-        ));
+        workflow.add_task(AsrTask::new("asr_task".to_string(), keyword.clone()));
         workflow.add_task(analysis_task {
             id: "analysis_task".to_string(),
             dependency_id: "asr_task".to_string(),
             http_client: state.http_client.clone(),
         });
-        workflow.add_task(finish_task::new("finish_task".to_string(), task_id, sample_id, state.db.clone()));
-        
+        workflow.add_task(finish_task::new(
+            "finish_task".to_string(),
+            task_id,
+            sample_id,
+            state.db.clone(),
+        ));
+
+        workflow.add_dependency("audio_task", "wakeword_task");
         workflow.add_dependency("asr_task", "audio_task");
         workflow.add_dependency("analysis_task", "asr_task");
         workflow.add_dependency("finish_task", "analysis_task");
@@ -421,7 +445,6 @@ pub async fn start_ocr_session(
     app_handle: tauri::AppHandle,
     channel: Channel,
 ) -> Result<(), String> {
-
     *state.ocr_channel.lock().await = Some(channel);
     println!("OCR Session Started. Channel registered.");
     // 只负责加载和初始化OCR引擎

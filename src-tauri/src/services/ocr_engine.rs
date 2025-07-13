@@ -1,12 +1,13 @@
 use crate::state::AppState;
 use anyhow::anyhow;
 use image::DynamicImage;
+use std::cmp::{max, min};
 use std::sync::Arc;
 use tauri::{
     ipc::{Channel, InvokeResponseBody},
     Manager, State,
 };
-use tesseract::Tesseract;
+use tesseract::{OcrEngineMode, PageSegMode, Tesseract};
 
 #[derive(serde::Serialize, Clone)]
 pub struct OcrResultItem {
@@ -15,24 +16,46 @@ pub struct OcrResultItem {
     bbox: [i32; 4], // [x, y, width, height]
 }
 
+/// 代表一个或多个 OCR 文本行合并后的逻辑句子。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MergedSentence {
+    /// 合并后的完整句子文本
+    pub text: String,
+    /// 能完全包围所有被合并行的整合边界框 [left, top, width, height]
+    pub combined_bbox: [i32; 4],
+}
+
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "lowercase")] // 这会让前端收到的JSON key为小驼峰，如 data 或 error
 enum OcrEvent {
-    Data(Vec<OcrResultItem>),
+    Data(Vec<MergedSentence>),
     Error(String),
 }
 
-/// Parses the TSV data from Tesseract into a structured Vec.
+/// Parses the TSV data from Tesseract into a structured Vec based on a specific text level.
+/// This version uses `split_whitespace()` to robustly handle inconsistent separators.
+///
+/// Tesseract TSV levels:
+/// 1: Page
+/// 2: Block
+/// 3: Paragraph
+/// 4: Line
+/// 5: Word
 fn parse_tsv_data(tsv: &str) -> anyhow::Result<Vec<OcrResultItem>> {
     let mut results = Vec::new();
-    // Skip the header row.
+    const DESIRED_LEVEL: &str = "5"; // 目标层级：4 (文本行)
+
     for line in tsv.lines().skip(1) {
-        let columns: Vec<&str> = line.split('\t').collect();
-        // A valid data line should have 12 columns.
+        // ✅ 关键改动：使用 split_whitespace() 替换 split('\t')
+        let columns: Vec<&str> = line.split_whitespace().collect();
+
         if columns.len() == 12 {
-            // Only proceed if confidence is a valid number greater than 0.
-            if let Ok(confidence) = columns[10].parse::<f32>() {
-                if confidence > 0.0 && !columns[11].trim().is_empty() {
+            // 检查是否是我们想要的文本行层级
+            if columns[0] == DESIRED_LEVEL {
+                // 对于文本行，我们不再检查置信度是否大于0，
+                // 只需要确保识别出的文本（最后一列）不为空。
+                if !columns[11].trim().is_empty() {
+                    let confidence = columns[10].parse::<f32>().unwrap_or(-1.0);
                     let left = columns[6].parse::<i32>()?;
                     let top = columns[7].parse::<i32>()?;
                     let width = columns[8].parse::<i32>()?;
@@ -45,6 +68,9 @@ fn parse_tsv_data(tsv: &str) -> anyhow::Result<Vec<OcrResultItem>> {
                     });
                 }
             }
+        } else {
+            // (可选) 增加一个调试日志，看看哪些行没有被正确解析
+            // e.g., eprintln!("Skipping line with {} columns: {:?}", columns.len(), line);
         }
     }
     Ok(results)
@@ -91,12 +117,19 @@ pub async fn perform_ocr(
 
                 // Get the recognition result as a TSV string.
                 let tsv_data = recognized_tesseract.get_tsv_text(0)?;
+                println!("-- RAW TSV DATA --\n{}\n------------------", &tsv_data); // 加上这行来调试
 
                 // IMPORTANT: Place the Tesseract instance back into the state for reuse.
                 *engine_guard = Some(recognized_tesseract);
 
-                // Parse the TSV data into our structured format.
-                parse_tsv_data(&tsv_data)
+                // 1. 解析 TSV 数据，得到基于行的结果
+                let ocr_lines = parse_tsv_data(&tsv_data)?;
+
+                // 2. ✅ 调用我们的新函数，将文本行合并成句子
+                let final_sentences = merge_lines_into_sentences(&ocr_lines);
+
+                // 3. 将最终的句子结果返回
+                Ok(final_sentences)
             } else {
                 Err(anyhow!(
                     "OCR engine not initialized. Please start the workflow first."
@@ -136,11 +169,12 @@ pub async fn perform_ocr(
 }
 
 /// Loads the OCR engine on demand and stores it in the application state.
-// This function did not require changes.
 pub async fn load_ocr_engine_on_demand(
     state: &AppState,
     app_handle: &tauri::AppHandle,
 ) -> anyhow::Result<()> {
+    // Lock and check if the engine is already there.
+    // With parking_lot::Mutex, .lock() returns the guard directly.
     if state.ocr_engine.lock().is_some() {
         println!("OCR engine already loaded.");
         return Ok(());
@@ -152,16 +186,121 @@ pub async fn load_ocr_engine_on_demand(
         .path()
         .resolve("tessdata", tauri::path::BaseDirectory::Resource)?;
 
-    // Set the TESSDATA_PREFIX environment variable so Tesseract knows where to find language files.
     std::env::set_var("TESSDATA_PREFIX", &tessdata_path);
 
-    let engine = tokio::task::spawn_blocking(move || {
-        Tesseract::new(Some(tessdata_path.to_str().unwrap()), Some("chi_sim"))
+    // Clone the Arc so it can be moved into the blocking thread.
+    let ocr_engine_state_clone = state.ocr_engine.clone();
+
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        // Create the Tesseract instance
+        let mut ocr_engine = Tesseract::new_with_oem(
+            Some(
+                tessdata_path
+                    .to_str()
+                    .ok_or_else(|| anyhow!("Invalid tessdata path"))?,
+            ),
+            Some("chi_sim+eng"),
+            OcrEngineMode::LstmOnly,
+        )?;
+
+        // Configure the engine
+        ocr_engine.set_page_seg_mode(PageSegMode::PsmAuto);
+
+        println!("OCR engine loaded successfully. Acquiring lock to store it.");
+
+        // ✅ Acquire the parking_lot lock (no Result, no map_err)
+        let mut engine_guard = ocr_engine_state_clone.lock();
+
+        // Store the engine
+        *engine_guard = Some(ocr_engine);
+
+        Ok(())
     })
-    .await??;
+    .await??; // Propagate JoinError and the internal anyhow::Error
 
-    *state.ocr_engine.lock() = Some(engine);
-
-    println!("OCR engine loaded successfully.");
+    println!("OCR engine stored in state.");
     Ok(())
+}
+
+/// 将从 OCR 得到的、基于行的结果（OcrResultItem）合并成更符合逻辑的句子。
+///
+/// # Arguments
+///
+/// * `lines` - 一个 OcrResultItem 的切片，其中每个元素代表一个文本行。
+///
+/// # Returns
+///
+/// 一个 `MergedSentence` 的向量，其中每个元素代表一个完整的逻辑句子。
+pub fn merge_lines_into_sentences(lines: &[OcrResultItem]) -> Vec<MergedSentence> {
+    if lines.is_empty() {
+        return Vec::new();
+    }
+
+    let mut merged_sentences = Vec::new();
+    let mut current_sentence_lines: Vec<&OcrResultItem> = Vec::new();
+    let sentence_enders: &[char] = &['。', '！', '？', '.', '!', '?'];
+
+    for line_item in lines {
+        let trimmed_text = line_item.text.trim();
+        if trimmed_text.is_empty() {
+            continue;
+        }
+
+        // 将当前行加入到正在构建的句子中
+        current_sentence_lines.push(line_item);
+
+        // 检查当前行是否以句末标点结束
+        if let Some(last_char) = trimmed_text.chars().last() {
+            if sentence_enders.contains(&last_char) {
+                // 如果是，说明一个句子构建完毕，进行处理
+                finalize_sentence(&mut merged_sentences, &mut current_sentence_lines);
+            }
+        }
+    }
+
+    // 处理循环结束后剩余的、不成句的最后几行
+    finalize_sentence(&mut merged_sentences, &mut current_sentence_lines);
+
+    merged_sentences
+}
+
+/// 一个辅助函数，用于处理并终结一个句子的构建过程。
+fn finalize_sentence<'a>(
+    sentences_vec: &mut Vec<MergedSentence>,
+    lines_to_merge: &mut Vec<&'a OcrResultItem>,
+) {
+    if lines_to_merge.is_empty() {
+        return;
+    }
+
+    // 1. 合并文本
+    let combined_text = lines_to_merge
+        .iter()
+        .map(|item| item.text.as_str())
+        .collect::<String>();
+
+    // 2. 计算整合后的边界框
+    let mut min_x = i32::MAX;
+    let mut min_y = i32::MAX;
+    let mut max_x = i32::MIN;
+    let mut max_y = i32::MIN;
+
+    for item in lines_to_merge.iter() {
+        let bbox = item.bbox; // [left, top, width, height]
+        min_x = min(min_x, bbox[0]);
+        min_y = min(min_y, bbox[1]);
+        max_x = max(max_x, bbox[0] + bbox[2]);
+        max_y = max(max_y, bbox[1] + bbox[3]);
+    }
+
+    let combined_bbox = [min_x, min_y, max_x - min_x, max_y - min_y];
+
+    // 3. 创建并添加新的 MergedSentence
+    sentences_vec.push(MergedSentence {
+        text: combined_text,
+        combined_bbox,
+    });
+
+    // 4. 清空，为下一个句子做准备
+    lines_to_merge.clear();
 }
