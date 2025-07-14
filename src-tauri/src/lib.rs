@@ -99,6 +99,7 @@ pub fn run() {
             commands::stop_ocr_session,
             perform_ocr,
             commands::new_meta_workflow,
+            commands::delete_wake_word_safe,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
