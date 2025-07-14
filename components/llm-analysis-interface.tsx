@@ -107,7 +107,6 @@ export function LLMAnalysisInterface() {
         </div>
         <div className="row-start-1 col-start-3">
           <ProgressBar
-            progress={taskProgress}
             progressname={progressName}
             samplelength={selectedSample.length}
             onStartAutomatedTest={handleStartAutomatedTest} // Use the correct function from the hook

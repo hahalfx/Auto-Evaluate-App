@@ -51,10 +51,6 @@ pub struct Task {
     pub completed_samples: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TeatCase {
-    
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssessmentItem {
@@ -109,7 +105,8 @@ pub struct MachineResponseData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskProgress {
     pub value: f32,
-    pub current: u32,
+    pub current_sample: u32,
+    pub current_stage: Option<String>,
     pub total: u32,
 }
 

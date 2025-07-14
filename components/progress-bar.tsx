@@ -18,13 +18,9 @@ import {
   tauriPauseWorkflow,
   tauriResumeWorkflow,
 } from "@/services/tauri-analysis-api";
+import { TaskProgress } from "@/types/api";
 
 interface ProgressBarProps {
-  progress: {
-    value: number;
-    current: number;
-    total: number;
-  };
   progressname: string;
   samplelength: number;
   onStartAutomatedTest: () => void;
@@ -39,7 +35,6 @@ interface ProgressBarProps {
 }
 
 export function ProgressBar({
-  progress,
   progressname,
   samplelength,
   onStartAutomatedTest,
@@ -58,21 +53,43 @@ export function ProgressBar({
   >("idle");
 
   const [backendMessage, setBackendMessage] = useState("");
+  const [detailedProgress, setDetailedProgress] = useState<TaskProgress>({
+    value: 0,
+    current_sample: 0,
+    total: 0,
+  });
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
+    let unlistenprogress: UnlistenFn | undefined;
     const setupListeners = async () => {
       try {
         unlisten = await listen("workflow_event", (event) => {
           console.log("React Component 收到 workflow_event:", event.payload);
           setBackendMessage(
-            typeof event.payload === 'string' 
-              ? event.payload 
+            typeof event.payload === "string"
+              ? event.payload
               : JSON.stringify(event.payload)
           );
         });
       } catch (error) {
         console.error("监听 workflow_event 失败:", error);
+      }
+      try {
+        unlistenprogress = await listen("progress_update", (event) => {
+          console.log("React Component 收到 progress_update:", event.payload);
+          if (
+            typeof event.payload === "object" &&
+            event.payload !== null &&
+            "value" in event.payload &&
+            "current_sample" in event.payload &&
+            "total" in event.payload
+          ) {
+            setDetailedProgress(event.payload as TaskProgress);
+          }
+        });
+      } catch (error) {
+        console.error("监听 progress_update 失败:", error);
       }
 
       return () => {
@@ -84,9 +101,17 @@ export function ProgressBar({
             console.error("取消监听失败:", error);
           }
         }
+        if (unlistenprogress) {
+          try {
+            unlistenprogress();
+            console.log("已取消监听");
+          } catch (error) {
+            console.error("取消监听失败:", error);
+          }
+        }
       };
     };
-    
+
     setupListeners();
   }, []);
 
@@ -119,14 +144,14 @@ export function ProgressBar({
         </CardDescription>
       </CardHeader>
       <CardContent className="p-4">
-        <Progress value={progress.value} className="h-3" />
+        <Progress value={detailedProgress.value} className="h-3" />
         <div className="flex justify-between">
           <p className="text-sm text-muted-foreground py-1">
-            {progress.value}%
+            {detailedProgress.value}%
           </p>
           <p className="text-sm text-muted-foreground py-1">
-            {progress.total > 0
-              ? `正在测试第${progress.current}条，共${progress.total}条`
+            {detailedProgress.total > 0
+              ? `正在测试${detailedProgress?.current_sample}，共${samplelength}条`
               : `已选择${samplelength}条待测试`}
           </p>
         </div>

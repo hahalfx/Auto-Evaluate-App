@@ -114,37 +114,37 @@ pub async fn create_task(
         .map_err(|e| format!("创建任务失败: {}", e))
 }
 
-#[tauri::command]
-pub async fn get_task_progress(state: State<'_, Arc<AppState>>) -> Result<TaskProgress, String> {
-    let current_task_id = state.current_task_id.read().await;
-    if let Some(task_id) = *current_task_id {
-        let task = state
-            .db
-            .get_task_by_id(task_id)
-            .await
-            .map_err(|e| format!("获取任务失败: {}", e))?
-            .ok_or("任务不存在")?;
+// #[tauri::command]
+// pub async fn get_task_progress(state: State<'_, Arc<AppState>>) -> Result<TaskProgress, String> {
+//     let current_task_id = state.current_task_id.read().await;
+//     if let Some(task_id) = *current_task_id {
+//         let task = state
+//             .db
+//             .get_task_by_id(task_id)
+//             .await
+//             .map_err(|e| format!("获取任务失败: {}", e))?
+//             .ok_or("任务不存在")?;
 
-        let completed_count = state
-            .db
-            .get_analysis_results_by_task(task_id)
-            .await
-            .map_err(|e| format!("获取分析结果失败: {}", e))?
-            .len() as u32;
+//         let completed_count = state
+//             .db
+//             .get_analysis_results_by_task(task_id)
+//             .await
+//             .map_err(|e| format!("获取分析结果失败: {}", e))?
+//             .len() as u32;
 
-        Ok(TaskProgress {
-            value: task.task_progress.unwrap_or(0.0),
-            current: completed_count,
-            total: task.test_samples_ids.len() as u32,
-        })
-    } else {
-        Ok(TaskProgress {
-            value: 0.0,
-            current: 0,
-            total: 0,
-        })
-    }
-}
+//         Ok(TaskProgress {
+//             value: task.task_progress.unwrap_or(0.0),
+//             current: completed_count,
+//             total: task.test_samples_ids.len() as u32,
+//         })
+//     } else {
+//         Ok(TaskProgress {
+//             value: 0.0,
+//             current: 0,
+//             total: 0,
+//         })
+//     }
+// }
 
 #[tauri::command]
 pub async fn get_analysis_results(

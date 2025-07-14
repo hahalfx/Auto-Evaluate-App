@@ -5,6 +5,7 @@ use tauri::AppHandle;
 use tauri::Emitter;
 use tokio::sync::watch;
 
+use crate::models::TaskProgress;
 use crate::models::TestSample;
 use crate::models::WakeWord;
 use crate::services::analysis_task::analysis_task;
@@ -16,7 +17,6 @@ use crate::services::workflow::Task;
 use crate::services::workflow::Workflow;
 use crate::services::workflow::WorkflowContext;
 use crate::state::AppState;
-
 
 /// 这个任务是所有样本测试的“总指挥”
 pub struct meta_task_executor {
@@ -57,14 +57,32 @@ impl Task for meta_task_executor {
         _context: WorkflowContext, // 此元任务不使用共享上下文
         app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        
         let total = self.samples.len();
-        println!("[MetaTask '{}'] Starting execution of {} samples.", self.id, total);
-        app_handle.emit("meta_task_update", format!("总任务开始，共 {} 个样本。", total)).ok();
+        println!(
+            "[MetaTask '{}'] Starting execution of {} samples.",
+            self.id, total
+        );
+        app_handle
+            .emit(
+                "meta_task_update",
+                format!("总任务开始，共 {} 个样本。", total),
+            )
+            .ok();
 
         for (index, sample) in self.samples.iter().enumerate() {
-            println!("[MetaTask '{}'] Preparing sample {}/{}: '{}'", self.id, index + 1, total, sample.text);
-            app_handle.emit("meta_task_update", format!("开始处理样本 {}/{}: {}", index + 1, total, sample.text)).ok();
+            println!(
+                "[MetaTask '{}'] Preparing sample {}/{}: '{}'",
+                self.id,
+                index + 1,
+                total,
+                sample.text
+            );
+            app_handle
+                .emit(
+                    "meta_task_update",
+                    format!("开始处理样本 {}/{}: {}", index + 1, total, sample.text),
+                )
+                .ok();
 
             // 在执行每个子工作流前，检查外部控制信号
             // 使用tokio::select!以非阻塞方式检查
@@ -135,21 +153,46 @@ impl Task for meta_task_executor {
             sub_workflow.add_dependency(&asr_task_id, &audio_task_id);
             sub_workflow.add_dependency(&analysis_task_id, &asr_task_id);
             sub_workflow.add_dependency(&finish_task_id, &analysis_task_id);
-            
+
             // 4. 执行并等待子工作流完成
-            let result = sub_workflow.run_and_wait(app_handle.clone(), control_rx.clone()).await;
+            let result = sub_workflow
+                .run_and_wait(app_handle.clone(), control_rx.clone())
+                .await;
+            let value = (index + 1) as f32 / total as f32 * 100 as f32;
+            app_handle
+                .emit(
+                    "progress_update",
+                    TaskProgress {
+                        value,
+                        current_sample: (index + 1) as u32,
+                        current_stage: None,
+                        total: total as u32,
+                    },
+                )
+                .ok();
 
             if let Err(e) = result {
-                let error_message = format!("样本 '{}' 的子流程失败: {}. 终止所有任务。", sample.text, e);
+                let error_message =
+                    format!("样本 '{}' 的子流程失败: {}. 终止所有任务。", sample.text, e);
                 eprintln!("[MetaTask] {}", error_message);
                 app_handle.emit("meta_task_error", &error_message).ok();
                 return Err(error_message.into());
             }
-             app_handle.emit("meta_task_update", format!("样本 {} 处理成功。", sample.text)).ok();
+            app_handle
+                .emit(
+                    "meta_task_update",
+                    format!("样本 {} 处理成功。", sample.text),
+                )
+                .ok();
         }
 
-        println!("[MetaTask '{}'] All samples processed successfully.", self.id);
-        app_handle.emit("meta_task_update", "所有样本处理完成！").ok();
+        println!(
+            "[MetaTask '{}'] All samples processed successfully.",
+            self.id
+        );
+        app_handle
+            .emit("meta_task_update", "所有样本处理完成！")
+            .ok();
         Ok(())
     }
 }

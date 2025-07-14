@@ -94,6 +94,7 @@ export interface MachineResponseData {
 // 任务进度类型
 export interface TaskProgress {
   value: number
-  current: number
+  current_sample: number
+  current_stage?: string
   total: number
 }

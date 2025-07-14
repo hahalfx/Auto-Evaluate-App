@@ -74,7 +74,6 @@ pub fn run() {
             commands::get_all_samples,
             commands::get_all_wake_words,
             commands::create_task,
-            commands::get_task_progress,
             commands::get_analysis_results,
             commands::get_machine_responses,
             commands::create_sample,
