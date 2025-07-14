@@ -314,28 +314,34 @@ export function OCRVideoComponent() {
     }
   }, [toast]);
 
-  // 5. 停止 OCR 会话
+  // 5. 停止 OCR 会话 (自动关闭引擎)
   const stopCapturing = useCallback(() => {
     setIsCapturing(false);
-    //setOcrResults([]);
 
     if (messageHandlerRef.current) {
       messageHandlerRef.current = null;
     }
 
-    invoke("stop_ocr_session").catch(console.error);
+    invoke("stop_ocr_session")
+      .then(() => {
+        toast({ title: "OCR识别已停止" });
+        // 在停止会话后，自动关闭引擎
+        return invoke("shutdown_ocr_engine");
+      })
+      .then(() => {
+        console.log("OCR engine shutdown automatically.");
+      })
+      .catch(console.error);
 
-    console.log("Channel and handler have been cleaned up.");
-    toast({ title: "OCR识别已停止" });
+    console.log("Stop capturing process initiated.");
   }, [toast]);
 
   useEffect(() => {
     // 这个 Effect 只在组件第一次挂载时运行一次
-
     // 返回一个清理函数，这个函数将在组件被卸载时自动执行
     return () => {
       console.log("OCR component unmounting. Cleaning up all resources.");
-      // 调用 stopCapturing 可以完美地停止所有正在运行的流程并清理 channel
+      // 调用 stopCapturing 可以完美地停止所有正在运行的流程并清理 channel 和引擎
       stopCapturing();
 
       // 确保摄像头也被关闭
@@ -345,10 +351,22 @@ export function OCRVideoComponent() {
     };
   }, [stopCapturing]); // 依赖 stopCapturing
 
-  // 4. 开始 OCR 会话
+  // 4. 开始 OCR 会话 (自动启动引擎)
   const startCapturing = useCallback(async () => {
-    const startTime = performance.now();
     toast({ title: "正在启动 OCR 引擎..." });
+
+    try {
+      // 第一步：自动初始化引擎
+      await invoke("initialize_ocr_engine");
+      toast({ title: "引擎已就绪，正在准备识别会话..." });
+    } catch (error) {
+      toast({
+        title: "OCR 引擎启动失败",
+        description: String(error),
+        variant: "destructive",
+      });
+      return; // 引擎启动失败，则不继续
+    }
 
     // 创建持久的消息处理器
     const messageHandler = (event: OcrEvent) => {

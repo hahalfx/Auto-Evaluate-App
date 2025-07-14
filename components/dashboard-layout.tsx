@@ -18,21 +18,11 @@ import {
   MenuIcon,
   TestTube,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-//import { ModeToggle } from "@/components/ui/mode-toggle"
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import type { ReactNode } from "react";
 import Image from "next/image";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -72,25 +62,7 @@ const navItems: NavItem[] = [
     href: "/tauri-test",
     icon: <TestTube className="h-5 w-5" />,
   },
-  {
-    title: "Tauri麦克风测试",
-    href: "/audio-test",
-    icon: <TestTube className="h-5 w-5" />,
-  },
 ];
-
-// 路径到面包屑的映射
-const pathToBreadcrumb: Record<string, { title: string; parent?: string }> = {
-  "/": { title: "仪表盘" },
-  "/taskmanage": { title: "测试任务管理", parent: "/" },
-  "/llm-analysis": { title: "测试任务执行", parent: "/" },
-  "/taskmanage/create": { title: "新建测试任务", parent: "/taskmanage" },
-  "/casemanage": { title: "测试语料管理", parent: "/" },
-  "/reports": { title: "详细报告", parent: "/" },
-  "/history": { title: "历史数据", parent: "/" },
-  "/schedule": { title: "日程安排", parent: "/" },
-  "/settings": { title: "设置", parent: "/" },
-};
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -104,46 +76,6 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  // 生成面包屑导航项
-  const generateBreadcrumbs = () => {
-    const breadcrumbs = [];
-    let currentPath = pathname;
-
-    // 处理动态路由的面包屑
-    if (pathname.startsWith("/llm-analysis/")) {
-      const taskId = pathname.split("/").pop();
-      const task = activeTasks.find((t) => t.id === taskId);
-
-      if (task) {
-        breadcrumbs.unshift({
-          path: pathname,
-          title: `执行: ${task.name}`,
-        });
-        breadcrumbs.unshift({
-          path: "/llm-analysis",
-          title: "测试任务执行",
-        });
-        breadcrumbs.unshift({
-          path: "/",
-          title: "仪表盘",
-        });
-        return breadcrumbs;
-      }
-    }
-
-    while (currentPath && pathToBreadcrumb[currentPath]) {
-      breadcrumbs.unshift({
-        path: currentPath,
-        title: pathToBreadcrumb[currentPath].title,
-      });
-      currentPath = pathToBreadcrumb[currentPath].parent || "";
-    }
-
-    return breadcrumbs;
-  };
-
-  const breadcrumbs = generateBreadcrumbs();
 
   return (
     <div className="max-h-screen flex flex-row bg-gray-100">

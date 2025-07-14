@@ -168,13 +168,44 @@ pub async fn perform_ocr(
     Ok(())
 }
 
-/// Loads the OCR engine on demand and stores it in the application state.
-pub async fn load_ocr_engine_on_demand(
+/// Initializes the OCR engine and stores it in the application state.
+/// This can be called from the frontend to explicitly start the engine.
+#[tauri::command]
+pub async fn initialize_ocr_engine(
+    state: State<'_, Arc<AppState>>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    load_ocr_engine_on_demand(&state, &app_handle)
+        .await
+        .map_err(|e| {
+            eprintln!("Failed to initialize OCR engine: {}", e);
+            e.to_string()
+        })
+}
+
+/// Shuts down the OCR engine, releasing its resources.
+#[tauri::command]
+pub async fn shutdown_ocr_engine(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    println!("Shutting down OCR engine...");
+    let mut engine_guard = state.ocr_engine.lock();
+
+    if engine_guard.take().is_some() {
+        // .take() replaces Some(engine) with None and returns the Some(engine),
+        // which is then immediately dropped, releasing the resources.
+        println!("OCR engine has been shut down and resources released.");
+    } else {
+        println!("OCR engine was not running.");
+    }
+    Ok(())
+}
+
+
+/// Loads the OCR engine on demand. This is a private helper function.
+async fn load_ocr_engine_on_demand(
     state: &AppState,
     app_handle: &tauri::AppHandle,
 ) -> anyhow::Result<()> {
     // Lock and check if the engine is already there.
-    // With parking_lot::Mutex, .lock() returns the guard directly.
     if state.ocr_engine.lock().is_some() {
         println!("OCR engine already loaded.");
         return Ok(());
@@ -208,7 +239,7 @@ pub async fn load_ocr_engine_on_demand(
 
         println!("OCR engine loaded successfully. Acquiring lock to store it.");
 
-        // ✅ Acquire the parking_lot lock (no Result, no map_err)
+        // Acquire the parking_lot lock
         let mut engine_guard = ocr_engine_state_clone.lock();
 
         // Store the engine

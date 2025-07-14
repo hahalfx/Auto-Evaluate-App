@@ -3,8 +3,7 @@ mod db;
 mod state;
 mod services;
 mod commands;
-mod permissions;
-use crate::services::ocr_engine::perform_ocr;
+use crate::services::ocr_engine::{initialize_ocr_engine, perform_ocr, shutdown_ocr_engine};
 
 use state::AppState;
 use std::sync::Arc;
@@ -98,6 +97,8 @@ pub fn run() {
             commands::start_ocr_session,
             commands::stop_ocr_session,
             perform_ocr,
+            initialize_ocr_engine,
+            shutdown_ocr_engine,
             commands::new_meta_workflow,
             commands::delete_wake_word_safe,
         ])

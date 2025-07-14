@@ -1,14 +1,9 @@
 use crate::models::*;
-use crate::permissions;
 use crate::services::analysis_task::analysis_task;
 use crate::services::asr_task::AsrTask;
 use crate::services::audio_task::audio_task;
 use crate::services::finish_task::finish_task;
 use crate::services::meta_task_executor::meta_task_executor;
-use crate::services::ocr_engine::load_ocr_engine_on_demand;
-use crate::services::ocr_engine::perform_ocr;
-use crate::services::ocr_engine::OcrResultItem;
-use crate::services::ocr_task::ocr_task;
 use crate::services::workflow::Workflow;
 use crate::state::AppState;
 use chrono::Utc;
@@ -506,15 +501,13 @@ pub async fn stop_workflow(state: State<'_, Arc<AppState>>) -> Result<(), String
 #[tauri::command]
 pub async fn start_ocr_session(
     state: State<'_, Arc<AppState>>,
-    app_handle: tauri::AppHandle,
     channel: Channel,
 ) -> Result<(), String> {
+    // This command now only registers the communication channel.
+    // The engine must be initialized separately by the `initialize_ocr_engine` command.
     *state.ocr_channel.lock().await = Some(channel);
     println!("OCR Session Started. Channel registered.");
-    // 只负责加载和初始化OCR引擎
-    load_ocr_engine_on_demand(&**state, &app_handle)
-        .await
-        .map_err(|e| format!("Failed to load OCR engine: {}", e))
+    Ok(())
 }
 
 #[tauri::command]
