@@ -4,7 +4,6 @@ use rodio::{Decoder, OutputStream, Sink, Source};
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
-use std::ptr::null;
 use tokio::sync::mpsc;
 
 // 音频库的目录名
@@ -16,7 +15,7 @@ enum AudioCommand {
     Play(String),             // 播放指定路径的文件
     PlayMatching(String),     // 查找并播放匹配关键字的文件
     PlaySync(String),         // 同步播放指定路径的文件
-    PlayMatchingSync(String), // 同步播放匹配关键字的文件
+    PlayMatchingSync(String, Option<String>), // 同步播放匹配关键字的文件
     Pause,
     Resume,
     Stop,
@@ -79,9 +78,9 @@ impl AudioController {
     /// # Returns
     ///
     /// 当音频播放完成时返回Ok(())，如果找不到匹配文件或播放失败则返回错误。
-    pub async fn play_matching_sync(&self, keyword: String) -> Result<()> {
+    pub async fn play_matching_sync(&self, keyword: String, dir: Option<String>) -> Result<()> {
         self.sender
-            .send(AudioCommand::PlayMatchingSync(keyword))
+            .send(AudioCommand::PlayMatchingSync(keyword, dir))
             .await
             .context("无法发送 PlayMatchingSync 命令")
     }
@@ -308,9 +307,13 @@ async fn audio_task(mut receiver: mpsc::Receiver<AudioCommand>) -> Result<()> {
                     }
                 }
                 // 同步播放匹配文件
-                AudioCommand::PlayMatchingSync(keyword) => {
-                    let music_dir = Path::new(MUSIC_DIRECTORY);
-                    if let Some(found_path) = find_matching_audio(music_dir, &keyword) {
+                AudioCommand::PlayMatchingSync(keyword, dir) => {
+                    let music_dir = dir.map_or_else(
+                        || PathBuf::from(MUSIC_DIRECTORY), // None时使用默认目录
+                        PathBuf::from,                     // Some时直接转换为PathBuf
+                    );
+
+                    if let Some(found_path) = find_matching_audio(&music_dir, &keyword) {
                         println!(
                             "[Audio Task] 关键字 '{}' 匹配到文件: {}",
                             keyword,

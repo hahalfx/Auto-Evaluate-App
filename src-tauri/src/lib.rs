@@ -90,6 +90,7 @@ pub fn run() {
             commands::get_samples_by_task_id,
             commands::update_task_samples,
             commands::play_match_audio,
+            commands::play_match_audio_with_url,
             commands::new_workflow,
             commands::pause_workflow,
             commands::resume_workflow,
@@ -97,6 +98,7 @@ pub fn run() {
             commands::start_ocr_session,
             commands::stop_ocr_session,
             perform_ocr,
+            commands::new_meta_workflow,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

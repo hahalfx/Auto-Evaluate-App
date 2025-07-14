@@ -6,16 +6,8 @@ import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/ui/data-table";
-import type { TestSample } from "@/types/api";
-import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import {
-  selectAllSamples,
-  selectSelectedSampleIds,
-  selectSamplesStatus,
-  setSelectedSamples,
-  setSamples,
-  fetchSamples,
-} from "@/store/samplesSlice";
+import type { WakeWord } from "@/types/api";
+import { useTauriWakewords } from "@/hooks/useTauriWakewords";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,8 +24,17 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -44,40 +45,43 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { TauriAudioApiService } from "@/services/tauri-audio-api";
 
 interface WakeSamplesProps {
   initialPageSize?: number;
-  onDeleteSample?: (id: number) => void;
 }
 
 export function WakeSamples({
   initialPageSize,
-  onDeleteSample,
 }: WakeSamplesProps = {}) {
-  const samples = useAppSelector(selectAllSamples);
-  const selectedSample = useAppSelector(selectSelectedSampleIds);
-  const dispatch = useAppDispatch();
+  const {
+    wakewords,
+    selectedWakewordIds,
+    isLoading,
+    error: samplesError,
+    fetchAllWakewords,
+    createWakeword,
+    deleteWakeword: deleteWakewordHook,
+    setSelectedWakewordIds: setSelectedWakewordIdsHook,
+    importWakewordsFromExcel,
+  } = useTauriWakewords();
+
   const [newSampleText, setNewSampleText] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { playMatchedAudio } = useAudioPlayer();
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+  const [sampleForDetail, setSampleForDetail] = useState<WakeWord | null>(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [sampleToDelete, setSampleToDelete] = useState<WakeWord | null>(null);
 
-  const handleAddCustomSample = () => {
+  const handleAddCustomSample = async () => {
     if (!newSampleText.trim()) return;
-
-    const newSample: TestSample = {
-      id: -Date.now(), // 使用负时间戳确保唯一
-      text: newSampleText,
-    };
-
-    dispatch(setSamples([...samples, newSample]));
-    setNewSampleText("");
-    setIsDialogOpen(false);
+    const createdId = await createWakeword(newSampleText);
+    if (createdId) {
+      setNewSampleText("");
+      setIsDialogOpen(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,50 +90,19 @@ export function WakeSamples({
     }
   };
 
-  const handleImportExcel = () => {
+  const handleImportExcel = async () => {
     if (!importFile) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: "array" });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json<{
-          序号: number;
-          语料: string;
-        }>(firstSheet);
-
-        if (jsonData.length > 0) {
-          const newSamples = jsonData.map((row) => ({
-            id: -Date.now() - row.序号,
-            text: row.语料,
-          }));
-
-          dispatch(setSamples([...samples, ...newSamples]));
-          setImportFile(null);
-          if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-          }
-        }
-        setIsDialogOpen(false);
-      } catch (error) {
-        setError("Excel文件解析失败");
+    const result = await importWakewordsFromExcel(importFile);
+    if (result) {
+      setImportFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
       }
-    };
-    reader.readAsArrayBuffer(importFile);
+      setIsDialogOpen(false);
+    }
   };
 
-  const samplesStatus = useAppSelector(selectSamplesStatus);
-
-  useEffect(() => {
-    if (samples.length === 0 && samplesStatus !== "loading") {
-      dispatch(fetchSamples());
-    }
-    setLoading(false);
-  }, [dispatch, samples.length, samplesStatus]);
-
-  const columns: ColumnDef<TestSample>[] = [
+  const columns: ColumnDef<WakeWord>[] = [
     {
       id: "select",
       header: ({ table }) => (
@@ -138,14 +111,28 @@ export function WakeSamples({
             table.getIsAllPageRowsSelected() ||
             (table.getIsSomePageRowsSelected() && "indeterminate")
           }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          onCheckedChange={(value) => {
+            table.toggleAllPageRowsSelected(!!value);
+            const allRowIds = table
+              .getCoreRowModel()
+              .rows.map((r) => r.original.id);
+            setSelectedWakewordIdsHook(!!value ? allRowIds : []);
+          }}
           aria-label="Select all"
         />
       ),
       cell: ({ row }) => (
         <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          checked={selectedWakewordIds.includes(row.original.id)}
+          onCheckedChange={(value) => {
+            row.toggleSelected(!!value);
+            const currentId = row.original.id;
+            setSelectedWakewordIdsHook(
+              !!value
+                ? [...selectedWakewordIds, currentId]
+                : selectedWakewordIds.filter((id) => id !== currentId)
+            );
+          }}
           aria-label="Select row"
           onClick={(e) => e.stopPropagation()}
         />
@@ -155,18 +142,16 @@ export function WakeSamples({
     },
     {
       accessorKey: "id",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="p-0 hover:bg-transparent"
-          >
-            ID
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        );
-      },
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="p-0 hover:bg-transparent"
+        >
+          ID
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
       cell: ({ row }) => {
         const id = row.getValue("id") as number;
         return <div className="text-left font-medium">#{id}</div>;
@@ -174,48 +159,7 @@ export function WakeSamples({
     },
     {
       accessorKey: "text",
-      header: "语音指令",
-    },
-    {
-      accessorKey: "status",
-      header: "状态",
-      cell: ({ row }) => {
-        const status = row.getValue("status") as string;
-        return <div className="text-left font-medium">{status}</div>;
-      },
-    },
-    {
-      accessorKey: "result",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="p-0 hover:bg-transparent"
-          >
-            测试结果
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        );
-      },
-      cell: ({ row }) => {
-        const result = row.getValue("result") as string;
-        {
-          return !result ? (
-            <div className="justify-items-center">
-              <CircleDot size={20} color="#ffc300" />
-            </div>
-          ) : result === "pass" ? (
-            <div className="justify-items-center">
-              <CircleCheck size={20} color="green" />
-            </div>
-          ) : (
-            <div className="justify-items-center">
-              <CircleX size={20} color="red" />
-            </div>
-          );
-        }
-      },
+      header: "唤醒词",
     },
     {
       id: "play",
@@ -223,7 +167,7 @@ export function WakeSamples({
       cell: ({ row }) => {
         const sample = row.original;
         const handlePlay = () => {
-          playMatchedAudio(sample.text).catch(console.error);
+          TauriAudioApiService.playMatchAudioWithurl(sample.text, "/Volumes/应用/LLM Analysis Interface/public/audio/wakeword").catch(console.error);
         };
 
         return (
@@ -261,26 +205,33 @@ export function WakeSamples({
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>操作</DropdownMenuLabel>
                 <DropdownMenuItem
-                  onClick={() =>
-                    dispatch(setSelectedSamples([...selectedSample, sample.id]))
-                  }
+                  onClick={() => {
+                    if (!selectedWakewordIds.includes(sample.id)) {
+                      setSelectedWakewordIdsHook([
+                        ...selectedWakewordIds,
+                        sample.id,
+                      ]);
+                    }
+                  }}
                 >
                   选择
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={(e)=> {
-                  e.stopPropagation();
-                  setIsDetailDialogOpen(true)}}>详情</DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSampleForDetail(sample);
+                    setIsDetailDialogOpen(true);
+                  }}
+                >
+                  详情
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (
-                      confirm("确定要删除这条测试语料吗？") &&
-                      onDeleteSample
-                    ) {
-                      onDeleteSample(sample.id);
-                    }
+                    setSampleToDelete(sample);
+                    setIsDeleteConfirmOpen(true);
                   }}
                   className="text-destructive focus:text-destructive"
                 >
@@ -298,30 +249,28 @@ export function WakeSamples({
     <Card className="flex flex-col flex-1 shadow-sm rounded-lg h-full">
       <CardHeader className="rounded-lg bg-background p-3 flex flex-col space-y-2 border-b">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-foreground">测试语料</h3>
+          <h3 className="font-semibold text-foreground">唤醒词语料</h3>
           <Button onClick={() => setIsDialogOpen(true)}>
             <Plus className="h-4 w-4" />
-            添加自定义指令
+            添加自定义唤醒词
           </Button>
         </div>
       </CardHeader>
       <CardContent className="flex-1 p-4 overflow-auto">
-        {loading ? (
+        {isLoading && wakewords.length === 0 ? (
           <div className="space-y-3">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
-        ) : error ? (
+        ) : samplesError ? (
           <div className="p-4 text-center text-destructive">
-            <p>{error}</p>
+            <p>{samplesError}</p>
             <Button
               variant="outline"
               className="mt-2"
-              onClick={() =>
-                dispatch(fetchSamples()).catch(() => setError("重试失败"))
-              }
+              onClick={fetchAllWakewords}
             >
               重试
             </Button>
@@ -330,40 +279,32 @@ export function WakeSamples({
           <DataTable
             columns={columns}
             initialPageSize={initialPageSize}
-            data={samples || []}
+            data={wakewords || []}
             onRowClick={(row) => {
-              // 如果行已经被选中，则取消选择；否则添加到选择中
-              if (selectedSample.includes(row.id)) {
-                dispatch(
-                  setSelectedSamples(
-                    selectedSample.filter((id) => id !== row.id)
-                  )
+              const currentId = row.id as number;
+              if (selectedWakewordIds.includes(currentId)) {
+                setSelectedWakewordIdsHook(
+                  selectedWakewordIds.filter((id) => id !== currentId)
                 );
               } else {
-                dispatch(setSelectedSamples([...selectedSample, row.id]));
+                setSelectedWakewordIdsHook([...selectedWakewordIds, currentId]);
               }
             }}
-            selectedRowId={selectedSample}
-            filterPlaceholder="搜索语音指令..."
-            onSelectRows={(selectedRows) => {
-              // Extract IDs from selected rows and update the selection state
-              const selectedIds = selectedRows.map((row) => row.id as number);
-              dispatch(setSelectedSamples(selectedIds));
-            }}
+            filterPlaceholder="搜索唤醒词..."
           />
         )}
       </CardContent>
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>添加自定义语音指令</DialogTitle>
+            <DialogTitle>添加自定义唤醒词</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Input
                 value={newSampleText}
                 onChange={(e) => setNewSampleText(e.target.value)}
-                placeholder="输入自定义指令..."
+                placeholder="输入自定义唤醒词..."
               />
               <Button
                 onClick={handleAddCustomSample}
@@ -393,20 +334,79 @@ export function WakeSamples({
                   导入Excel
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                请确保Excel文件包含"序号"和"语料"列
-              </p>
+              <div className="flex flex-row items-center">
+                <p className="text-xs text-muted-foreground text-center">
+                  请确保Excel文件包含"序号"和"语料"列
+                </p>
+                <Button variant={"link"} size={"sm"}>打开模版</Button>
+              </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
-      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
-        <DialogContent>
+      <Dialog
+        open={isDetailDialogOpen}
+        onOpenChange={(isOpen) => {
+          setIsDetailDialogOpen(isOpen);
+          if (!isOpen) {
+            setSampleForDetail(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>详情</DialogTitle>
+            <DialogTitle>唤醒词详情</DialogTitle>
           </DialogHeader>
+          {sampleForDetail && (
+            <div className="grid gap-4 py-4">
+              <div>
+                <h4 className="font-medium mb-1">ID:</h4>
+                <p className="text-sm text-muted-foreground">
+                  {sampleForDetail.id}
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium mb-1">唤醒词文本:</h4>
+                <p className="text-sm text-muted-foreground bg-gray-100 dark:bg-gray-800 p-2 rounded">
+                  {sampleForDetail.text}
+                </p>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={isDeleteConfirmOpen}
+        onOpenChange={setIsDeleteConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              您确定要删除唤醒词 "<strong>{sampleToDelete?.text}</strong>"
+              (ID: {sampleToDelete?.id})吗?
+              此操作无法撤销。如果此唤醒词正被某些任务使用，安全删除可能会失败。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSampleToDelete(null)}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (sampleToDelete) {
+                  await deleteWakewordHook(sampleToDelete.id, true);
+                  setSampleToDelete(null);
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

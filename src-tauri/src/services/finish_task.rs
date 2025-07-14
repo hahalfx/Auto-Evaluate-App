@@ -21,13 +21,13 @@ pub struct finish_task {
 
 impl finish_task {
     /// 主要构造函数，在创建时注入数据库依赖
-    pub fn new(id: String, task_id: i64, sample_id: u32, db: Arc<DatabaseService>) -> Self {
+    pub fn new(id: String, task_id: i64, sample_id: u32, asr_dependency_id: String ,analysis_dependency_id: String, db: Arc<DatabaseService>) -> Self {
         Self {
             id, // 为每个任务提供唯一ID以便追踪
             task_id,
             sample_id,
-            asr_dependency_id: "asr_task".to_string(),
-            analysis_dependency_id: "analysis_task".to_string(),
+            asr_dependency_id,
+            analysis_dependency_id,
             db, // 存储传入的数据库服务
         }
     }

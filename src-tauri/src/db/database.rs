@@ -719,6 +719,58 @@ impl DatabaseService {
         }))
     }
 
+    pub async fn create_wake_words_batch(
+        &self,
+        wakewords: Vec<(String, Option<String>)>,
+    ) -> Result<Vec<i64>> {
+        let mut created_ids = Vec::new();
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let mut tx = self.pool.begin().await?;
+        for (text, audio_file) in wakewords {
+            let result = sqlx::query(
+                "INSERT INTO wake_words (text, created_at, audio_file) VALUES (?, ?, ?)",
+            )
+            .bind(text)
+            .bind(&now)
+            .bind(audio_file)
+            .execute(&mut *tx)
+            .await?;
+            created_ids.push(result.last_insert_rowid());
+        }
+        tx.commit().await?;
+        Ok(created_ids)
+    }
+
+    pub async fn delete_wake_word(&self, wake_word_id: i64) -> Result<()> {
+        // Note: This is a simple delete. A safe delete should check for dependencies first.
+        // We assume for now that if a wake word is in use, a foreign key constraint would prevent deletion,
+        // or we can implement a `delete_wake_word_safe` like for samples.
+        sqlx::query("DELETE FROM wake_words WHERE id = ?")
+            .bind(wake_word_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_wake_word_safe(&self, wake_word_id: i64) -> Result<()> {
+        let task_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE wake_word_id = ?")
+                .bind(wake_word_id)
+                .fetch_one(&self.pool)
+                .await?;
+
+        if task_count > 0 {
+            return Err(anyhow::anyhow!(
+                "唤醒词 {} 正在被 {} 个任务使用，无法安全删除。",
+                wake_word_id,
+                task_count
+            ));
+        }
+
+        self.delete_wake_word(wake_word_id).await
+    }
+
+
     // 分析结果相关操作
     pub async fn save_analysis_result(
         &self,

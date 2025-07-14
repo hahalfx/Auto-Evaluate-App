@@ -6,3 +6,4 @@ pub mod analysis_task;
 pub mod finish_task;
 pub mod ocr_engine;
 pub mod ocr_task;
+pub mod meta_task_executor;

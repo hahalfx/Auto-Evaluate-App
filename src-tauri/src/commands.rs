@@ -4,6 +4,7 @@ use crate::services::analysis_task::analysis_task;
 use crate::services::asr_task::AsrTask;
 use crate::services::audio_task::audio_task;
 use crate::services::finish_task::finish_task;
+use crate::services::meta_task_executor::meta_task_executor;
 use crate::services::ocr_engine::load_ocr_engine_on_demand;
 use crate::services::ocr_engine::perform_ocr;
 use crate::services::ocr_engine::OcrResultItem;
@@ -208,6 +209,52 @@ pub async fn create_wake_word(
         .map_err(|e| format!("创建唤醒词失败: {}", e))
 }
 
+#[derive(serde::Deserialize)]
+pub struct WakeWordCreationPayload {
+    text: String,
+    audio_file: Option<String>,
+}
+
+#[tauri::command]
+pub async fn create_wake_words_batch(
+    state: State<'_, Arc<AppState>>,
+    wakewords: Vec<WakeWordCreationPayload>,
+) -> Result<Vec<i64>, String> {
+    let wakewords_to_create: Vec<(String, Option<String>)> = wakewords
+        .into_iter()
+        .map(|w| (w.text, w.audio_file))
+        .collect();
+    state
+        .db
+        .create_wake_words_batch(wakewords_to_create)
+        .await
+        .map_err(|e| format!("批量创建唤醒词失败: {}", e))
+}
+
+#[tauri::command]
+pub async fn delete_wake_word(
+    state: State<'_, Arc<AppState>>,
+    wake_word_id: u32,
+) -> Result<(), String> {
+    state
+        .db
+        .delete_wake_word(wake_word_id as i64)
+        .await
+        .map_err(|e| format!("删除唤醒词 {} 失败: {}", wake_word_id, e))
+}
+
+#[tauri::command]
+pub async fn delete_wake_word_safe(
+    state: State<'_, Arc<AppState>>,
+    wake_word_id: u32,
+) -> Result<(), String> {
+    state
+        .db
+        .delete_wake_word_safe(wake_word_id as i64)
+        .await
+        .map_err(|e| format!("安全删除唤醒词 {} 失败: {}", wake_word_id, e))
+}
+
 #[tauri::command]
 pub async fn update_task_status(
     state: State<'_, Arc<AppState>>,
@@ -333,6 +380,19 @@ pub async fn play_match_audio(
 }
 
 #[tauri::command]
+pub async fn play_match_audio_with_url(
+    state: State<'_, Arc<AppState>>,
+    keyword: String,
+    url: String,
+) -> Result<(), String> {
+    state
+        .audio_controller
+        .play_matching_sync(keyword, Some(url))
+        .await
+        .map_err(|e| format!("播放匹配音频失败: {}", e))
+}
+
+#[tauri::command]
 pub async fn new_workflow(
     state: State<'_, Arc<AppState>>,
     app_handle: tauri::AppHandle,
@@ -360,7 +420,9 @@ pub async fn new_workflow(
 
         let wakewordid = task.wake_word_id;
         let wakeword = state
-            .db.get_wake_word_by_id(wakewordid).await
+            .db
+            .get_wake_word_by_id(wakewordid)
+            .await
             .map_err(|e| format!("获取唤醒词失败: {}", e))?
             .ok_or("唤醒词不存在")?;
 
@@ -388,6 +450,8 @@ pub async fn new_workflow(
             "finish_task".to_string(),
             task_id,
             sample_id,
+            "analysis_task".to_string(),
+            "finish_task".to_string(),
             state.db.clone(),
         ));
 
@@ -459,5 +523,60 @@ pub async fn stop_ocr_session(state: State<'_, Arc<AppState>>) -> Result<(), Str
     *state.ocr_channel.lock().await = None;
     println!("OCR Session Stopped. Channel cleaned up.");
     // 在函数末尾返回 Ok 表示成功
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn new_meta_workflow(
+    state: State<'_, Arc<AppState>>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    // 1. 获取任务ID
+    let task_id = state.current_task_id.read().await.ok_or("没有设置当前任务ID")?;
+
+    // 2. 从数据库一次性获取所有需要的数据
+    // [FIX] Converted anyhow::Error to String
+    let task_samples = state.db.get_samples_by_task_id(task_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    
+    if task_samples.is_empty() {
+        return Err("任务样本列表为空".to_string());
+    }
+
+    // [FIX] Converted anyhow::Error to String
+    let task = state.db.get_task_by_id(task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("任务不存在")?;
+    
+    // [FIX] Converted anyhow::Error to String
+    let wakeword = state.db.get_wake_word_by_id(task.wake_word_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("唤醒词不存在")?;
+
+    // 3. 创建主工作流
+    let (mut main_workflow, _) = Workflow::new();
+
+    // 4. 创建元任务，将所有数据和依赖注入
+    let multi_sample_executor = meta_task_executor::new(
+        &format!("multi_sample_task_{}", task_id),
+        task_id,
+        task_samples,
+        wakeword,
+        state.inner().clone(), // 传入 Arc<AppState> 的克隆
+    );
+
+    // 5. 将元任务作为唯一任务添加到主工作流
+    main_workflow.add_task(multi_sample_executor);
+
+    // 6. 运行主工作流，获取总控制句柄
+    let handle = main_workflow.run(app_handle).await;
+
+    // 7. 将总控制句柄存入全局状态
+    let mut workflow_handle_guard = state.workflow_handle.lock().await;
+    *workflow_handle_guard = Some(handle);
+
     Ok(())
 }

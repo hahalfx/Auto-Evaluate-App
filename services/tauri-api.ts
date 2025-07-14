@@ -77,6 +77,19 @@ export class TauriApiService {
     return await invoke('create_wake_word', { text, audioFile });
   }
 
+  static async createWakeWordsBatch(wakewords: Array<{ text: string; audio_file?: string | null }>): Promise<number[]> {
+    const payload = wakewords.map(w => ({ text: w.text, audio_file: w.audio_file }));
+    return await invoke('create_wake_words_batch', { wakewords: payload });
+  }
+
+  static async deleteWakeWord(wakeWordId: number): Promise<void> {
+    return await invoke('delete_wake_word', { wakeWordId });
+  }
+
+  static async deleteWakeWordSafe(wakeWordId: number): Promise<void> {
+    return await invoke('delete_wake_word_safe', { wakeWordId });
+  }
+
   // 测试相关
   static async startAutomatedTest(): Promise<void> {
     return await invoke('start_automated_test');

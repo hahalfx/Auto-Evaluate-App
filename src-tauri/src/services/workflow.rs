@@ -4,10 +4,10 @@ use std::any::Any;
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::sync::Arc;
+use tauri::AppHandle;
+use tauri::Emitter;
 use tokio::sync::{watch, RwLock};
 use tokio::task::JoinHandle;
-use tauri::{AppHandle};
-use tauri::Emitter;
 
 use crate::services::audio_controller::AudioController;
 
@@ -110,6 +110,22 @@ impl Workflow {
 
         handle
     }
+
+    /// 运行工作流并异步等待其完成。
+    /// 这对于需要顺序执行多个工作流的场景至关重要。
+    pub async fn run_and_wait(
+        self,
+        app_handle: AppHandle,
+        // 我们也需要把控制信号接收器传进来，以便子流程能被外部主流程控制
+        mut control_rx: watch::Receiver<ControlSignal>,
+    ) -> Result<(), String> {
+        // 注意：这里我们不再创建新的 control channel，而是复用传入的
+        // 我们也不再 tokio::spawn，而是直接 .await
+        let mut workflow_runner = WorkflowRunner::new(self.tasks, self.dependencies, control_rx);
+
+        // 直接 await 执行结果
+        workflow_runner.execute(app_handle).await
+    }
 }
 
 struct WorkflowRunner {
@@ -151,7 +167,7 @@ impl WorkflowRunner {
         }
     }
 
-    async fn execute(&mut self, app_handle: tauri::AppHandle) {
+    async fn execute(&mut self, app_handle: tauri::AppHandle) -> Result<(), String> {
         // 创建上下文
         let context = Arc::new(RwLock::new(HashMap::new()));
         let mut running_tasks: FuturesUnordered<JoinHandle<(String, Result<(), String>)>> =
@@ -165,6 +181,13 @@ impl WorkflowRunner {
             }
         }
 
+        // [修改] 如果一开始就没有可执行的任务，直接结束
+        if ready_queue.is_empty() && self.tasks.is_empty() {
+             println!("[Workflow] No tasks to run.");
+             app_handle.emit("workflow_event", "workflow finished (no tasks)").ok();
+             return Ok(());
+        }
+
         loop {
             // 启动所有就绪的任务
             while let Some(task_id) = ready_queue.pop_front() {
@@ -176,7 +199,7 @@ impl WorkflowRunner {
                     println!("[Workflow] Spawning task '{}'.", task_id);
                     let handle = tokio::spawn(async move {
                         let result = task
-                            .execute(&mut rx, ctx_clone, app_handle_clone)//在这里将任务控制信号接收器，工作流上下文，和应用程序句柄传递给任务执行函数
+                            .execute(&mut rx, ctx_clone, app_handle_clone) //在这里将任务控制信号接收器，工作流上下文，和应用程序句柄传递给任务执行函数
                             .await
                             .map_err(|e| e.to_string());
                         (task.id(), result)
@@ -191,7 +214,7 @@ impl WorkflowRunner {
                 let data = String::from("workflow finished");
                 app_handle.emit("workflow_event", data).ok();
 
-                break;
+                return Ok(());
             }
 
             // 等待任何一个正在运行的任务完成
@@ -211,18 +234,18 @@ impl WorkflowRunner {
                         }
                     }
                     Err(e) => {
-                        eprintln!(
-                            "[Workflow] Task '{}' failed: {}. Stopping dependent tasks.",
-                            completed_id, e
-                        );
-                        // 错误处理策略：这里我们选择停止后续依赖此任务的所有流程
+                        let error_msg =
+                            format!("Task '{}' failed: {}. Stopping workflow.", completed_id, e);
+                        eprintln!("[Workflow] {}", error_msg);
+                        // [修改] 任务失败时，返回错误以终止整个工作流
+                        return Err(error_msg);
                     }
                 }
             } else {
                 // 如果运行的 task handle 出现问题 (e.g., panic)，或者 running_tasks 为空
                 if running_tasks.is_empty() {
-                    // 确保在没有任务运行时能退出循环
-                    break;
+                    // 一个正在运行的task panic了或者被取消了
+                    return Err("A running task panicked or was cancelled.".to_string());
                 }
             }
         }

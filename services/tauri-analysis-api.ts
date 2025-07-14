@@ -7,7 +7,7 @@ import type { AnalysisResult as TauriAnalysisResult, TaskProgress as TauriTaskPr
  * Starts the automated test process for the current task via Tauri.
  */
 export async function tauriStartAutomatedTest(): Promise<void> {
-  await invoke('new_workflow');
+  await invoke('new_meta_workflow');
 }
 
 /**

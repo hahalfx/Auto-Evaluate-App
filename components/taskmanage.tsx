@@ -41,7 +41,6 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks"; // Keep for samp
 // Remove taskSlice imports for tasks, currentTask, status, update, delete
 // Keep for samplesSlice if still needed
 import {
-  selectAllSamples,
   fetchSamples,
   selectSamplesStatus,
   setSelectedSamples,
@@ -57,6 +56,8 @@ import { useExportCurrentTask } from "@/hooks/useExportCurrentTask";
 import { useToast } from "./ui/use-toast";
 import { useActiveTasks } from "@/lib/contexts/active-tasks-context";
 import CreateTask from "@/components/create-task";
+import { useTauriSamples } from "@/hooks/useTauriSamples";
+import { useTauriWakewords } from "@/hooks/useTauriWakewords";
 
 // 定义排序类型
 type SortType =
@@ -87,15 +88,14 @@ export default function TaskManage() {
     setCurrentTask,
   } = useTauriTasks();
   const dispatch = useAppDispatch(); // Keep for samplesSlice
-  const samples = useAppSelector(selectAllSamples);
   const samplesStatus = useAppSelector(selectSamplesStatus);
   const { playMatchedAudio } = useAudioPlayer();
   const router = useRouter();
   const { exportCurrentTask: exportTaskHook } = useExportCurrentTask(); // Renamed to avoid conflict
   const { toast } = useToast();
   const { addActiveTask, isTaskActive } = useActiveTasks();
-  const wakeWords = useAppSelector(selectWakeWords); // Assuming this comes from samplesSlice or another slice
-
+  const { wakewords } = useTauriWakewords();
+  const { samples } = useTauriSamples();
   const handleExportReport = () => {
     currentTask
       ? exportTaskHook() // Use renamed hook
@@ -123,22 +123,17 @@ export default function TaskManage() {
     }
   }, [isDetailDialogOpen, setCurrentTask]);
 
-  // 获取任务数据 - Handled by useTauriTasks's own useEffect
+  // // 获取测试语料数据 (Keep this if samples/wakeWords are separate)
   // useEffect(() => {
-  // fetchAllTasks(); // Called initially by the hook
-  // }, [fetchAllTasks]);
-
-  // 获取测试语料数据 (Keep this if samples/wakeWords are separate)
-  useEffect(() => {
-    if (
-      samplesStatus === "idle" &&
-      samples.length === 0 &&
-      wakeWords.length === 0
-    ) {
-      dispatch(fetchSamples());
-      dispatch(fetchWakeWords());
-    }
-  }, [dispatch, samplesStatus, samples.length, wakeWords.length]);
+  //   if (
+  //     samplesStatus === "idle" &&
+  //     samples.length === 0 &&
+  //     wakeWords.length === 0
+  //   ) {
+  //     dispatch(fetchSamples());
+  //     dispatch(fetchWakeWords());
+  //   }
+  // }, [dispatch, samplesStatus, samples.length, wakeWords.length]);
 
   // 处理排序
   const handleSort = (type: SortType) => {
@@ -179,13 +174,20 @@ export default function TaskManage() {
     }
 
     // 将筛选后的任务映射为显示所需的格式
-    const mappedTasks = filteredTasks.map((task) => ({
-      id: task.id,
-      name: task.name,
-      similarity: Math.round(Math.random() * 30 + 70), // 示例数据，实际应该从task中计算
-      status: task.task_status,
-      timestamp: task.created_at, // 示例时间戳，实际应该从task中获取
-    }));
+    const mappedTasks = filteredTasks.map((task) => {
+      const results = Object.values(task.test_result || {});
+      const successful = results.filter((r: any) => r.assessment.valid).length;
+      const total = results.length;
+      const similarity = total > 0 ? Math.round((successful / total) * 100) : 0;
+
+      return {
+        id: task.id,
+        name: task.name,
+        similarity: similarity, // 使用计算出的成功率
+        status: task.task_status,
+        timestamp: task.created_at, // 示例时间戳，实际应该从task中获取
+      };
+    });
 
     // 然后进行排序
     return mappedTasks.sort((a, b) => {
@@ -621,14 +623,13 @@ export default function TaskManage() {
                   <p className="text-sm font-medium">唤醒词</p>
                   {/* Ensure wakeWords and currentTask.wake_word_id are valid before accessing */}
                   <Badge variant="outline">
-                    {wakeWords && wakeWords[currentTask.wake_word_id - 1]
-                      ? wakeWords[currentTask.wake_word_id - 1].text
-                      : "N/A"}
+                    {wakewords.find((w) => w.id === currentTask.wake_word_id)
+                      ?.text || "N/A"}
                   </Badge>
                 </div>
 
                 {/* 测试语料 */}
-                {samples.length > 0 && (
+                {currentTask.test_samples_ids.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-sm font-medium">测试语料</p>
                     <div className="border rounded-lg p-4 space-y-3">
