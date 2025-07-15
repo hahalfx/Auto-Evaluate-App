@@ -57,6 +57,7 @@ export function OCRVideoComponent() {
   const lastInitializedDeviceRef = useRef<string>("");
 
   const messageHandlerRef = useRef<((event: OcrEvent) => void) | null>(null);
+  const workerRef = useRef<Worker | null>(null);
 
   // --- State (已简化) ---
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
@@ -90,12 +91,37 @@ export function OCRVideoComponent() {
     isCapturingRef.current = isCapturing;
   }, [isCapturing]);
 
+  // 初始化WebWorker
+  useEffect(() => {
+    workerRef.current = new Worker('/ocr-worker.js');
+    
+    workerRef.current.onmessage = (e) => {
+      const { type, data } = e.data;
+      if (type === 'FRAME_QUEUED') {
+        // 发送到后端处理
+        invoke("perform_ocr", { imageData: data.imageData });
+      } else if (type === 'ERROR') {
+        console.error('WebWorker error:', data);
+      }
+    };
+    
+    workerRef.current.onerror = (error) => {
+      console.error('WebWorker error:', error);
+    };
+    
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+      }
+    };
+  }, []);
+
   useEffect(() => {
     // 使用一个变量来防止在组件卸载后继续执行异步代码
     let isCancelled = false;
 
     const setupCamera = async () => {
-      // 流程开始时，立即设置“正在初始化”状态，UI可以显示加载动画
+      // 流程开始时，立即设置"正在初始化"状态，UI可以显示加载动画
       setIsInitializing(true);
 
       try {
@@ -173,7 +199,7 @@ export function OCRVideoComponent() {
           variant: "destructive",
         });
       } finally {
-        // 无论成功还是失败，最后都将“正在初始化”状态设为 false
+        // 无论成功还是失败，最后都将"正在初始化"状态设为 false
         if (!isCancelled) {
           setIsInitializing(false);
         }
@@ -183,7 +209,7 @@ export function OCRVideoComponent() {
     // 执行这个统一的设置函数
     setupCamera();
 
-    // 这是这个 effect 的清理函数，在组件卸载时执行
+    // 这是这个 effect 的清理函数，在组件被卸载时自动执行
     return () => {
       isCancelled = true;
       // 确保在组件卸载时，摄像头一定会被关闭
@@ -254,7 +280,7 @@ export function OCRVideoComponent() {
     });
   };
 
-  // 3. 核心通讯函数：调用 Rust 后端
+  // 3. 核心通讯函数：使用WebWorker优化
   const captureAndSend = useCallback(async () => {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0 || video.paused) return;
@@ -296,9 +322,23 @@ export function OCRVideoComponent() {
       // C. 创建 Uint8Array 视图。Tauri 会对此进行优化传输。
       const encodedImageBytes = new Uint8Array(arrayBuffer);
 
-      invoke("perform_ocr", {
-        imageData: encodedImageBytes,
-      });
+      // 使用WebWorker预处理或直接发送到后端
+      if (workerRef.current) {
+        workerRef.current.postMessage({
+          type: 'PROCESS_FRAME',
+          data: {
+            imageData: encodedImageBytes,
+            roi: roiRef.current,
+            timestamp: Date.now()
+          }
+        });
+      } else {
+        // 回退到直接调用
+        await invoke("perform_ocr", {
+          imageData: encodedImageBytes,
+        });
+      }
+
       const endTime = performance.now();
       setLastInferenceTime((endTime - startTime) / 1000);
     } catch (error) {
@@ -320,6 +360,11 @@ export function OCRVideoComponent() {
 
     if (messageHandlerRef.current) {
       messageHandlerRef.current = null;
+    }
+
+    // 清理WebWorker队列
+    if (workerRef.current) {
+      workerRef.current.postMessage({ type: 'CLEAR_QUEUE' });
     }
 
     invoke("stop_ocr_session")
@@ -778,7 +823,7 @@ export function OCRVideoComponent() {
           <div className="text-gray-400 italic pt-2">
             {isCapturing
               ? "正在识别或未检测到文字..."
-              : "点击“开始OCR识别”以检测文字"}
+              : "点击开始OCR识别以检测文字"}
           </div>
         )}
       </div>

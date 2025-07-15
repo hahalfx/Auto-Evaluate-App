@@ -76,26 +76,93 @@ fn parse_tsv_data(tsv: &str) -> anyhow::Result<Vec<OcrResultItem>> {
     Ok(results)
 }
 
+/// 初始化OCR引擎池
+pub async fn initialize_ocr_pool(
+    state: &AppState,
+    app_handle: &tauri::AppHandle,
+    pool_size: usize,
+) -> anyhow::Result<()> {
+    println!("Initializing OCR engine pool with size: {}", pool_size);
+    
+    let tessdata_path = app_handle
+        .path()
+        .resolve("tessdata", tauri::path::BaseDirectory::Resource)?;
+
+    std::env::set_var("TESSDATA_PREFIX", &tessdata_path);
+
+    let pool = &state.ocr_pool;
+    
+    // 并行初始化所有引擎
+    let mut handles = vec![];
+    for i in 0..pool_size {
+        let tessdata_path_clone = tessdata_path.clone();
+        let engine_arc = pool.engines[i].clone();
+        
+        let handle = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+            let mut ocr_engine = Tesseract::new_with_oem(
+                Some(
+                    tessdata_path_clone
+                        .to_str()
+                        .ok_or_else(|| anyhow!("Invalid tessdata path"))?,
+                ),
+                Some("chi_sim+eng"),
+                OcrEngineMode::LstmOnly,
+            )?;
+
+            ocr_engine.set_page_seg_mode(PageSegMode::PsmAuto);
+            *engine_arc.lock() = Some(ocr_engine);
+
+            Ok(())
+        });
+        
+        handles.push(handle);
+    }
+    
+    // 等待所有引擎初始化完成
+    for handle in handles {
+        handle.await??;
+    }
+    
+    println!("All OCR engines initialized successfully");
+    Ok(())
+}
+
+/// 关闭OCR引擎池
+pub async fn shutdown_ocr_pool(state: &AppState) -> anyhow::Result<()> {
+    println!("Shutting down OCR engine pool...");
+    
+    let pool = &state.ocr_pool;
+    for engine in &pool.engines {
+        let mut engine_guard = engine.lock();
+        if engine_guard.take().is_some() {
+            println!("OCR engine instance shut down");
+        }
+    }
+    
+    println!("OCR engine pool has been shut down");
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn perform_ocr(
-    image_data: Vec<u8>, // No longer need width and height from frontend
+    image_data: Vec<u8>,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    // 从 AppState 中获取 Channel 的【克隆】
     let channel_clone = match state.ocr_channel.lock().await.as_ref() {
-        Some(channel) => channel.clone(), // 克隆 channel，这是一个轻量级的操作
+        Some(channel) => channel.clone(),
         None => return Err("OCR session not started.".to_string()),
     };
+    
     println!("Received image data from frontend. Performing OCR...");
-    let ocr_engine_arc = state.ocr_engine.clone();
-    // 3. 启动一个独立的异步任务，这样命令本身可以立刻返回
+    
+    // 使用引擎池获取OCR引擎
+    let engine_arc = state.ocr_pool.get_engine();
+    
     tokio::spawn(async move {
-        // Spawn a blocking task to avoid freezing the UI.
         let task_result = tokio::task::spawn_blocking(move || {
-            let mut engine_guard = ocr_engine_arc.lock();
+            let mut engine_guard = engine_arc.lock();
 
             // Decode the image from the bytes sent by the frontend.
-            // FIX 1: Use anyhow! for proper error conversion with `?`.
             let img: DynamicImage =
                 image::load_from_memory(&image_data).map_err(|e| anyhow!("图像解码失败: {}", e))?;
 
@@ -103,10 +170,8 @@ pub async fn perform_ocr(
             let width = img.width();
             let height = img.height();
 
-            // Take ownership of the Tesseract engine from the state.
+            // Take ownership of the Tesseract engine from the pool.
             if let Some(tesseract) = engine_guard.take() {
-                // FIX 2: Use `img.as_bytes()` to pass raw pixel data to the Tesseract API.
-                // The tesseract API consumes the instance, so we chain the calls.
                 let mut recognized_tesseract = tesseract.set_frame(
                     img.as_bytes(),
                     width as i32,
@@ -117,18 +182,15 @@ pub async fn perform_ocr(
 
                 // Get the recognition result as a TSV string.
                 let tsv_data = recognized_tesseract.get_tsv_text(0)?;
-                println!("-- RAW TSV DATA --\n{}\n------------------", &tsv_data); // 加上这行来调试
+                println!("-- RAW TSV DATA --\n{}\n------------------", &tsv_data);
 
-                // IMPORTANT: Place the Tesseract instance back into the state for reuse.
+                // IMPORTANT: Place the Tesseract instance back into the pool for reuse.
                 *engine_guard = Some(recognized_tesseract);
 
-                // 1. 解析 TSV 数据，得到基于行的结果
+                // 解析 TSV 数据，得到基于行的结果
                 let ocr_lines = parse_tsv_data(&tsv_data)?;
-
-                // 2. ✅ 调用我们的新函数，将文本行合并成句子
                 let final_sentences = merge_lines_into_sentences(&ocr_lines);
 
-                // 3. 将最终的句子结果返回
                 Ok(final_sentences)
             } else {
                 Err(anyhow!(
@@ -138,22 +200,16 @@ pub async fn perform_ocr(
         })
         .await;
 
-        // 4. 根据 OCR 任务的结果，构建 OcrEvent
+        // 根据 OCR 任务的结果，构建 OcrEvent
         let event = match task_result {
-            // spawn_blocking 成功, OCR 也成功
             Ok(Ok(data)) => OcrEvent::Data(data),
-            // spawn_blocking 成功, 但 OCR 失败
             Ok(Err(e)) => OcrEvent::Error(e.to_string()),
-            // spawn_blocking 本身失败 (例如 panic)
             Err(join_error) => OcrEvent::Error(join_error.to_string()),
         };
 
         match serde_json::to_string(&event) {
             Ok(json_string) => {
-                // 1. 显式地将 String 包装在 InvokeResponseBody::Json 枚举变体中
                 let payload = InvokeResponseBody::Json(json_string);
-
-                // 2. 发送这个已经完全符合类型的 payload
                 if let Err(e) = channel_clone.send(payload) {
                     eprintln!("无法通过 channel 发送 OCR 结果: {}", e);
                 }
@@ -164,104 +220,35 @@ pub async fn perform_ocr(
         }
     });
 
-    // 6. 命令立即成功返回，告知前端任务已启动
     Ok(())
 }
 
-/// Initializes the OCR engine and stores it in the application state.
-/// This can be called from the frontend to explicitly start the engine.
+/// 初始化OCR引擎池（兼容旧接口）
 #[tauri::command]
 pub async fn initialize_ocr_engine(
     state: State<'_, Arc<AppState>>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    load_ocr_engine_on_demand(&state, &app_handle)
+    initialize_ocr_pool(&state, &app_handle, 2)
         .await
         .map_err(|e| {
-            eprintln!("Failed to initialize OCR engine: {}", e);
+            eprintln!("Failed to initialize OCR engine pool: {}", e);
             e.to_string()
         })
 }
 
-/// Shuts down the OCR engine, releasing its resources.
+/// 关闭OCR引擎（兼容旧接口）
 #[tauri::command]
 pub async fn shutdown_ocr_engine(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    println!("Shutting down OCR engine...");
-    let mut engine_guard = state.ocr_engine.lock();
-
-    if engine_guard.take().is_some() {
-        // .take() replaces Some(engine) with None and returns the Some(engine),
-        // which is then immediately dropped, releasing the resources.
-        println!("OCR engine has been shut down and resources released.");
-    } else {
-        println!("OCR engine was not running.");
-    }
-    Ok(())
-}
-
-
-/// Loads the OCR engine on demand. This is a private helper function.
-async fn load_ocr_engine_on_demand(
-    state: &AppState,
-    app_handle: &tauri::AppHandle,
-) -> anyhow::Result<()> {
-    // Lock and check if the engine is already there.
-    if state.ocr_engine.lock().is_some() {
-        println!("OCR engine already loaded.");
-        return Ok(());
-    }
-
-    println!("Loading OCR engine...");
-
-    let tessdata_path = app_handle
-        .path()
-        .resolve("tessdata", tauri::path::BaseDirectory::Resource)?;
-
-    std::env::set_var("TESSDATA_PREFIX", &tessdata_path);
-
-    // Clone the Arc so it can be moved into the blocking thread.
-    let ocr_engine_state_clone = state.ocr_engine.clone();
-
-    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-        // Create the Tesseract instance
-        let mut ocr_engine = Tesseract::new_with_oem(
-            Some(
-                tessdata_path
-                    .to_str()
-                    .ok_or_else(|| anyhow!("Invalid tessdata path"))?,
-            ),
-            Some("chi_sim+eng"),
-            OcrEngineMode::LstmOnly,
-        )?;
-
-        // Configure the engine
-        ocr_engine.set_page_seg_mode(PageSegMode::PsmAuto);
-
-        println!("OCR engine loaded successfully. Acquiring lock to store it.");
-
-        // Acquire the parking_lot lock
-        let mut engine_guard = ocr_engine_state_clone.lock();
-
-        // Store the engine
-        *engine_guard = Some(ocr_engine);
-
-        Ok(())
-    })
-    .await??; // Propagate JoinError and the internal anyhow::Error
-
-    println!("OCR engine stored in state.");
-    Ok(())
+    shutdown_ocr_pool(&state)
+        .await
+        .map_err(|e| {
+            eprintln!("Failed to shutdown OCR engine pool: {}", e);
+            e.to_string()
+        })
 }
 
 /// 将从 OCR 得到的、基于行的结果（OcrResultItem）合并成更符合逻辑的句子。
-///
-/// # Arguments
-///
-/// * `lines` - 一个 OcrResultItem 的切片，其中每个元素代表一个文本行。
-///
-/// # Returns
-///
-/// 一个 `MergedSentence` 的向量，其中每个元素代表一个完整的逻辑句子。
 pub fn merge_lines_into_sentences(lines: &[OcrResultItem]) -> Vec<MergedSentence> {
     if lines.is_empty() {
         return Vec::new();

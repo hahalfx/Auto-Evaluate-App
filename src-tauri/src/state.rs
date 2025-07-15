@@ -8,17 +8,44 @@ use tokio::sync::Mutex;
 use reqwest::Client;
 use parking_lot::Mutex as ParkingLotMutex;
 use tesseract::Tesseract;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[derive(Clone)]
+pub struct OcrEnginePool {
+    pub engines: Vec<Arc<ParkingLotMutex<Option<Tesseract>>>>,
+    pub current_index: Arc<AtomicUsize>,
+}
+
+impl OcrEnginePool {
+    pub fn new(size: usize) -> Self {
+        let mut engines = Vec::with_capacity(size);
+        for _ in 0..size {
+            engines.push(Arc::new(ParkingLotMutex::new(None)));
+        }
+        
+        Self {
+            engines,
+            current_index: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+    
+    pub fn get_engine(&self) -> Arc<ParkingLotMutex<Option<Tesseract>>> {
+        let index = self.current_index.fetch_add(1, Ordering::Relaxed) % self.engines.len();
+        self.engines[index].clone()
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<DatabaseService>,
     pub current_task_id: Arc<tokio::sync::RwLock<Option<i64>>>,
     pub is_testing: Arc<tokio::sync::RwLock<bool>>,
-    pub audio_controller: AudioController,// 这个音频控制器如果后面不用可以删掉
+    pub audio_controller: AudioController,
     pub workflow_handle: Arc<Mutex<Option<ControlHandle>>>,
     pub http_client: Client,
     pub ocr_engine: Arc<ParkingLotMutex<Option<Tesseract>>>,
     pub ocr_channel: Arc<Mutex<Option<Channel>>>, 
+    pub ocr_pool: Arc<OcrEnginePool>,
 }
 
 impl AppState {
@@ -39,6 +66,7 @@ impl AppState {
             http_client: Client::new(),
             ocr_engine: Arc::new(ParkingLotMutex::new(None)),
             ocr_channel: Arc::new(Mutex::new(None)),
+            ocr_pool: Arc::new(OcrEnginePool::new(2)), // 第一阶段使用2个引擎
         })
     }
 }
