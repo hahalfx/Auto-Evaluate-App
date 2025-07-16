@@ -237,6 +237,32 @@ impl DatabaseService {
         .execute(pool)
         .await?;
 
+        // 创建时间参数表
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS timing_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                sample_id INTEGER NOT NULL,
+                voice_command_start_time TEXT,
+                first_char_appear_time TEXT,
+                voice_command_end_time TEXT,
+                full_text_appear_time TEXT,
+                action_start_time TEXT,
+                tts_first_frame_time TEXT,
+                voice_recognition_time_ms INTEGER,
+                interaction_response_time_ms INTEGER,
+                tts_response_time_ms INTEGER,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                FOREIGN KEY (sample_id) REFERENCES test_samples(id) ON DELETE CASCADE,
+                UNIQUE(task_id, sample_id)
+            )
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
         // 创建车机响应表
         sqlx::query(
             r#"
@@ -948,6 +974,127 @@ impl DatabaseService {
         }
 
         Ok(responses)
+    }
+
+    // 时间数据相关操作
+    pub async fn save_timing_data(
+        &self,
+        task_id: i64,
+        sample_id: i64,
+        timing: &TimingData,
+    ) -> Result<()> {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO timing_data (
+                task_id, sample_id, voice_command_start_time, first_char_appear_time,
+                voice_command_end_time, full_text_appear_time, action_start_time,
+                tts_first_frame_time, voice_recognition_time_ms, interaction_response_time_ms,
+                tts_response_time_ms, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(task_id)
+        .bind(sample_id)
+        .bind(timing.voice_command_start_time.map(|t| t.to_rfc3339()))
+        .bind(timing.first_char_appear_time.map(|t| t.to_rfc3339()))
+        .bind(timing.voice_command_end_time.map(|t| t.to_rfc3339()))
+        .bind(timing.full_text_appear_time.map(|t| t.to_rfc3339()))
+        .bind(timing.action_start_time.map(|t| t.to_rfc3339()))
+        .bind(timing.tts_first_frame_time.map(|t| t.to_rfc3339()))
+        .bind(timing.voice_recognition_time_ms)
+        .bind(timing.interaction_response_time_ms)
+        .bind(timing.tts_response_time_ms)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_timing_data_by_task(
+        &self,
+        task_id: i64,
+    ) -> Result<HashMap<u32, TimingData>> {
+        #[derive(sqlx::FromRow)]
+        struct TimingRow {
+            sample_id: i64,
+            voice_command_start_time: Option<String>,
+            first_char_appear_time: Option<String>,
+            voice_command_end_time: Option<String>,
+            full_text_appear_time: Option<String>,
+            action_start_time: Option<String>,
+            tts_first_frame_time: Option<String>,
+            voice_recognition_time_ms: Option<i64>,
+            interaction_response_time_ms: Option<i64>,
+            tts_response_time_ms: Option<i64>,
+        }
+
+        let rows = sqlx::query_as::<_, TimingRow>(
+            r#"
+            SELECT
+                sample_id,
+                voice_command_start_time,
+                first_char_appear_time,
+                voice_command_end_time,
+                full_text_appear_time,
+                action_start_time,
+                tts_first_frame_time,
+                voice_recognition_time_ms,
+                interaction_response_time_ms,
+                tts_response_time_ms
+            FROM timing_data
+            WHERE task_id = ?
+            "#,
+        )
+        .bind(task_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut results = HashMap::new();
+        for row in rows {
+            let mut timing = TimingData::new();
+            
+            if let Some(time_str) = row.voice_command_start_time {
+                timing.voice_command_start_time = chrono::DateTime::parse_from_rfc3339(&time_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&chrono::Utc));
+            }
+            if let Some(time_str) = row.first_char_appear_time {
+                timing.first_char_appear_time = chrono::DateTime::parse_from_rfc3339(&time_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&chrono::Utc));
+            }
+            if let Some(time_str) = row.voice_command_end_time {
+                timing.voice_command_end_time = chrono::DateTime::parse_from_rfc3339(&time_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&chrono::Utc));
+            }
+            if let Some(time_str) = row.full_text_appear_time {
+                timing.full_text_appear_time = chrono::DateTime::parse_from_rfc3339(&time_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&chrono::Utc));
+            }
+            if let Some(time_str) = row.action_start_time {
+                timing.action_start_time = chrono::DateTime::parse_from_rfc3339(&time_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&chrono::Utc));
+            }
+            if let Some(time_str) = row.tts_first_frame_time {
+                timing.tts_first_frame_time = chrono::DateTime::parse_from_rfc3339(&time_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&chrono::Utc));
+            }
+            
+            timing.voice_recognition_time_ms = row.voice_recognition_time_ms;
+            timing.interaction_response_time_ms = row.interaction_response_time_ms;
+            timing.tts_response_time_ms = row.tts_response_time_ms;
+            
+            results.insert(row.sample_id as u32, timing);
+        }
+
+        Ok(results)
     }
 
     // 初始化默认数据

@@ -1,5 +1,7 @@
 use crate::db::database::DatabaseService;
+use crate::models::VideoFrame;
 use crate::services::audio_controller::AudioController;
+use crate::services::ocr_session::OcrSessionManager;
 use crate::services::workflow::ControlHandle;
 use std::sync::Arc;
 use serde::de::Expected;
@@ -44,8 +46,10 @@ pub struct AppState {
     pub workflow_handle: Arc<Mutex<Option<ControlHandle>>>,
     pub http_client: Client,
     pub ocr_engine: Arc<ParkingLotMutex<Option<Tesseract>>>,
-    pub ocr_channel: Arc<Mutex<Option<Channel>>>, 
+    pub ocr_channel: Arc<Mutex<Option<Channel>>>,
     pub ocr_pool: Arc<OcrEnginePool>,
+    pub ocr_session_manager: Arc<parking_lot::Mutex<OcrSessionManager>>,
+    pub ocr_frame_sender: Arc<tokio::sync::Mutex<Option<tokio::sync::mpsc::Sender<VideoFrame>>>>,
 }
 
 impl AppState {
@@ -66,7 +70,9 @@ impl AppState {
             http_client: Client::new(),
             ocr_engine: Arc::new(ParkingLotMutex::new(None)),
             ocr_channel: Arc::new(Mutex::new(None)),
-            ocr_pool: Arc::new(OcrEnginePool::new(2)), // 第一阶段使用2个引擎
+            ocr_pool: Arc::new(OcrEnginePool::new(6)), // 第一阶段使用2个引擎
+            ocr_session_manager: Arc::new(parking_lot::Mutex::new(OcrSessionManager::new())),
+            ocr_frame_sender: Arc::new(tokio::sync::Mutex::new(None)),
         })
     }
 }

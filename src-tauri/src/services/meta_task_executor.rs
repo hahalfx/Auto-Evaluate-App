@@ -12,6 +12,8 @@ use crate::services::analysis_task::analysis_task;
 use crate::services::asr_task::AsrTask;
 use crate::services::audio_task::audio_task;
 use crate::services::finish_task::finish_task;
+use crate::services::middle_task::middle_task;
+use crate::services::ocr_task::ocr_task;
 use crate::services::workflow::ControlSignal;
 use crate::services::workflow::Task;
 use crate::services::workflow::Workflow;
@@ -119,6 +121,9 @@ impl Task for meta_task_executor {
             // 2. 添加所有子任务，确保ID唯一
             let wakeword_task_id = format!("wakeword_task_{}", sample_id);
             let audio_task_id = format!("audio_task_{}", sample_id);
+            let audio_ocr_task_id = format!("audio_ocr_task_{}", sample_id); //车机对语音指令识别的ocr
+            let middle_task_id = format!("middle_task_{}", sample_id);
+            let ocr_task_id = format!("ocr_task_{}", sample_id);
             let asr_task_id = format!("asr_task_{}", sample_id);
             let analysis_task_id = format!("analysis_task_{}", sample_id);
             let finish_task_id = format!("finish_task_{}", sample_id);
@@ -133,6 +138,18 @@ impl Task for meta_task_executor {
                 keyword: keyword.clone(),
                 url: None,
             });
+            sub_workflow.add_task(ocr_task {
+                id: audio_ocr_task_id.clone(),
+            });
+
+            sub_workflow.add_task(middle_task {
+                id: middle_task_id.clone(),
+            });
+
+            sub_workflow.add_task(ocr_task {
+                id: ocr_task_id.clone(),
+            });
+
             sub_workflow.add_task(AsrTask::new(asr_task_id.clone(), keyword));
             sub_workflow.add_task(analysis_task {
                 id: analysis_task_id.clone(),
@@ -145,12 +162,21 @@ impl Task for meta_task_executor {
                 sample_id,
                 asr_task_id.clone(),
                 analysis_task_id.clone(),
+                audio_ocr_task_id.clone(),
+                ocr_task_id.clone(),
+                audio_task_id.clone(),
+                wakeword_task_id.clone(),
                 self.state_snapshot.db.clone(),
             ));
 
             // 3. 设置依赖关系
             sub_workflow.add_dependency(&audio_task_id, &wakeword_task_id);
-            sub_workflow.add_dependency(&asr_task_id, &audio_task_id);
+            sub_workflow.add_dependency(&audio_ocr_task_id, &wakeword_task_id);
+            sub_workflow.add_dependency(&middle_task_id, &audio_task_id);
+            sub_workflow.add_dependency(&middle_task_id, &audio_ocr_task_id);
+            sub_workflow.add_dependency(&asr_task_id, &middle_task_id);
+            sub_workflow.add_dependency(&ocr_task_id, &middle_task_id);
+            sub_workflow.add_dependency(&analysis_task_id, &ocr_task_id);
             sub_workflow.add_dependency(&analysis_task_id, &asr_task_id);
             sub_workflow.add_dependency(&finish_task_id, &analysis_task_id);
 

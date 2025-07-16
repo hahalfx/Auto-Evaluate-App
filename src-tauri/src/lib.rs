@@ -3,7 +3,7 @@ mod db;
 mod state;
 mod services;
 mod commands;
-use crate::services::ocr_engine::{initialize_ocr_engine, perform_ocr, shutdown_ocr_engine};
+use crate::services::ocr_engine::{initialize_ocr_engine, shutdown_ocr_engine};
 
 use state::AppState;
 use std::sync::Arc;
@@ -95,7 +95,8 @@ pub fn run() {
             commands::stop_workflow,
             commands::start_ocr_session,
             commands::stop_ocr_session,
-            perform_ocr,
+            commands::push_video_frame,
+            commands::get_ocr_task_status,
             initialize_ocr_engine,
             shutdown_ocr_engine,
             commands::new_meta_workflow,

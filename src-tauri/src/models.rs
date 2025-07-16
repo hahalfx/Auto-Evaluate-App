@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use std::collections::HashMap;
 
+// 导入时间数据模块
+use chrono::{DateTime, Utc, Duration};
+
 // 前端兼容的数据结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestSample {
@@ -220,4 +223,95 @@ pub struct PlayAudioEvent {
 pub struct AnalysisCompletedEvent {
     pub sample_id: u32,
     pub result: AnalysisResult,
+}
+
+/// 车机语音测试时间参数数据结构
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimingData {
+    /// 语音指令开始时间（audio_task开始播放时）
+    pub voice_command_start_time: Option<DateTime<Utc>>,
+    
+    /// 车机首字上屏时间（OCR检测到第一个字符）
+    pub first_char_appear_time: Option<DateTime<Utc>>,
+    
+    /// 语音指令结束时间（audio_task播放完成时）
+    pub voice_command_end_time: Option<DateTime<Utc>>,
+    
+    /// 语音全部上屏时间（OCR检测到完整文本）
+    pub full_text_appear_time: Option<DateTime<Utc>>,
+    
+    /// 动作开始执行时间（检测到车机动作开始）
+    pub action_start_time: Option<DateTime<Utc>>,
+    
+    /// TTS回复第一帧时间（检测到TTS音频开始）
+    pub tts_first_frame_time: Option<DateTime<Utc>>,
+    
+    /// 语音识别时间 = 首字上屏时间 - 语音指令开始时间
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voice_recognition_time_ms: Option<i64>,
+    
+    /// 交互响应时间 = 动作开始时间 - 语音指令结束时间
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interaction_response_time_ms: Option<i64>,
+    
+    /// TTS响应时间 = TTS第一帧时间 - 语音指令结束时间
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tts_response_time_ms: Option<i64>,
+}
+
+impl TimingData {
+    /// 创建新的时间数据实例
+    pub fn new() -> Self {
+        Self {
+            voice_command_start_time: None,
+            first_char_appear_time: None,
+            voice_command_end_time: None,
+            full_text_appear_time: None,
+            action_start_time: None,
+            tts_first_frame_time: None,
+            voice_recognition_time_ms: None,
+            interaction_response_time_ms: None,
+            tts_response_time_ms: None,
+        }
+    }
+
+    /// 计算所有时间差值
+    pub fn calculate_durations(&mut self) {
+        if let (Some(start), Some(first_char)) = (self.voice_command_start_time, self.first_char_appear_time) {
+            self.voice_recognition_time_ms = Some(first_char.signed_duration_since(start).num_milliseconds());
+        }
+
+        if let (Some(end), Some(action_start)) = (self.voice_command_end_time, self.action_start_time) {
+            self.interaction_response_time_ms = Some(action_start.signed_duration_since(end).num_milliseconds());
+        }
+
+        if let (Some(end), Some(tts_start)) = (self.voice_command_end_time, self.tts_first_frame_time) {
+            self.tts_response_time_ms = Some(tts_start.signed_duration_since(end).num_milliseconds());
+        }
+    }
+
+    /// 检查是否所有必需时间都已采集
+    pub fn is_complete(&self) -> bool {
+        self.voice_command_start_time.is_some() &&
+        self.voice_command_end_time.is_some() &&
+        self.first_char_appear_time.is_some() &&
+        self.full_text_appear_time.is_some()
+    }
+}
+// OCR视频帧数据结构，用于实时视频OCR处理
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoFrame {
+    pub data: Vec<u8>,      // 图像数据 (JPEG/PNG格式)
+    pub timestamp: u64,     // 时间戳 (毫秒)
+    pub width: u32,         // 图像宽度
+    pub height: u32,        // 图像高度
+}
+
+/// OCR任务状态监控
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OcrTaskStatus {
+    pub is_running: bool,
+    pub processed_frames: usize,
+    pub queue_size: usize,
+    pub current_fps: f32,
 }
