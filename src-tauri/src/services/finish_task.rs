@@ -106,6 +106,20 @@ impl finish_task {
             .into());
         };
 
+        // 3. 提取时间数据用于日志记录
+        if let Some(timing) = &analysis_result.timing_data {
+            log::info!("[{}] 时间参数采集完成:", self.id);
+            if let Some(recognition_time) = timing.voice_recognition_time_ms {
+                log::info!("[{}]   语音识别时间: {}ms", self.id, recognition_time);
+            }
+            if let Some(interaction_time) = timing.interaction_response_time_ms {
+                log::info!("[{}]   交互响应时间: {}ms", self.id, interaction_time);
+            }
+            if let Some(tts_time) = timing.tts_response_time_ms {
+                log::info!("[{}]   TTS响应时间: {}ms", self.id, tts_time);
+            }
+        }
+
         // 尽早释放读锁
         drop(context_reader);
 
@@ -122,6 +136,26 @@ impl finish_task {
             .await
             .map_err(|e| format!("[{}] 保存分析结果失败: {}", self.id, e))?;
 
+        // 保存时间数据
+        if let Some(timing) = &analysis_result.timing_data {
+            log::info!("[{}] 保存时间数据到数据库...", self.id);
+            self.db
+                .save_timing_data(self.task_id, self.sample_id as i64, timing)
+                .await
+                .map_err(|e| format!("[{}] 保存时间数据失败: {}", self.id, e))?;
+
+            // 记录时间参数
+            if let Some(recognition_time) = timing.voice_recognition_time_ms {
+                log::info!("[{}]   语音识别时间: {}ms", self.id, recognition_time);
+            }
+            if let Some(interaction_time) = timing.interaction_response_time_ms {
+                log::info!("[{}]   交互响应时间: {}ms", self.id, interaction_time);
+            }
+            if let Some(tts_time) = timing.tts_response_time_ms {
+                log::info!("[{}]   TTS响应时间: {}ms", self.id, tts_time);
+            }
+        }
+
         log::info!("[{}] 更新任务状态为完成...", self.id);
         self.db
             .update_task_status(self.task_id, "completed")
@@ -137,15 +171,27 @@ impl finish_task {
         log::info!("[{}] 数据保存完成 - 样本ID: {}", self.id, self.sample_id);
 
         // 4. 发送完成事件到前端
-        app_handle.emit(
-            "finish_task_complete",
-            serde_json::json!({
-                "task_id": self.task_id,
-                "sample_id": self.sample_id,
-                "response": response_data.text,
-                "analysis_score": analysis_result.assessment.overall_score
-            }),
-        )?;
+        let mut event_data = serde_json::json!({
+            "task_id": self.task_id,
+            "sample_id": self.sample_id,
+            "response": response_data.text,
+            "analysis_score": analysis_result.assessment.overall_score
+        });
+
+        // 添加时间参数到事件数据
+        if let Some(timing) = &analysis_result.timing_data {
+            if let Some(recognition_time) = timing.voice_recognition_time_ms {
+                event_data["voice_recognition_time_ms"] = serde_json::Value::from(recognition_time);
+            }
+            if let Some(interaction_time) = timing.interaction_response_time_ms {
+                event_data["interaction_response_time_ms"] = serde_json::Value::from(interaction_time);
+            }
+            if let Some(tts_time) = timing.tts_response_time_ms {
+                event_data["tts_response_time_ms"] = serde_json::Value::from(tts_time);
+            }
+        }
+
+        app_handle.emit("finish_task_complete", event_data)?;
 
         Ok(())
     }

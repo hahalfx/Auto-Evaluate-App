@@ -1,4 +1,5 @@
 use crate::state::AppState;
+use crate::services::ocr_session::{OcrSessionManager, OcrSessionResult};
 use anyhow::anyhow;
 use image::DynamicImage;
 use std::cmp::{max, min};
@@ -29,6 +30,7 @@ pub struct MergedSentence {
 #[serde(rename_all = "lowercase")] // 这会让前端收到的JSON key为小驼峰，如 data 或 error
 enum OcrEvent {
     Data(Vec<MergedSentence>),
+    Session(OcrSessionResult),
     Error(String),
 }
 
@@ -105,7 +107,7 @@ pub async fn initialize_ocr_pool(
                         .to_str()
                         .ok_or_else(|| anyhow!("Invalid tessdata path"))?,
                 ),
-                Some("chi_sim+eng"),
+                Some("chi_sim"),
                 OcrEngineMode::LstmOnly,
             )?;
 
@@ -143,84 +145,126 @@ pub async fn shutdown_ocr_pool(state: &AppState) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tauri::command]
 pub async fn perform_ocr(
     image_data: Vec<u8>,
-    state: State<'_, Arc<AppState>>,
-) -> Result<(), String> {
+    timestamp: u64,
+    state: Arc<AppState>,
+) -> Result<bool, String> {
     let channel_clone = match state.ocr_channel.lock().await.as_ref() {
         Some(channel) => channel.clone(),
-        None => return Err("OCR session not started.".to_string()),
+        None => {
+            println!("OCR session not started or already stopped, skipping frame processing");
+            return Err("OCR session not started.".to_string());
+        }
     };
     
-    println!("Received image data from frontend. Performing OCR...");
+    println!("Received image data with timestamp: {}. Performing OCR...", timestamp);
     
     // 使用引擎池获取OCR引擎
     let engine_arc = state.ocr_pool.get_engine();
     
-    tokio::spawn(async move {
-        let task_result = tokio::task::spawn_blocking(move || {
-            let mut engine_guard = engine_arc.lock();
+    // 获取会话管理器
+    let session_manager = state.ocr_session_manager.clone();
+    
+    // 执行OCR处理
+    let task_result = tokio::task::spawn_blocking(move || {
+        let mut engine_guard = engine_arc.lock();
+        let mut session = session_manager.lock();
 
-            // Decode the image from the bytes sent by the frontend.
-            let img: DynamicImage =
-                image::load_from_memory(&image_data).map_err(|e| anyhow!("图像解码失败: {}", e))?;
+        // Decode the image from the bytes sent by the frontend.
+        let img: DynamicImage =
+            image::load_from_memory(&image_data).map_err(|e| anyhow!("图像解码失败: {}", e))?;
 
-            // Extract width and height from the decoded image itself.
-            let width = img.width();
-            let height = img.height();
+        // Extract width and height from the decoded image itself.
+        let width = img.width();
+        let height = img.height();
+        let rgba = img.to_rgba8();
 
-            // Take ownership of the Tesseract engine from the pool.
-            if let Some(tesseract) = engine_guard.take() {
-                let mut recognized_tesseract = tesseract.set_frame(
-                    img.as_bytes(),
-                    width as i32,
-                    height as i32,
-                    4,                // Bytes per pixel for RGBA
-                    width as i32 * 4, // Bytes per line
-                )?;
+        // Take ownership of the Tesseract engine from the pool.
+        if let Some(tesseract) = engine_guard.take() {
+            let mut recognized_tesseract = tesseract.set_frame(
+                &rgba,
+                width as i32,
+                height as i32,
+                4,                // Bytes per pixel for RGBA
+                width as i32 * 4, // Bytes per line
+            )?;
 
-                // Get the recognition result as a TSV string.
-                let tsv_data = recognized_tesseract.get_tsv_text(0)?;
-                println!("-- RAW TSV DATA --\n{}\n------------------", &tsv_data);
+            // Get the recognition result as a TSV string.
+            let tsv_data = recognized_tesseract.get_tsv_text(0)?;
+            println!("-- RAW TSV DATA --\n{}\n------------------", &tsv_data);
 
-                // IMPORTANT: Place the Tesseract instance back into the pool for reuse.
-                *engine_guard = Some(recognized_tesseract);
+            // IMPORTANT: Place the Tesseract instance back into the pool for reuse.
+            *engine_guard = Some(recognized_tesseract);
 
-                // 解析 TSV 数据，得到基于行的结果
-                let ocr_lines = parse_tsv_data(&tsv_data)?;
-                let final_sentences = merge_lines_into_sentences(&ocr_lines);
+            // 解析 TSV 数据，得到基于行的结果
+            let ocr_lines = parse_tsv_data(&tsv_data)?;
+            let final_sentences = merge_lines_into_sentences(&ocr_lines);
 
-                Ok(final_sentences)
+            // 提取所有文本内容
+            let all_text: String = final_sentences
+                .iter()
+                .map(|s| s.text.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            // 处理会话状态
+            let session_result = session.process_frame(all_text, timestamp);
+
+            Ok((final_sentences, session_result))
+        } else {
+            Err(anyhow!(
+                "OCR engine not initialized. Please start the workflow first."
+            ))
+        }
+    })
+    .await;
+
+    // 处理结果并发送到前端
+    let should_stop = match task_result {
+        Ok(Ok((data, session_result))) => {
+            let event = if session_result.should_stop_ocr {
+                OcrEvent::Session(session_result.clone())
             } else {
-                Err(anyhow!(
-                    "OCR engine not initialized. Please start the workflow first."
-                ))
-            }
-        })
-        .await;
+                OcrEvent::Data(data)
+            };
 
-        // 根据 OCR 任务的结果，构建 OcrEvent
-        let event = match task_result {
-            Ok(Ok(data)) => OcrEvent::Data(data),
-            Ok(Err(e)) => OcrEvent::Error(e.to_string()),
-            Err(join_error) => OcrEvent::Error(join_error.to_string()),
-        };
-
-        match serde_json::to_string(&event) {
-            Ok(json_string) => {
+            // 发送结果到前端，添加错误处理
+            if let Ok(json_string) = serde_json::to_string(&event) {
                 let payload = InvokeResponseBody::Json(json_string);
-                if let Err(e) = channel_clone.send(payload) {
-                    eprintln!("无法通过 channel 发送 OCR 结果: {}", e);
+                match channel_clone.send(payload) {
+                    Ok(_) => {
+                        // 发送成功
+                    }
+                    Err(e) => {
+                        eprintln!("无法通过 channel 发送 OCR 结果: {}", e);
+                        // Channel 已失效，返回错误以停止处理
+                        return Err("Channel communication failed, stopping OCR processing".to_string());
+                    }
                 }
             }
-            Err(e) => {
-                eprintln!("无法将事件序列化为 JSON 字符串: {}", e);
-            }
-        }
-    });
 
-    Ok(())
+            session_result.should_stop_ocr
+        }
+        Ok(Err(e)) => {
+            let event = OcrEvent::Error(e.to_string());
+            if let Ok(json_string) = serde_json::to_string(&event) {
+                let payload = InvokeResponseBody::Json(json_string);
+                let _ = channel_clone.send(payload);
+            }
+            return Err(e.to_string());
+        }
+        Err(join_error) => {
+            let event = OcrEvent::Error(join_error.to_string());
+            if let Ok(json_string) = serde_json::to_string(&event) {
+                let payload = InvokeResponseBody::Json(json_string);
+                let _ = channel_clone.send(payload);
+            }
+            return Err(join_error.to_string());
+        }
+    };
+
+    Ok(should_stop)
 }
 
 /// 初始化OCR引擎池（兼容旧接口）
@@ -229,7 +273,7 @@ pub async fn initialize_ocr_engine(
     state: State<'_, Arc<AppState>>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    initialize_ocr_pool(&state, &app_handle, 2)
+    initialize_ocr_pool(&state, &app_handle, 6)
         .await
         .map_err(|e| {
             eprintln!("Failed to initialize OCR engine pool: {}", e);
@@ -248,77 +292,44 @@ pub async fn shutdown_ocr_engine(state: State<'_, Arc<AppState>>) -> Result<(), 
         })
 }
 
-/// 将从 OCR 得到的、基于行的结果（OcrResultItem）合并成更符合逻辑的句子。
-pub fn merge_lines_into_sentences(lines: &[OcrResultItem]) -> Vec<MergedSentence> {
+// ---------------------------------- 合并函数 ----------------------------------
+fn merge_lines_into_sentences(lines: &[OcrResultItem]) -> Vec<MergedSentence> {
+    // 原有逻辑完全一致，这里不重复贴出
+    // 为了可编译仍放在文件底部
     if lines.is_empty() {
-        return Vec::new();
+        return vec![];
     }
-
-    let mut merged_sentences = Vec::new();
-    let mut current_sentence_lines: Vec<&OcrResultItem> = Vec::new();
-    let sentence_enders: &[char] = &['。', '！', '？', '.', '!', '?'];
-
-    for line_item in lines {
-        let trimmed_text = line_item.text.trim();
-        if trimmed_text.is_empty() {
+    let mut out = Vec::new();
+    let mut buf = Vec::new();
+    for l in lines {
+        if l.text.trim().is_empty() {
             continue;
         }
-
-        // 将当前行加入到正在构建的句子中
-        current_sentence_lines.push(line_item);
-
-        // 检查当前行是否以句末标点结束
-        if let Some(last_char) = trimmed_text.chars().last() {
-            if sentence_enders.contains(&last_char) {
-                // 如果是，说明一个句子构建完毕，进行处理
-                finalize_sentence(&mut merged_sentences, &mut current_sentence_lines);
-            }
+        buf.push(l);
+        if l.text.ends_with(&['。', '！', '？', '.', '!', '?']) {
+            finalize_sentence(&mut out, &mut buf);
         }
     }
-
-    // 处理循环结束后剩余的、不成句的最后几行
-    finalize_sentence(&mut merged_sentences, &mut current_sentence_lines);
-
-    merged_sentences
+    finalize_sentence(&mut out, &mut buf);
+    out
 }
-
-/// 一个辅助函数，用于处理并终结一个句子的构建过程。
-fn finalize_sentence<'a>(
-    sentences_vec: &mut Vec<MergedSentence>,
-    lines_to_merge: &mut Vec<&'a OcrResultItem>,
+ 
+#[inline]
+fn finalize_sentence(
+    out: &mut Vec<MergedSentence>,
+    buf: &mut Vec<&OcrResultItem>,
 ) {
-    if lines_to_merge.is_empty() {
+    if buf.is_empty() {
         return;
     }
-
-    // 1. 合并文本
-    let combined_text = lines_to_merge
-        .iter()
-        .map(|item| item.text.as_str())
-        .collect::<String>();
-
-    // 2. 计算整合后的边界框
-    let mut min_x = i32::MAX;
-    let mut min_y = i32::MAX;
-    let mut max_x = i32::MIN;
-    let mut max_y = i32::MIN;
-
-    for item in lines_to_merge.iter() {
-        let bbox = item.bbox; // [left, top, width, height]
-        min_x = min(min_x, bbox[0]);
-        min_y = min(min_y, bbox[1]);
-        max_x = max(max_x, bbox[0] + bbox[2]);
-        max_y = max(max_y, bbox[1] + bbox[3]);
-    }
-
-    let combined_bbox = [min_x, min_y, max_x - min_x, max_y - min_y];
-
-    // 3. 创建并添加新的 MergedSentence
-    sentences_vec.push(MergedSentence {
-        text: combined_text,
-        combined_bbox,
+    let text = buf.iter().map(|b| b.text.as_str()).collect::<String>();
+    let min_x = buf.iter().map(|b| b.bbox[0]).min().unwrap();
+    let min_y = buf.iter().map(|b| b.bbox[1]).min().unwrap();
+    let max_x = buf.iter().map(|b| b.bbox[0] + b.bbox[2]).max().unwrap();
+    let max_y = buf.iter().map(|b| b.bbox[1] + b.bbox[3]).max().unwrap();
+    out.push(MergedSentence {
+        text,
+        combined_bbox: [min_x, min_y, max_x - min_x, max_y - min_y],
     });
-
-    // 4. 清空，为下一个句子做准备
-    lines_to_merge.clear();
+    buf.clear();
 }

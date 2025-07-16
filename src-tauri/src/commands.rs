@@ -292,6 +292,49 @@ pub async fn stop_testing(state: State<'_, Arc<AppState>>) -> Result<(), String>
     Ok(())
 }
 
+/// 推送视频帧到OCR处理队列
+#[tauri::command]
+pub async fn push_video_frame(
+    image_data: Vec<u8>,
+    timestamp: u64,
+    width: u32,
+    height: u32,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    // 获取帧发送器
+    let sender_guard = state.ocr_frame_sender.lock().await;
+    let sender = match sender_guard.as_ref() {
+        Some(sender) => sender,
+        None => return Err("OCR任务未启动，请先启动OCR任务".to_string()),
+    };
+
+    // 创建VideoFrame
+    let frame = crate::models::VideoFrame {
+        data: image_data,
+        timestamp,
+        width,
+        height,
+    };
+
+    // 发送到队列
+    match sender.send(frame).await {
+        Ok(_) => Ok(()),
+        Err(_) => Err("发送视频帧失败，OCR任务可能已停止".to_string()),
+    }
+}
+
+/// 获取OCR任务状态
+#[tauri::command]
+pub async fn get_ocr_task_status(state: State<'_, Arc<AppState>>) -> Result<crate::models::OcrTaskStatus, String> {
+    // 这里简化实现，实际应该从ocr_task获取实时状态
+    Ok(crate::models::OcrTaskStatus {
+        is_running: state.ocr_frame_sender.lock().await.is_some(),
+        processed_frames: 0,
+        queue_size: 0,
+        current_fps: 0.0,
+    })
+}
+
 #[tauri::command]
 pub async fn create_samples_batch(
     state: State<'_, Arc<AppState>>,
@@ -506,16 +549,42 @@ pub async fn start_ocr_session(
     // This command now only registers the communication channel.
     // The engine must be initialized separately by the `initialize_ocr_engine` command.
     *state.ocr_channel.lock().await = Some(channel);
-    println!("OCR Session Started. Channel registered.");
+    
+    // 重置OCR会话状态
+    state.ocr_session_manager.lock().reset();
+    println!("OCR Session Started. Channel registered and session reset.");
     Ok(())
 }
 
 #[tauri::command]
 pub async fn stop_ocr_session(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    // 从 AppState 中移除 channel，它会被自动销毁
-    *state.ocr_channel.lock().await = None;
-    println!("OCR Session Stopped. Channel cleaned up.");
-    // 在函数末尾返回 Ok 表示成功
+    println!("Stop OCR session requested, waiting for task to complete naturally...");
+    
+    // 等待一小段时间，让正在进行的OCR任务有机会自然完成
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    
+    // 清理 Channel 和相关资源
+    {
+        let mut channel_guard = state.ocr_channel.lock().await;
+        if channel_guard.is_some() {
+            println!("Cleaning up OCR channel...");
+            *channel_guard = None;
+        }
+    }
+    
+    // 清理帧发送器
+    {
+        let mut sender_guard = state.ocr_frame_sender.lock().await;
+        if sender_guard.is_some() {
+            println!("Cleaning up OCR frame sender...");
+            *sender_guard = None;
+        }
+    }
+    
+    // 重置会话管理器
+    state.ocr_session_manager.lock().reset();
+    
+    println!("OCR Session Stopped. All resources cleaned up.");
     Ok(())
 }
 
@@ -572,4 +641,5 @@ pub async fn new_meta_workflow(
     *workflow_handle_guard = Some(handle);
 
     Ok(())
+
 }

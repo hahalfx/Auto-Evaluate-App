@@ -39,6 +39,14 @@ interface RustOcrResultItem {
 // 定义从 Channel 接收的事件类型
 interface OcrEvent {
   data?: RustOcrResultItem[];
+  session?: {
+    first_text_detected_time?: number;
+    text_stabilized_time?: number;
+    final_text: string;
+    is_session_complete: boolean;
+    should_stop_ocr: boolean;
+    current_frame: number;
+  };
   error?: string;
 }
 
@@ -76,6 +84,7 @@ export function OCRVideoComponent() {
   const [isInitializing, setIsInitializing] = useState(false);
   const [devicesLoaded, setDevicesLoaded] = useState(false);
   const [ocrTaskEvent, setOcrTaskEvent] = useState<string | null>(null);
+  const [isOcrReady, setIsOcrReady] = useState<boolean>(false);
 
   // --- Refs for Callbacks (保持不变) ---
   const roiRef = useRef(roi);
@@ -98,8 +107,13 @@ export function OCRVideoComponent() {
     workerRef.current.onmessage = (e) => {
       const { type, data } = e.data;
       if (type === 'FRAME_QUEUED') {
-        // 发送到后端处理
-        invoke("perform_ocr", { imageData: data.imageData });
+        // 使用新的push_video_frame API
+        invoke("push_video_frame", {
+          imageData: data.imageData,
+          timestamp: data.timestamp,
+          width: data.width,
+          height: data.height
+        });
       } else if (type === 'ERROR') {
         console.error('WebWorker error:', data);
       }
@@ -220,40 +234,132 @@ export function OCRVideoComponent() {
     };
   }, [selectedDevice, toast]); // 依赖项现在非常简单和可控：仅在用户手动切换设备时重新运行
 
+
   //后端任务控制信号监听
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
+    let unlistenTaskEvent: UnlistenFn | undefined;
+    
     const setupListeners = async () => {
       try {
+        // 监听旧的ocr_event（向后兼容）
         unlisten = await listen("ocr_event", (event) => {
           console.log("React Component 收到 ocr_event:", event.payload);
           setOcrTaskEvent(String(event.payload));
         });
-      } catch (error) {
-        console.error("监听 ocr_event 失败:", error);
-      }
 
-      return () => {
-        if (unlisten) {
-          try {
-            unlisten();
-            console.log("已取消监听");
-          } catch (error) {
-            console.error("取消监听失败:", error);
+        // 监听新的ocr_task_event（结构化事件）
+        unlistenTaskEvent = await listen("ocr_task_event", (event) => {
+          console.log("React Component 收到 ocr_task_event:", event.payload);
+          const data = event.payload as any;
+          
+          if (data && typeof data === 'object') {
+            const eventType = data.type;
+            const taskId = data.task_id;
+            const message = data.message;
+            
+            console.log(`OCR Task Event - Type: ${eventType}, Task: ${taskId}, Message: ${message}`);
+            
+            // 处理不同类型的事件
+            switch (eventType) {
+              case 'start':
+                setOcrTaskEvent('start');
+                toast({
+                  title: "OCR任务启动",
+                  description: message || "OCR任务开始初始化"
+                });
+                break;
+              case 'ready':
+                setOcrTaskEvent('ready');
+                toast({
+                  title: "OCR任务就绪",
+                  description: message || "OCR任务已准备就绪"
+                });
+                break;
+              case 'stop':
+                setOcrTaskEvent('stop');
+                const reason = data.reason || 'completed';
+                const processedFrames = data.processed_frames || 0;
+                toast({
+                  title: "OCR任务停止",
+                  description: `${message || 'OCR任务已停止'} (处理了 ${processedFrames} 帧)`,
+                  variant: reason === 'completed' ? 'default' : 'destructive'
+                });
+                break;
+              case 'session_complete':
+                setOcrTaskEvent('session_complete');
+                toast({
+                  title: "OCR会话完成",
+                  description: message || "OCR会话已完成"
+                });
+                break;
+              case 'error':
+                const consecutiveErrors = data.consecutive_errors || 0;
+                toast({
+                  title: "OCR处理错误",
+                  description: `${data.error} (连续错误: ${consecutiveErrors})`,
+                  variant: "destructive"
+                });
+                break;
+              case 'warning':
+                toast({
+                  title: "OCR警告",
+                  description: message || "OCR处理警告",
+                  variant: "destructive"
+                });
+                break;
+              default:
+                console.log("未知的OCR任务事件类型:", eventType);
+            }
+          } else {
+            // 处理简单字符串格式（向后兼容）
+            setOcrTaskEvent(String(event.payload));
           }
-        }
-      };
+        });
+      } catch (error) {
+        console.error("监听OCR事件失败:", error);
+      }
     };
 
     setupListeners();
-  }, []);
+
+    return () => {
+      if (unlisten) {
+        try {
+          unlisten();
+          console.log("已取消监听 ocr_event");
+        } catch (error) {
+          console.error("取消监听 ocr_event 失败:", error);
+        }
+      }
+      if (unlistenTaskEvent) {
+        try {
+          unlistenTaskEvent();
+          console.log("已取消监听 ocr_task_event");
+        } catch (error) {
+          console.error("取消监听 ocr_task_event 失败:", error);
+        }
+      }
+    };
+  }, [toast]);
 
   //任务状态更新
   useEffect(() => { 
     if (ocrTaskEvent === "start") {
+      console.log("收到OCR启动信号，等待就绪信号...");
+      setIsOcrReady(false);
+      // 不立即启动，等待ready事件
+    } else if (ocrTaskEvent === "ready") {
+      console.log("收到OCR就绪信号，开始视频帧推送");
+      setIsOcrReady(true);
       startCapturing();
-    }else {
+    } else if (ocrTaskEvent === "stop") {
+      console.log("收到OCR停止信号");
+      setIsOcrReady(false);
       stopCapturing();
+    } else if (ocrTaskEvent === "session_complete") {
+      console.log("收到OCR会话完成信号，等待任务自然停止...");
+      // 不立即停止，等待后端任务自然完成并发送stop事件
     }
   }, [ocrTaskEvent]);
 
@@ -280,7 +386,7 @@ export function OCRVideoComponent() {
     });
   };
 
-  // 3. 核心通讯函数：使用WebWorker优化
+  // 3. 核心通讯函数：使用新的push_video_frame API
   const captureAndSend = useCallback(async () => {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0 || video.paused) return;
@@ -322,20 +428,26 @@ export function OCRVideoComponent() {
       // C. 创建 Uint8Array 视图。Tauri 会对此进行优化传输。
       const encodedImageBytes = new Uint8Array(arrayBuffer);
 
-      // 使用WebWorker预处理或直接发送到后端
+      // 使用新的push_video_frame API
+      const timestamp = Date.now();
       if (workerRef.current) {
         workerRef.current.postMessage({
           type: 'PROCESS_FRAME',
           data: {
             imageData: encodedImageBytes,
             roi: roiRef.current,
-            timestamp: Date.now()
+            timestamp: timestamp,
+            width: canvas.width,
+            height: canvas.height
           }
         });
       } else {
-        // 回退到直接调用
-        await invoke("perform_ocr", {
+        // 回退到直接调用新的API
+        await invoke("push_video_frame", {
           imageData: encodedImageBytes,
+          timestamp: timestamp,
+          width: canvas.width,
+          height: canvas.height
         });
       }
 
@@ -417,7 +529,31 @@ export function OCRVideoComponent() {
     const messageHandler = (event: OcrEvent) => {
       console.log("Raw channel event:", event);
 
-      if (event.data) {
+      if (event.session) {
+        console.log("Received OCR session result:", event.session);
+        
+        // 显示会话结果
+        if (event.session.is_session_complete) {
+          toast({
+            title: "OCR会话完成",
+            description: `文本已稳定，最终内容: ${event.session.final_text}`,
+          });
+          
+          // 如果应该停止OCR
+          if (event.session.should_stop_ocr) {
+            stopCapturing();
+          }
+        }
+        
+        // 显示时间信息
+        if (event.session.first_text_detected_time) {
+          console.log("首次检测到文本时间:", new Date(event.session.first_text_detected_time).toLocaleTimeString());
+        }
+        if (event.session.text_stabilized_time) {
+          console.log("文本稳定时间:", new Date(event.session.text_stabilized_time).toLocaleTimeString());
+        }
+        
+      } else if (event.data) {
         console.log("Received OCR data:", event.data);
         setOcrResults(event.data);
       } else if (event.error) {
@@ -454,6 +590,7 @@ export function OCRVideoComponent() {
 
     // D. 更新 UI 状态，激活 useEffect 中的循环
     setIsCapturing(true);
+    
     toast({ title: "OCR 识别已启动", description: "实时文字识别进行中。" });
   }, [toast, stopCapturing]);
 
@@ -502,9 +639,18 @@ export function OCRVideoComponent() {
       }
       animationFrameId = requestAnimationFrame(loop);
     };
-    animationFrameId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [captureAndSend]);
+    
+    // 只在开始捕获时启动循环
+    if (isCapturing) {
+      animationFrameId = requestAnimationFrame(loop);
+    }
+    
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [captureAndSend, isCapturing]);
 
   const drawVisuals = useCallback(() => {
     const video = videoRef.current;
