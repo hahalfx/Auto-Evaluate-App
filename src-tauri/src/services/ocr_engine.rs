@@ -149,7 +149,7 @@ pub async fn perform_ocr(
     image_data: Vec<u8>,
     timestamp: u64,
     state: Arc<AppState>,
-) -> Result<bool, String> {
+) -> Result<OcrSessionResult, String> {
     let channel_clone = match state.ocr_channel.lock().await.as_ref() {
         Some(channel) => channel.clone(),
         None => {
@@ -209,7 +209,7 @@ pub async fn perform_ocr(
                 .join(" ");
 
             // 处理会话状态
-            let session_result = session.process_frame(all_text, timestamp);
+            let session_result: OcrSessionResult = session.process_frame(all_text, timestamp);
 
             Ok((final_sentences, session_result))
         } else {
@@ -221,7 +221,7 @@ pub async fn perform_ocr(
     .await;
 
     // 处理结果并发送到前端
-    let should_stop = match task_result {
+    let session_result = match task_result {
         Ok(Ok((data, session_result))) => {
             let event = if session_result.should_stop_ocr {
                 OcrEvent::Session(session_result.clone())
@@ -244,7 +244,7 @@ pub async fn perform_ocr(
                 }
             }
 
-            session_result.should_stop_ocr
+            session_result
         }
         Ok(Err(e)) => {
             let event = OcrEvent::Error(e.to_string());
@@ -264,7 +264,7 @@ pub async fn perform_ocr(
         }
     };
 
-    Ok(should_stop)
+    Ok(session_result)
 }
 
 /// 初始化OCR引擎池（兼容旧接口）

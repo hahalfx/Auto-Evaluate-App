@@ -918,7 +918,6 @@ impl DatabaseService {
                 result_status: row.result_status,
                 recognition_time: row.recognition_time.map(|v| v as f32),
                 response_time: row.response_time.map(|v| v as f32),
-                timing_data: None, // 将在后续实现中填充
             };
 
             results.insert(row.sample_id as u32, analysis_result);

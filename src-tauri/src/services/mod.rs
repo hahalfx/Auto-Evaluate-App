@@ -8,3 +8,4 @@ pub mod ocr_engine;
 pub mod ocr_task;
 pub mod meta_task_executor;
 pub mod ocr_session;
+pub mod middle_task;

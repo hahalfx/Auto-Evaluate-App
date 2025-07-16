@@ -97,9 +97,6 @@ pub struct AnalysisResult {
     pub result_status: Option<String>,
     pub recognition_time: Option<f32>,
     pub response_time: Option<f32>,
-    
-    // 新增时间参数
-    pub timing_data: Option<TimingData>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

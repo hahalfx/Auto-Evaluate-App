@@ -252,7 +252,6 @@ impl Task for analysis_task {
                                 result_status: None,
                                 recognition_time: None,
                                 response_time: None,
-                                timing_data: None,
                             };
 
                             app_handle.emit("llm_analysis_result", final_result.clone())?;

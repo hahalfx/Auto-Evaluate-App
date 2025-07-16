@@ -488,8 +488,12 @@ pub async fn new_workflow(
             "finish_task".to_string(),
             task_id,
             sample_id,
+            "asr_task".to_string(),
             "analysis_task".to_string(),
-            "finish_task".to_string(),
+            "audio_ocr_task".to_string(),
+            "ocr_task".to_string(),
+            "audio_task".to_string(),
+            "wakeword_task".to_string(),
             state.db.clone(),
         ));
 

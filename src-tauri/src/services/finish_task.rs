@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 use tokio::sync::watch;
 
 use crate::db::database::DatabaseService; // 假设您的数据库服务类型路径是这个
-use crate::models::{AnalysisResult, MachineResponseData};
+use crate::models::{AnalysisResult, MachineResponseData, TimingData};
 use crate::services::asr_task::AsrTaskOutput;
+use crate::services::ocr_session::OcrSessionResult;
 use crate::services::workflow::{ControlSignal, Task, WorkflowContext};
 
 pub struct finish_task {
@@ -15,6 +16,10 @@ pub struct finish_task {
     pub sample_id: u32,
     pub asr_dependency_id: String,
     pub analysis_dependency_id: String,
+    pub audio_ocr_dependency_id: String,  // 新增：audio_ocr_task的ID
+    pub ocr_dependency_id: String,        // 新增：ocr_task的ID
+    pub audio_task_id: String,            // 新增：audio_task的ID
+    pub wakeword_task_id: String,         // 新增：wakeword_task的ID
     // 任务持有所需的数据库服务
     pub db: Arc<DatabaseService>,
 }
@@ -27,6 +32,10 @@ impl finish_task {
         sample_id: u32,
         asr_dependency_id: String,
         analysis_dependency_id: String,
+        audio_ocr_dependency_id: String,
+        ocr_dependency_id: String,
+        audio_task_id: String,
+        wakeword_task_id: String,
         db: Arc<DatabaseService>,
     ) -> Self {
         Self {
@@ -35,6 +44,10 @@ impl finish_task {
             sample_id,
             asr_dependency_id,
             analysis_dependency_id,
+            audio_ocr_dependency_id,
+            ocr_dependency_id,
+            audio_task_id,
+            wakeword_task_id,
             db, // 存储传入的数据库服务
         }
     }
@@ -46,6 +59,10 @@ impl finish_task {
         sample_id: u32,
         asr_dependency_id: String,
         analysis_dependency_id: String,
+        audio_ocr_dependency_id: String,
+        ocr_dependency_id: String,
+        audio_task_id: String,
+        wakeword_task_id: String,
         db: Arc<DatabaseService>,
     ) -> Self {
         Self {
@@ -54,6 +71,10 @@ impl finish_task {
             sample_id,
             asr_dependency_id,
             analysis_dependency_id,
+            audio_ocr_dependency_id,
+            ocr_dependency_id,
+            audio_task_id,
+            wakeword_task_id,
             db,
         }
     }
@@ -92,7 +113,7 @@ impl finish_task {
         };
 
         // 2. 从 analysis_task 结果中提取数据
-        let analysis_result = if let Some(data) = context_reader.get(&self.analysis_dependency_id) {
+        let mut analysis_result = if let Some(data) = context_reader.get(&self.analysis_dependency_id) {
             if let Some(result) = data.downcast_ref::<AnalysisResult>() {
                 result.clone()
             } else {
@@ -106,18 +127,66 @@ impl finish_task {
             .into());
         };
 
-        // 3. 提取时间数据用于日志记录
-        if let Some(timing) = &analysis_result.timing_data {
-            log::info!("[{}] 时间参数采集完成:", self.id);
-            if let Some(recognition_time) = timing.voice_recognition_time_ms {
-                log::info!("[{}]   语音识别时间: {}ms", self.id, recognition_time);
+        // 3. 从audio_task获取语音指令时间
+        let audio_timing = if let Some(data) = context_reader.get(&format!("{}_timing", self.audio_task_id)) {
+            data.downcast_ref::<TimingData>().cloned()
+        } else { None };
+
+        // 4. 从audio_ocr_task获取首字上屏时间和文本稳定时间
+        let audio_ocr_result = if let Some(data) = context_reader.get(&self.audio_ocr_dependency_id) {
+            data.downcast_ref::<OcrSessionResult>().cloned()
+        } else { None };
+
+        // 5. 从ocr_task获取动作开始时间
+        let ocr_result = if let Some(data) = context_reader.get(&self.ocr_dependency_id) {
+            data.downcast_ref::<OcrSessionResult>().cloned()
+        } else { None };
+
+        // 6. 构建完整的TimingData
+        let mut timing_data = TimingData::new();
+
+        // 从audio_task获取语音指令开始和结束时间
+        if let Some(audio_timing) = audio_timing {
+            timing_data.voice_command_start_time = audio_timing.voice_command_start_time;
+            timing_data.voice_command_end_time = audio_timing.voice_command_end_time;
+        }
+
+        // 从audio_ocr_task获取首字上屏时间和文本稳定时间
+        if let Some(audio_ocr) = &audio_ocr_result {
+            if let Some(first_time) = audio_ocr.first_text_detected_time {
+                timing_data.first_char_appear_time = 
+                    chrono::DateTime::from_timestamp_millis(first_time as i64);
             }
-            if let Some(interaction_time) = timing.interaction_response_time_ms {
-                log::info!("[{}]   交互响应时间: {}ms", self.id, interaction_time);
+            if let Some(stable_time) = audio_ocr.text_stabilized_time {
+                timing_data.full_text_appear_time = 
+                    chrono::DateTime::from_timestamp_millis(stable_time as i64);
             }
-            if let Some(tts_time) = timing.tts_response_time_ms {
-                log::info!("[{}]   TTS响应时间: {}ms", self.id, tts_time);
+        }
+
+        // 从ocr_task获取动作开始时间（暂时使用first_text_detected_time）
+        if let Some(ocr) = &ocr_result {
+            if let Some(action_time) = ocr.first_text_detected_time {
+                timing_data.action_start_time = 
+                    chrono::DateTime::from_timestamp_millis(action_time as i64);
             }
+        }
+
+        // tts_first_frame_time暂时留空
+        timing_data.tts_first_frame_time = None;
+
+        // 计算时间差值
+        timing_data.calculate_durations();
+
+        // 7. 提取时间数据用于日志记录
+        log::info!("[{}] 时间参数采集完成:", self.id);
+        if let Some(recognition_time) = timing_data.voice_recognition_time_ms {
+            log::info!("[{}]   语音识别时间: {}ms", self.id, recognition_time);
+        }
+        if let Some(interaction_time) = timing_data.interaction_response_time_ms {
+            log::info!("[{}]   交互响应时间: {}ms", self.id, interaction_time);
+        }
+        if let Some(tts_time) = timing_data.tts_response_time_ms {
+            log::info!("[{}]   TTS响应时间: {}ms", self.id, tts_time);
         }
 
         // 尽早释放读锁
@@ -137,23 +206,21 @@ impl finish_task {
             .map_err(|e| format!("[{}] 保存分析结果失败: {}", self.id, e))?;
 
         // 保存时间数据
-        if let Some(timing) = &analysis_result.timing_data {
-            log::info!("[{}] 保存时间数据到数据库...", self.id);
-            self.db
-                .save_timing_data(self.task_id, self.sample_id as i64, timing)
-                .await
-                .map_err(|e| format!("[{}] 保存时间数据失败: {}", self.id, e))?;
+        log::info!("[{}] 保存时间数据到数据库...", self.id);
+        self.db
+            .save_timing_data(self.task_id, self.sample_id as i64, &timing_data)
+            .await
+            .map_err(|e| format!("[{}] 保存时间数据失败: {}", self.id, e))?;
 
-            // 记录时间参数
-            if let Some(recognition_time) = timing.voice_recognition_time_ms {
-                log::info!("[{}]   语音识别时间: {}ms", self.id, recognition_time);
-            }
-            if let Some(interaction_time) = timing.interaction_response_time_ms {
-                log::info!("[{}]   交互响应时间: {}ms", self.id, interaction_time);
-            }
-            if let Some(tts_time) = timing.tts_response_time_ms {
-                log::info!("[{}]   TTS响应时间: {}ms", self.id, tts_time);
-            }
+        // 记录时间参数
+        if let Some(recognition_time) = timing_data.voice_recognition_time_ms {
+            log::info!("[{}]   语音识别时间: {}ms", self.id, recognition_time);
+        }
+        if let Some(interaction_time) = timing_data.interaction_response_time_ms {
+            log::info!("[{}]   交互响应时间: {}ms", self.id, interaction_time);
+        }
+        if let Some(tts_time) = timing_data.tts_response_time_ms {
+            log::info!("[{}]   TTS响应时间: {}ms", self.id, tts_time);
         }
 
         log::info!("[{}] 更新任务状态为完成...", self.id);
@@ -179,16 +246,14 @@ impl finish_task {
         });
 
         // 添加时间参数到事件数据
-        if let Some(timing) = &analysis_result.timing_data {
-            if let Some(recognition_time) = timing.voice_recognition_time_ms {
-                event_data["voice_recognition_time_ms"] = serde_json::Value::from(recognition_time);
-            }
-            if let Some(interaction_time) = timing.interaction_response_time_ms {
-                event_data["interaction_response_time_ms"] = serde_json::Value::from(interaction_time);
-            }
-            if let Some(tts_time) = timing.tts_response_time_ms {
-                event_data["tts_response_time_ms"] = serde_json::Value::from(tts_time);
-            }
+        if let Some(recognition_time) = timing_data.voice_recognition_time_ms {
+            event_data["voice_recognition_time_ms"] = serde_json::Value::from(recognition_time);
+        }
+        if let Some(interaction_time) = timing_data.interaction_response_time_ms {
+            event_data["interaction_response_time_ms"] = serde_json::Value::from(interaction_time);
+        }
+        if let Some(tts_time) = timing_data.tts_response_time_ms {
+            event_data["tts_response_time_ms"] = serde_json::Value::from(tts_time);
         }
 
         app_handle.emit("finish_task_complete", event_data)?;
