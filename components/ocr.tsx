@@ -79,7 +79,7 @@ export function OCRVideoComponent() {
     x: number;
     y: number;
   } | null>(null);
-  const [ocrInterval, setOcrInterval] = useState<number>(0); // 识别间隔 (秒)
+  const [ocrInterval, setOcrInterval] = useState<number>(0.033); // 识别间隔 (秒)
   const { toast } = useToast();
   const [isInitializing, setIsInitializing] = useState(false);
   const [devicesLoaded, setDevicesLoaded] = useState(false);
@@ -915,7 +915,7 @@ export function OCRVideoComponent() {
                     <SelectValue placeholder="选择间隔" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">0 (30 FPS)</SelectItem>
+                    <SelectItem value="0.033">0 (30 FPS)</SelectItem>
                     <SelectItem value="0.1">0.1 (10 FPS)</SelectItem>
                     <SelectItem value="0.2">0.2 (5 FPS)</SelectItem>
                     <SelectItem value="0.5">0.5 (2 FPS)</SelectItem>

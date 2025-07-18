@@ -126,7 +126,10 @@ impl Task for ocr_task {
                     } else {
                         0.0
                     };
+                    println!("-----------------------------------------");
                     println!("当前处理FPS: {:.1}", fps);
+                    println!("当前时间: {:?}", now);
+                    println!("-----------------------------------------");
                     last_fps_calculation = now;
                 }
 
