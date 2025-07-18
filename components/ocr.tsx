@@ -28,7 +28,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import { se } from "date-fns/locale";
+import { set } from "date-fns";
 
 // 2. 定义与 Rust 后端匹配的类型
 interface RustOcrResultItem {
@@ -79,17 +79,24 @@ export function OCRVideoComponent() {
     x: number;
     y: number;
   } | null>(null);
-  const [ocrInterval, setOcrInterval] = useState<number>(0.5); // 识别间隔 (秒)
+  const [ocrInterval, setOcrInterval] = useState<number>(0); // 识别间隔 (秒)
   const { toast } = useToast();
   const [isInitializing, setIsInitializing] = useState(false);
   const [devicesLoaded, setDevicesLoaded] = useState(false);
   const [ocrTaskEvent, setOcrTaskEvent] = useState<string | null>(null);
   const [isOcrReady, setIsOcrReady] = useState<boolean>(false);
+  const [firstTextDetectedTime, setFirstTextDetectedTime] =
+    useState<Date | null>(null);
+  const [textStabilizedTime, setTextStabilizedTime] = useState<Date | null>(
+    null
+  );
 
   // --- Refs for Callbacks (保持不变) ---
   const roiRef = useRef(roi);
   const ocrIntervalRef = useRef(ocrInterval);
   const isCapturingRef = useRef(isCapturing);
+
+  // 使用 useEffect 来同步 state 到 ref
   useEffect(() => {
     roiRef.current = roi;
   }, [roi]);
@@ -100,35 +107,35 @@ export function OCRVideoComponent() {
     isCapturingRef.current = isCapturing;
   }, [isCapturing]);
 
-  // 初始化WebWorker
-  useEffect(() => {
-    workerRef.current = new Worker('/ocr-worker.js');
-    
-    workerRef.current.onmessage = (e) => {
-      const { type, data } = e.data;
-      if (type === 'FRAME_QUEUED') {
-        // 使用新的push_video_frame API
-        invoke("push_video_frame", {
-          imageData: data.imageData,
-          timestamp: data.timestamp,
-          width: data.width,
-          height: data.height
-        });
-      } else if (type === 'ERROR') {
-        console.error('WebWorker error:', data);
-      }
-    };
-    
-    workerRef.current.onerror = (error) => {
-      console.error('WebWorker error:', error);
-    };
-    
-    return () => {
-      if (workerRef.current) {
-        workerRef.current.terminate();
-      }
-    };
-  }, []);
+  // // 初始化WebWorker
+  // useEffect(() => {
+  //   workerRef.current = new Worker("/ocr-worker.js");
+
+  //   workerRef.current.onmessage = (e) => {
+  //     const { type, data } = e.data;
+  //     if (type === "FRAME_QUEUED") {
+  //       // 使用新的push_video_frame API
+  //       invoke("push_video_frame", {
+  //         imageData: data.imageData,
+  //         timestamp: data.timestamp,
+  //         width: data.width,
+  //         height: data.height,
+  //       });
+  //     } else if (type === "ERROR") {
+  //       console.error("WebWorker error:", data);
+  //     }
+  //   };
+
+  //   workerRef.current.onerror = (error) => {
+  //     console.error("WebWorker error:", error);
+  //   };
+
+  //   return () => {
+  //     if (workerRef.current) {
+  //       workerRef.current.terminate();
+  //     }
+  //   };
+  // }, []);
 
   useEffect(() => {
     // 使用一个变量来防止在组件卸载后继续执行异步代码
@@ -234,12 +241,11 @@ export function OCRVideoComponent() {
     };
   }, [selectedDevice, toast]); // 依赖项现在非常简单和可控：仅在用户手动切换设备时重新运行
 
-
   //后端任务控制信号监听
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
     let unlistenTaskEvent: UnlistenFn | undefined;
-    
+
     const setupListeners = async () => {
       try {
         // 监听旧的ocr_event（向后兼容）
@@ -252,60 +258,64 @@ export function OCRVideoComponent() {
         unlistenTaskEvent = await listen("ocr_task_event", (event) => {
           console.log("React Component 收到 ocr_task_event:", event.payload);
           const data = event.payload as any;
-          
-          if (data && typeof data === 'object') {
+
+          if (data && typeof data === "object") {
             const eventType = data.type;
             const taskId = data.task_id;
             const message = data.message;
-            
-            console.log(`OCR Task Event - Type: ${eventType}, Task: ${taskId}, Message: ${message}`);
-            
+
+            console.log(
+              `OCR Task Event - Type: ${eventType}, Task: ${taskId}, Message: ${message}`
+            );
+
             // 处理不同类型的事件
             switch (eventType) {
-              case 'start':
-                setOcrTaskEvent('start');
+              case "start":
+                setOcrTaskEvent("start");
                 toast({
                   title: "OCR任务启动",
-                  description: message || "OCR任务开始初始化"
+                  description: message || "OCR任务开始初始化",
                 });
                 break;
-              case 'ready':
-                setOcrTaskEvent('ready');
+              case "ready":
+                setOcrTaskEvent("ready");
                 toast({
                   title: "OCR任务就绪",
-                  description: message || "OCR任务已准备就绪"
+                  description: message || "OCR任务已准备就绪",
                 });
                 break;
-              case 'stop':
-                setOcrTaskEvent('stop');
-                const reason = data.reason || 'completed';
+              case "stop":
+                setOcrTaskEvent("stop");
+                const reason = data.reason || "completed";
                 const processedFrames = data.processed_frames || 0;
                 toast({
                   title: "OCR任务停止",
-                  description: `${message || 'OCR任务已停止'} (处理了 ${processedFrames} 帧)`,
-                  variant: reason === 'completed' ? 'default' : 'destructive'
+                  description: `${
+                    message || "OCR任务已停止"
+                  } (处理了 ${processedFrames} 帧)`,
+                  variant: reason === "completed" ? "default" : "destructive",
                 });
                 break;
-              case 'session_complete':
-                setOcrTaskEvent('session_complete');
+              case "session_complete":
+                setOcrTaskEvent("session_complete");
                 toast({
                   title: "OCR会话完成",
-                  description: message || "OCR会话已完成"
+                  description: message || "OCR会话已完成",
                 });
                 break;
-              case 'error':
+              case "error":
                 const consecutiveErrors = data.consecutive_errors || 0;
                 toast({
                   title: "OCR处理错误",
                   description: `${data.error} (连续错误: ${consecutiveErrors})`,
-                  variant: "destructive"
+                  variant: "destructive",
                 });
                 break;
-              case 'warning':
+              case "warning":
                 toast({
                   title: "OCR警告",
                   description: message || "OCR处理警告",
-                  variant: "destructive"
+                  variant: "destructive",
                 });
                 break;
               default:
@@ -344,7 +354,7 @@ export function OCRVideoComponent() {
   }, [toast]);
 
   //任务状态更新
-  useEffect(() => { 
+  useEffect(() => {
     if (ocrTaskEvent === "start") {
       console.log("收到OCR启动信号，等待就绪信号...");
       setIsOcrReady(false);
@@ -391,6 +401,11 @@ export function OCRVideoComponent() {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0 || video.paused) return;
 
+    // 实时检查是否应该停止
+    if (!isCapturingRef.current) {
+      return;
+    }
+
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (!context) return;
@@ -419,37 +434,48 @@ export function OCRVideoComponent() {
     try {
       const startTime = performance.now();
 
-      // A. 将 Canvas 内容转换为 Blob（这里使用 PNG 格式，适合 OCR）
-      const blob = await canvasToBlob(canvas, "image/png");
+      // A. 将 Canvas 内容转换为 Blob（这里使用 PNG/JPEG 格式，适合 OCR）
+      const blob = await canvasToBlob(canvas, "image/jpeg", 0.8);
 
       // B. 从 Blob 获取底层的 ArrayBuffer
       const arrayBuffer = await blob.arrayBuffer();
 
       // C. 创建 Uint8Array 视图。Tauri 会对此进行优化传输。
       const encodedImageBytes = new Uint8Array(arrayBuffer);
-
-      // 使用新的push_video_frame API
-      const timestamp = Date.now();
-      if (workerRef.current) {
-        workerRef.current.postMessage({
-          type: 'PROCESS_FRAME',
-          data: {
-            imageData: encodedImageBytes,
-            roi: roiRef.current,
-            timestamp: timestamp,
-            width: canvas.width,
-            height: canvas.height
-          }
-        });
-      } else {
-        // 回退到直接调用新的API
-        await invoke("push_video_frame", {
-          imageData: encodedImageBytes,
-          timestamp: timestamp,
-          width: canvas.width,
-          height: canvas.height
-        });
+      // 实时检查是否应该停止
+      if (!isCapturingRef.current) {
+        return;
       }
+      const timestamp = Date.now();
+      // // 使用新的push_video_frame API
+
+      // if (workerRef.current) {
+      //   workerRef.current.postMessage({
+      //     type: "PROCESS_FRAME",
+      //     data: {
+      //       imageData: encodedImageBytes,
+      //       roi: roiRef.current,
+      //       timestamp: timestamp,
+      //       width: canvas.width,
+      //       height: canvas.height,
+      //     },
+      //   });
+      // } else {
+      //   // 回退到直接调用新的API
+      //   await invoke("push_video_frame", {
+      //     imageData: encodedImageBytes,
+      //     timestamp: timestamp,
+      //     width: canvas.width,
+      //     height: canvas.height,
+      //   });
+      // }
+
+      await invoke("push_video_frame", {
+        imageData: encodedImageBytes,
+        timestamp: timestamp,
+        width: canvas.width,
+        height: canvas.height,
+      });
 
       const endTime = performance.now();
       setLastInferenceTime((endTime - startTime) / 1000);
@@ -474,23 +500,23 @@ export function OCRVideoComponent() {
       messageHandlerRef.current = null;
     }
 
-    // 清理WebWorker队列
-    if (workerRef.current) {
-      workerRef.current.postMessage({ type: 'CLEAR_QUEUE' });
-    }
+    // // 清理WebWorker队列
+    // if (workerRef.current) {
+    //   workerRef.current.postMessage({ type: "CLEAR_QUEUE" });
+    // }
 
-    invoke("stop_ocr_session")
-      .then(() => {
-        toast({ title: "OCR识别已停止" });
-        // 在停止会话后，自动关闭引擎
-        return invoke("shutdown_ocr_engine");
-      })
-      .then(() => {
-        console.log("OCR engine shutdown automatically.");
-      })
-      .catch(console.error);
+    // invoke("stop_ocr_session")
+    //   .then(() => {
+    //     toast({ title: "OCR识别已停止" });
+    //     // 在停止会话后，自动关闭引擎
+    //     return invoke("shutdown_ocr_engine");
+    //   })
+    //   .then(() => {
+    //     console.log("OCR engine shutdown automatically.");
+    //   })
+    //   .catch(console.error);
 
-    console.log("Stop capturing process initiated.");
+    console.log("前端视频帧采集结束完毕，清理通道");
   }, [toast]);
 
   useEffect(() => {
@@ -501,10 +527,10 @@ export function OCRVideoComponent() {
       // 调用 stopCapturing 可以完美地停止所有正在运行的流程并清理 channel 和引擎
       stopCapturing();
 
-      // 确保摄像头也被关闭
-      if (activeStreamRef.current) {
-        activeStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
+      // // 确保摄像头也被关闭
+      // if (activeStreamRef.current) {
+      //   activeStreamRef.current.getTracks().forEach((track) => track.stop());
+      // }
     };
   }, [stopCapturing]); // 依赖 stopCapturing
 
@@ -512,18 +538,19 @@ export function OCRVideoComponent() {
   const startCapturing = useCallback(async () => {
     toast({ title: "正在启动 OCR 引擎..." });
 
-    try {
-      // 第一步：自动初始化引擎
-      await invoke("initialize_ocr_engine");
-      toast({ title: "引擎已就绪，正在准备识别会话..." });
-    } catch (error) {
-      toast({
-        title: "OCR 引擎启动失败",
-        description: String(error),
-        variant: "destructive",
-      });
-      return; // 引擎启动失败，则不继续
-    }
+    // 这一步目前已经改为后端ocr_task先启动了，所以这里可以注释掉
+    // try {
+    //   // 第一步：自动初始化引擎
+    //   await invoke("initialize_ocr_engine");
+    //   toast({ title: "引擎已就绪，正在准备识别会话..." });
+    // } catch (error) {
+    //   toast({
+    //     title: "OCR 引擎启动失败",
+    //     description: String(error),
+    //     variant: "destructive",
+    //   });
+    //   return; // 引擎启动失败，则不继续
+    // }
 
     // 创建持久的消息处理器
     const messageHandler = (event: OcrEvent) => {
@@ -531,28 +558,40 @@ export function OCRVideoComponent() {
 
       if (event.session) {
         console.log("Received OCR session result:", event.session);
-        
+
         // 显示会话结果
         if (event.session.is_session_complete) {
           toast({
             title: "OCR会话完成",
             description: `文本已稳定，最终内容: ${event.session.final_text}`,
           });
-          
-          // 如果应该停止OCR
-          if (event.session.should_stop_ocr) {
-            stopCapturing();
-          }
+
+          //这里停止ocr的消息不通过channel获得，通过event获得，这里先注释掉
+          // // 如果应该停止OCR
+          // if (event.session.should_stop_ocr) {
+          //   stopCapturing();
+          // }
         }
-        
+
         // 显示时间信息
         if (event.session.first_text_detected_time) {
-          console.log("首次检测到文本时间:", new Date(event.session.first_text_detected_time).toLocaleTimeString());
+          console.log(
+            "首次检测到文本时间:",
+            new Date(
+              event.session.first_text_detected_time
+            ).toLocaleTimeString()
+          );
+          setFirstTextDetectedTime(
+            new Date(event.session.first_text_detected_time)
+          );
         }
         if (event.session.text_stabilized_time) {
-          console.log("文本稳定时间:", new Date(event.session.text_stabilized_time).toLocaleTimeString());
+          console.log(
+            "文本稳定时间:",
+            new Date(event.session.text_stabilized_time).toLocaleTimeString()
+          );
+          setTextStabilizedTime(new Date(event.session.text_stabilized_time));
         }
-        
       } else if (event.data) {
         console.log("Received OCR data:", event.data);
         setOcrResults(event.data);
@@ -563,7 +602,7 @@ export function OCRVideoComponent() {
           description: event.error,
           variant: "destructive",
         });
-        stopCapturing();
+        //stopCapturing();
       } else {
         console.warn("Unknown event format:", event);
       }
@@ -590,7 +629,7 @@ export function OCRVideoComponent() {
 
     // D. 更新 UI 状态，激活 useEffect 中的循环
     setIsCapturing(true);
-    
+
     toast({ title: "OCR 识别已启动", description: "实时文字识别进行中。" });
   }, [toast, stopCapturing]);
 
@@ -639,12 +678,12 @@ export function OCRVideoComponent() {
       }
       animationFrameId = requestAnimationFrame(loop);
     };
-    
+
     // 只在开始捕获时启动循环
     if (isCapturing) {
       animationFrameId = requestAnimationFrame(loop);
     }
-    
+
     return () => {
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
@@ -715,7 +754,7 @@ export function OCRVideoComponent() {
       ctx.fillStyle = "lime";
       ctx.font = "16px Arial";
       ctx.fillText(
-        `Rust 推理: ${lastInferenceTime.toFixed(3)}s`,
+        `Rust 推理: ${lastInferenceTime.toFixed(4)}s`,
         10,
         canvas.height - 10
       );
@@ -817,6 +856,23 @@ export function OCRVideoComponent() {
     [isCapturing, isSelectingROI, roiStartPoint, toast, getMousePos]
   );
 
+  const formatTimeWithMs = (date: Date | null) => {
+    if (!date) return "未记录";
+    return date.toLocaleTimeString("zh-CN", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      fractionalSecondDigits: 3, // 显示毫秒
+    });
+  };
+
+  const formatTimeDifference = (start: Date | null, end: Date | null) => {
+    if (!start || !end) return null;
+    const diff = end.getTime() - start.getTime();
+    return `${diff}ms`;
+  };
+
   return (
     <div className="flex flex-col p-4 rounded-lg border bg-white space-y-2 h-full">
       <div className="flex items-center flex-wrap gap-2">
@@ -902,25 +958,7 @@ export function OCRVideoComponent() {
           </TooltipContent>
         </Tooltip>
 
-        <div className="flex-grow" />
-
-        <div className="flex items-center gap-2">
-          {!isCapturing ? (
-            <Button
-              onClick={startCapturing}
-              disabled={!devicesLoaded || isInitializing}
-            >
-              <Scan className="h-4 w-4 mr-2" />
-              开始 OCR 识别
-            </Button>
-          ) : (
-            <Button onClick={stopCapturing} variant="destructive">
-              停止 OCR 识别
-            </Button>
-          )}
-        </div>
-
-        <div className="flex items-center text-sm text-muted-foreground gap-2">
+        <div className="flex items-center text-sm text-muted-foreground gap-2 ml-2">
           <MonitorUp
             className="h-4 w-4"
             color={isCapturing ? "hsl(var(--primary))" : "orange"}
@@ -955,7 +993,7 @@ export function OCRVideoComponent() {
         )}
       </div>
 
-      <div className="h-24 overflow-y-auto text-sm pr-2">
+      <div className="h-20 overflow-y-auto text-sm pr-2">
         {ocrResults?.length || 0 ? (
           ocrResults.map((result, index) => (
             <div
@@ -972,6 +1010,24 @@ export function OCRVideoComponent() {
               : "点击开始OCR识别以检测文字"}
           </div>
         )}
+      </div>
+      <div className="flex flex-row text-sm pr-2">
+        <div className="flex-1">
+          首次检测到文本时间:
+          {firstTextDetectedTime && (
+            <span className="text-gray-800">
+              {formatTimeWithMs(firstTextDetectedTime)}
+            </span>
+          )}
+        </div>
+        <div className="flex-1">
+          文本稳定时间:
+          {textStabilizedTime && (
+            <span className="text-gray-800">
+              {formatTimeWithMs(textStabilizedTime)}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

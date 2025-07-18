@@ -10,6 +10,7 @@ use chrono::Utc;
 use std::sync::Arc;
 use tauri::ipc::Channel;
 use tauri::State;
+use tokio::time::{timeout, Duration};
 
 #[tauri::command]
 pub async fn get_all_tasks(state: State<'_, Arc<AppState>>) -> Result<Vec<Task>, String> {
@@ -292,7 +293,7 @@ pub async fn stop_testing(state: State<'_, Arc<AppState>>) -> Result<(), String>
     Ok(())
 }
 
-/// 推送视频帧到OCR处理队列
+/// 推送视频帧到OCR处理队列 (最佳实践)
 #[tauri::command]
 pub async fn push_video_frame(
     image_data: Vec<u8>,
@@ -301,14 +302,16 @@ pub async fn push_video_frame(
     height: u32,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    // 获取帧发送器
-    let sender_guard = state.ocr_frame_sender.lock().await;
-    let sender = match sender_guard.as_ref() {
-        Some(sender) => sender,
-        None => return Err("OCR任务未启动，请先启动OCR任务".to_string()),
-    };
+    // 步骤 1: 快速获取锁，克隆 Sender，然后立即释放锁
+    let sender_clone = { // 使用代码块来限定 sender_guard 的作用域
+        let sender_guard = state.ocr_frame_sender.lock().await;
+        match sender_guard.as_ref() {
+            Some(sender) => sender.clone(), // 克隆 Sender
+            None => return Err("OCR任务未启动，请先启动OCR任务".to_string()),
+        }
+    }; // <- sender_guard 在这里被丢弃，锁立即被释放！
 
-    // 创建VideoFrame
+    // 步骤 2: 在锁之外，从容地准备和发送数据
     let frame = crate::models::VideoFrame {
         data: image_data,
         timestamp,
@@ -316,10 +319,13 @@ pub async fn push_video_frame(
         height,
     };
 
-    // 发送到队列
-    match sender.send(frame).await {
-        Ok(_) => Ok(()),
-        Err(_) => Err("发送视频帧失败，OCR任务可能已停止".to_string()),
+    // 50毫秒超时检查
+    const SEND_TIMEOUT: Duration = Duration::from_millis(75);
+    
+    match timeout(SEND_TIMEOUT, sender_clone.send(frame)).await {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(_)) => Err("发送视频帧失败，OCR任务可能已停止".to_string()),
+        Err(_) => Err("发送视频帧超时，处理队列繁忙，已丢弃当前帧".to_string()),
     }
 }
 
@@ -493,7 +499,6 @@ pub async fn new_workflow(
             "audio_ocr_task".to_string(),
             "ocr_task".to_string(),
             "audio_task".to_string(),
-            "wakeword_task".to_string(),
             state.db.clone(),
         ));
 
@@ -564,8 +569,6 @@ pub async fn start_ocr_session(
 pub async fn stop_ocr_session(state: State<'_, Arc<AppState>>) -> Result<(), String> {
     println!("Stop OCR session requested, waiting for task to complete naturally...");
     
-    // 等待一小段时间，让正在进行的OCR任务有机会自然完成
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
     
     // 清理 Channel 和相关资源
     {
@@ -646,4 +649,16 @@ pub async fn new_meta_workflow(
 
     Ok(())
 
+}
+
+#[tauri::command]
+pub async fn get_timing_data_by_task(
+    state: State<'_, Arc<AppState>>,
+    task_id: u32,
+) -> Result<std::collections::HashMap<u32, crate::models::TimingData>, String> {
+    state
+        .db
+        .get_timing_data_by_task(task_id as i64)
+        .await
+        .map_err(|e| format!("获取时间参数失败: {}", e))
 }

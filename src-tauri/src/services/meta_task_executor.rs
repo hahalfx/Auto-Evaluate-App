@@ -165,7 +165,6 @@ impl Task for meta_task_executor {
                 audio_ocr_task_id.clone(),
                 ocr_task_id.clone(),
                 audio_task_id.clone(),
-                wakeword_task_id.clone(),
                 self.state_snapshot.db.clone(),
             ));
 

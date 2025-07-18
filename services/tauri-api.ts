@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Task, TestSample, WakeWord, AnalysisResult, MachineResponseData, TaskProgress } from '@/types/api';
+import type { Task, TestSample, WakeWord, AnalysisResult, MachineResponseData, TaskProgress, TimingData } from '@/types/api';
 
 export class TauriApiService {
   // 任务相关
@@ -120,5 +120,10 @@ export class TauriApiService {
 
   static async stopTesting(): Promise<void> {
     return await invoke('stop_testing');
+  }
+
+  // 时间参数相关
+  static async getTimingDataByTask(taskId: number): Promise<Record<number, TimingData>> {
+    return await invoke('get_timing_data_by_task', { taskId });
   }
 }

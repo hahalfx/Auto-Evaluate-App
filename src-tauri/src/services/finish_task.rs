@@ -19,7 +19,6 @@ pub struct finish_task {
     pub audio_ocr_dependency_id: String,  // 新增：audio_ocr_task的ID
     pub ocr_dependency_id: String,        // 新增：ocr_task的ID
     pub audio_task_id: String,            // 新增：audio_task的ID
-    pub wakeword_task_id: String,         // 新增：wakeword_task的ID
     // 任务持有所需的数据库服务
     pub db: Arc<DatabaseService>,
 }
@@ -35,7 +34,6 @@ impl finish_task {
         audio_ocr_dependency_id: String,
         ocr_dependency_id: String,
         audio_task_id: String,
-        wakeword_task_id: String,
         db: Arc<DatabaseService>,
     ) -> Self {
         Self {
@@ -47,7 +45,6 @@ impl finish_task {
             audio_ocr_dependency_id,
             ocr_dependency_id,
             audio_task_id,
-            wakeword_task_id,
             db, // 存储传入的数据库服务
         }
     }
@@ -62,7 +59,6 @@ impl finish_task {
         audio_ocr_dependency_id: String,
         ocr_dependency_id: String,
         audio_task_id: String,
-        wakeword_task_id: String,
         db: Arc<DatabaseService>,
     ) -> Self {
         Self {
@@ -74,7 +70,6 @@ impl finish_task {
             audio_ocr_dependency_id,
             ocr_dependency_id,
             audio_task_id,
-            wakeword_task_id,
             db,
         }
     }
@@ -207,6 +202,7 @@ impl finish_task {
 
         // 保存时间数据
         log::info!("[{}] 保存时间数据到数据库...", self.id);
+        println!("时间数据：{:?}", timing_data.clone());
         self.db
             .save_timing_data(self.task_id, self.sample_id as i64, &timing_data)
             .await

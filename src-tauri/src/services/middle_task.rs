@@ -21,6 +21,8 @@ impl Task for middle_task {
         context: WorkflowContext,
         app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
+
+        print!("前面两个任务完成开始执行中间任务");
         
         // 主控制循环 - 持续检查控制信号
         loop {

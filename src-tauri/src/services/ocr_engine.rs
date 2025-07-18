@@ -3,6 +3,7 @@ use crate::services::ocr_session::{OcrSessionManager, OcrSessionResult};
 use anyhow::anyhow;
 use image::DynamicImage;
 use std::cmp::{max, min};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use tauri::{
     ipc::{Channel, InvokeResponseBody},
@@ -80,7 +81,7 @@ fn parse_tsv_data(tsv: &str) -> anyhow::Result<Vec<OcrResultItem>> {
 
 /// 初始化OCR引擎池
 pub async fn initialize_ocr_pool(
-    state: &AppState,
+    state: Arc<AppState>,
     app_handle: &tauri::AppHandle,
     pool_size: usize,
 ) -> anyhow::Result<()> {
@@ -130,7 +131,7 @@ pub async fn initialize_ocr_pool(
 }
 
 /// 关闭OCR引擎池
-pub async fn shutdown_ocr_pool(state: &AppState) -> anyhow::Result<()> {
+pub async fn shutdown_ocr_pool(state: Arc<AppState>) -> anyhow::Result<()> {
     println!("Shutting down OCR engine pool...");
     
     let pool = &state.ocr_pool;
@@ -167,56 +168,84 @@ pub async fn perform_ocr(
     let session_manager = state.ocr_session_manager.clone();
     
     // 执行OCR处理
-    let task_result = tokio::task::spawn_blocking(move || {
-        let mut engine_guard = engine_arc.lock();
-        let mut session = session_manager.lock();
+    let task_result = tokio::task::spawn_blocking(move || -> anyhow::Result<(Vec<MergedSentence>, OcrSessionResult)> {
+        let ocr_text = {
+            let mut engine_guard = engine_arc.lock();
+            if let Some(tesseract) = engine_guard.take() {
+                let mut recognized_tesseract = tesseract.set_image_from_mem(&image_data)?;
+                let tsv_data = recognized_tesseract.get_tsv_text(0)?;
+                *engine_guard = Some(recognized_tesseract); // 回收引擎
 
-        // Decode the image from the bytes sent by the frontend.
-        let img: DynamicImage =
-            image::load_from_memory(&image_data).map_err(|e| anyhow!("图像解码失败: {}", e))?;
+                let ocr_lines = parse_tsv_data(&tsv_data)?;
+                let final_sentences = merge_lines_into_sentences(&ocr_lines);
+                let all_text: String = final_sentences
+                    .iter()
+                    .map(|s| s.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                Ok((all_text, final_sentences))
+            } else {
+                Err(anyhow!("OCR engine not available"))
+            }
+        }?;
 
-        // Extract width and height from the decoded image itself.
-        let width = img.width();
-        let height = img.height();
-        let rgba = img.to_rgba8();
+        let (all_text, final_sentences) = ocr_text;
 
-        // Take ownership of the Tesseract engine from the pool.
-        if let Some(tesseract) = engine_guard.take() {
-            let mut recognized_tesseract = tesseract.set_frame(
-                &rgba,
-                width as i32,
-                height as i32,
-                4,                // Bytes per pixel for RGBA
-                width as i32 * 4, // Bytes per line
-            )?;
+        // 1. 快速锁定、更新状态并获取待检查数据，然后立即解锁
+        let (mut session_result, history_to_check) = {
+            let mut session = session_manager.lock();
+            session.process_frame(all_text, timestamp)
+        }; // <-- 锁在这里被释放
 
-            // Get the recognition result as a TSV string.
-            let tsv_data = recognized_tesseract.get_tsv_text(0)?;
-            println!("-- RAW TSV DATA --\n{}\n------------------", &tsv_data);
+        // 2. 在锁之外执行昂贵的稳定性检查
+        if let Some(history) = history_to_check {
+            // 直接在这里实现稳定性检查逻辑，避免 &self 依赖问题
+            // 注意：这里的阈值是硬编码的，与 OcrSessionManager::new() 中的默认值匹配
+            let stability_threshold = 30;
+            let similarity_threshold = 0.95;
 
-            // IMPORTANT: Place the Tesseract instance back into the pool for reuse.
-            *engine_guard = Some(recognized_tesseract);
+            let is_stable = if history.len() < stability_threshold {
+                false
+            } else {
+                let reference_text = &history[0].0;
+                if reference_text.is_empty() {
+                    false
+                } else {
+                    history
+                        .iter()
+                        .all(|(text, _)| {
+                            OcrSessionManager::calculate_similarity(reference_text, text)
+                                >= similarity_threshold
+                        })
+                }
+            };
 
-            // 解析 TSV 数据，得到基于行的结果
-            let ocr_lines = parse_tsv_data(&tsv_data)?;
-            let final_sentences = merge_lines_into_sentences(&ocr_lines);
+            if is_stable {
+                // 如果稳定，计算最终文本并更新 session_result
+                let final_text = {
+                    use std::collections::HashMap;
+                    let mut frequency: HashMap<&str, usize> = HashMap::new();
+                    for (text, _) in &history {
+                        *frequency.entry(text).or_insert(0) += 1;
+                    }
+                    frequency
+                        .into_iter()
+                        .max_by_key(|&(_, count)| count)
+                        .map(|(text, _)| text.to_string())
+                        .unwrap_or_else(|| history.back().map(|(s, _)| s.clone()).unwrap_or_default())
+                };
 
-            // 提取所有文本内容
-            let all_text: String = final_sentences
-                .iter()
-                .map(|s| s.text.as_str())
-                .collect::<Vec<_>>()
-                .join(" ");
+                let stabilized_time = history.back().map(|(_, ts)| *ts).unwrap_or(timestamp);
 
-            // 处理会话状态
-            let session_result: OcrSessionResult = session.process_frame(all_text, timestamp);
-
-            Ok((final_sentences, session_result))
-        } else {
-            Err(anyhow!(
-                "OCR engine not initialized. Please start the workflow first."
-            ))
+                session_result.is_session_complete = true;
+                session_result.should_stop_ocr = true;
+                session_result.final_text = final_text;
+                session_result.text_stabilized_time = Some(stabilized_time);
+            }
         }
+
+        // 3. 返回最终结果（可能是临时的，也可能是稳定的）
+        Ok((final_sentences, session_result))
     })
     .await;
 
@@ -267,30 +296,30 @@ pub async fn perform_ocr(
     Ok(session_result)
 }
 
-/// 初始化OCR引擎池（兼容旧接口）
-#[tauri::command]
-pub async fn initialize_ocr_engine(
-    state: State<'_, Arc<AppState>>,
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
-    initialize_ocr_pool(&state, &app_handle, 6)
-        .await
-        .map_err(|e| {
-            eprintln!("Failed to initialize OCR engine pool: {}", e);
-            e.to_string()
-        })
-}
+// /// 初始化OCR引擎池（兼容旧接口）
+// #[tauri::command]
+// pub async fn initialize_ocr_engine(
+//     state: State<'_, Arc<AppState>>,
+//     app_handle: tauri::AppHandle,
+// ) -> Result<(), String> {
+//     initialize_ocr_pool(&state, &app_handle, 6)
+//         .await
+//         .map_err(|e| {
+//             eprintln!("Failed to initialize OCR engine pool: {}", e);
+//             e.to_string()
+//         })
+// }
 
 /// 关闭OCR引擎（兼容旧接口）
-#[tauri::command]
-pub async fn shutdown_ocr_engine(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    shutdown_ocr_pool(&state)
-        .await
-        .map_err(|e| {
-            eprintln!("Failed to shutdown OCR engine pool: {}", e);
-            e.to_string()
-        })
-}
+// #[tauri::command]
+// pub async fn shutdown_ocr_engine(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+//     shutdown_ocr_pool(&state)
+//         .await
+//         .map_err(|e| {
+//             eprintln!("Failed to shutdown OCR engine pool: {}", e);
+//             e.to_string()
+//         })
+// }
 
 // ---------------------------------- 合并函数 ----------------------------------
 fn merge_lines_into_sentences(lines: &[OcrResultItem]) -> Vec<MergedSentence> {

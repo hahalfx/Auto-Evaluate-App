@@ -404,6 +404,7 @@ impl Task for AsrTask {
         app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         println!("开始ASR任务: [{}].", self.id);
+        
 
         INIT_CRYPTO.call_once(|| {
             if let Err(e) = rustls::crypto::ring::default_provider().install_default() {

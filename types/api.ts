@@ -98,3 +98,16 @@ export interface TaskProgress {
   current_stage?: string
   total: number
 }
+
+// 时间参数类型 - 车机语音测试时间数据
+export interface TimingData {
+  voiceCommandStartTime?: string | null;
+  firstCharAppearTime?: string | null;
+  voiceCommandEndTime?: string | null;
+  fullTextAppearTime?: string | null;
+  actionStartTime?: string | null;
+  ttsFirstFrameTime?: string | null;
+  voiceRecognitionTimeMs?: number | null;
+  interactionResponseTimeMs?: number | null;
+  ttsResponseTimeMs?: number | null;
+}

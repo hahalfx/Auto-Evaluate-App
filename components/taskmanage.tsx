@@ -58,6 +58,8 @@ import { useActiveTasks } from "@/lib/contexts/active-tasks-context";
 import CreateTask from "@/components/create-task";
 import { useTauriSamples } from "@/hooks/useTauriSamples";
 import { useTauriWakewords } from "@/hooks/useTauriWakewords";
+import { useTimingData } from "@/hooks/useTimingData";
+import { TimingDataDisplay } from "@/components/timing-data-display";
 
 // 定义排序类型
 type SortType =
@@ -96,6 +98,7 @@ export default function TaskManage() {
   const { addActiveTask, isTaskActive } = useActiveTasks();
   const { wakewords } = useTauriWakewords();
   const { samples } = useTauriSamples();
+  const { timingData } = useTimingData(currentTask?.id);
   const handleExportReport = () => {
     currentTask
       ? exportTaskHook() // Use renamed hook
@@ -825,6 +828,20 @@ export default function TaskManage() {
                     </Button>
                   )}
                 </div>
+
+                {/* 时间参数展示 */}
+                {currentTask.task_status === "completed" && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">时间参数</p>
+                    <TimingDataDisplay 
+                      timingData={timingData} 
+                      samples={currentTask.test_samples_ids.map(id => ({
+                        id,
+                        text: samples.find(s => s.id === id)?.text || `语料 #${id}`
+                      }))} 
+                    />
+                  </div>
+                )}
               </div>
             )}
           </DialogContent>

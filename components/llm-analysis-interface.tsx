@@ -96,13 +96,8 @@ export function LLMAnalysisInterface() {
   return (
     <div>
       {/* Header section commented out, can be restored if needed */}
-      <div className="grid grid-cols-3 p-6 gap-7 bg-background">
+      <div className="grid grid-cols-3 p-6 gap-6 bg-background">
         <div className="row-span-3 row-start-1 col-start-1 col-span-2">
-          {/* <TestSamples
-              initialPageSize={4}
-              onDeleteSample={handleDeleteSample} // If TestSamples is used, ensure handleDeleteSample is passed
-            /> */}
-          {/* <CV /> */}
           <OCRPage />
         </div>
         <div className="row-start-1 col-start-3">
@@ -132,17 +127,6 @@ export function LLMAnalysisInterface() {
         </div>
         
         <div className="row-span-3 col-start-3">
-          <div className="flex flex-none items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              {selectedSample.length > 0 && (
-                <>
-                  该结果的指令:{" "}
-                  <span className="font-medium">{getCurrentSampleText()}</span>
-                </>
-              )}
-            </div>
-          </div>
-
           <div className="flex-1 h-full overflow-auto">
             <AnalysisResults
               error={error}
