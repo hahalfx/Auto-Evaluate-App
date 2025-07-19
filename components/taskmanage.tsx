@@ -26,6 +26,9 @@ import {
   PlayCircle,
   Plus,
   CircleCheck,
+  MessageSquare,
+  Timer,
+  ClipboardCheck,
 } from "lucide-react";
 import {
   Dialog,
@@ -71,6 +74,31 @@ type SortType =
   | "time-desc";
 // 定义筛选类型
 type FilterType = "all" | "completed" | "failed" | "in_progress" | "pending";
+
+const timingKeyMap: { [key: string]: string } = {
+  voiceCommandStartTime: "语音指令开始时间",
+  firstCharAppearTime: "首字上屏时间",
+  voiceCommandEndTime: "语音指令结束时间",
+  fullTextAppearTime: "全量上屏时间",
+  actionStartTime: "动作开始时间",
+  ttsFirstFrameTime: "TTS首帧时间",
+  voiceRecognitionTimeMs: "语音识别耗时",
+  interactionResponseTimeMs: "交互响应耗时",
+  ttsResponseTimeMs: "TTS响应耗时",
+};
+
+const formatDateTime = (dateString: string | null) => {
+  if (!dateString) return "N/A";
+  const date = new Date(dateString);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  const milliseconds = String(date.getMilliseconds()).padStart(3, "0");
+  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+};
 
 export default function TaskManage() {
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
@@ -631,168 +659,213 @@ export default function TaskManage() {
                   </Badge>
                 </div>
 
-                {/* 测试语料 */}
-                {currentTask.test_samples_ids.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">测试语料</p>
-                    <div className="border rounded-lg p-4 space-y-3">
-                      {currentTask.test_samples_ids.map((sampleId) => {
-                        const sample = samples.find((s) => s.id === sampleId);
-                        return sample ? (
-                          <div
-                            key={sampleId}
-                            className="flex justify-between items-center border-b pb-2 last:border-0 last:pb-0"
-                          >
-                            <div>
-                              <p className="font-medium">{sample.text}</p>
-                              <p className="text-sm text-muted-foreground">
-                                语料 #{sampleId}
+                {/* ================= Unified Test Details Card ================= */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">详细测试结果</p>
+                  <div className="border rounded-lg p-4 space-y-4">
+                    {currentTask.test_samples_ids.map((sampleId) => {
+                      const sample = samples.find((s) => s.id === sampleId);
+                      const response = currentTask.machine_response?.[sampleId];
+                      const result = currentTask.test_result?.[sampleId];
+                      const timing = timingData?.[sampleId];
+
+                      if (!sample) return null;
+
+                      return (
+                        <div
+                          key={sampleId}
+                          className="border rounded-xl p-4 bg-white dark:bg-gray-800/50 shadow-sm transition-all hover:shadow-lg hover:border-primary/30"
+                        >
+                          {/* Header: Sample Text and Play Button */}
+                          <div className="flex justify-between items-center border-b pb-3 mb-4">
+                            <div className="flex items-baseline">
+                              <p className="font-bold text-xl text-primary dark:text-primary-foreground">
+                                {sample.text}
+                              </p>
+                              <p className="text-xs text-muted-foreground ml-2">
+                                (ID: {sampleId})
                               </p>
                             </div>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="w-8 h-8"
+                              className="w-9 h-9 rounded-full"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 playMatchedAudio(sample.text);
                               }}
                             >
-                              <Play className="h-4 w-4" />
+                              <Play className="h-5 w-5" />
                             </Button>
                           </div>
-                        ) : null;
-                      })}
-                    </div>
-                  </div>
-                )}
 
-                {currentTask.machine_response &&
-                  Object.keys(currentTask.machine_response).length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">车机响应</p>
-                      <div className="border rounded-lg p-4 space-y-3">
-                        {Object.entries(currentTask.machine_response).map(
-                          ([sampleId, response]) => (
-                            <div
-                              key={sampleId}
-                              className="flex justify-between items-start border-b pb-2 last:border-0 last:pb-0"
-                            >
+                          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                            {/* Column 1, 2, 3: Test Result */}
+                            {result ? (
+                              <div className="md:col-span-3 space-y-4">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="font-semibold text-lg flex items-center">
+                                    <ClipboardCheck className="h-5 w-5 mr-2 text-blue-500" />
+                                    评估结果
+                                  </h4>
+                                  <Badge
+                                    className={`text-sm ${
+                                      result.assessment.valid
+                                        ? "bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-300"
+                                        : "bg-red-100 text-red-800 dark:bg-red-800/30 dark:text-red-300"
+                                    }`}
+                                  >
+                                    {result.assessment.valid
+                                      ? "通过"
+                                      : "未通过"}
+                                  </Badge>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3 text-center">
+                                  <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                    <p className="text-sm text-muted-foreground">
+                                      语义正确性
+                                    </p>
+                                    <p className="font-mono font-bold text-xl">
+                                      {result.assessment.semantic_correctness.score.toFixed(
+                                        1
+                                      )}
+                                    </p>
+                                  </div>
+                                  <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                    <p className="text-sm text-muted-foreground">
+                                      状态变更确认
+                                    </p>
+                                    <p className="font-mono font-bold text-xl">
+                                      {result.assessment.state_change_confirmation.score.toFixed(
+                                        1
+                                      )}
+                                    </p>
+                                  </div>
+                                  <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                    <p className="text-sm text-muted-foreground">
+                                      表达无歧义
+                                    </p>
+                                    <p className="font-mono font-bold text-xl">
+                                      {result.assessment.unambiguous_expression.score.toFixed(
+                                        1
+                                      )}
+                                    </p>
+                                  </div>
+                                  <div className="p-3 bg-blue-50 dark:bg-blue-900/50 rounded-lg border border-blue-200 dark:border-blue-800">
+                                    <p className="text-sm text-blue-600 dark:text-blue-300">
+                                      总分
+                                    </p>
+                                    <p className="font-mono font-bold text-2xl text-blue-700 dark:text-blue-400">
+                                      {result.assessment.overall_score.toFixed(
+                                        1
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {result.assessment.suggestions.length > 0 && (
+                                  <div className="pt-2">
+                                    <h5 className="text-sm font-semibold text-muted-foreground mb-2">
+                                      改进建议:
+                                    </h5>
+                                    <ul className="text-sm list-disc list-inside space-y-1.5 bg-amber-50/50 dark:bg-amber-900/20 p-3 rounded-md">
+                                      {result.assessment.suggestions.map(
+                                        (suggestion, idx) => (
+                                          <li key={idx}>{suggestion}</li>
+                                        )
+                                      )}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="md:col-span-3 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50 rounded-lg min-h-[150px]">
+                                <p className="text-muted-foreground">
+                                  无测试结果
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Column 4, 5: Machine Response & Timing */}
+                            <div className="md:col-span-2 space-y-4 border-l md:pl-6">
                               <div>
-                                <p className="font-medium">{response.text}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  语料 #{sampleId}
-                                </p>
-                              </div>
-                              <div
-                                className={`px-2 py-1 rounded-full text-xs ${
-                                  response.connected
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-red-100 text-red-800"
-                                }`}
-                              >
-                                {response.connected ? "已连接" : "未连接"}
-                              </div>
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                {currentTask.test_result &&
-                  Object.keys(currentTask.test_result).length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">测试结果</p>
-                      <div className="border rounded-lg p-4 space-y-3">
-                        {Object.entries(currentTask.test_result).map(
-                          ([sampleId, result]) => (
-                            <div
-                              key={sampleId}
-                              className="border-b pb-2 last:border-0 last:pb-0"
-                            >
-                              <div className="flex justify-between items-center mb-1">
-                                <p className="font-medium">
-                                  {
-                                    samples.find(
-                                      (TestSample) =>
-                                        TestSample.id === Number(sampleId)
-                                    )?.text
-                                  }
-                                </p>
-                                <div
-                                  className={`px-2 py-1 rounded-full text-xs ${
-                                    result.assessment.valid
-                                      ? "bg-green-100 text-green-800"
-                                      : "bg-red-100 text-red-800"
-                                  }`}
-                                >
-                                  {result.assessment.valid ? "通过" : "未通过"}
-                                </div>
-                              </div>
-                              <div className="text-sm text-muted-foreground mb-1">
-                                <p>测试时间：{result.test_time}</p>
-                              </div>
-                              <div className="grid grid-cols-3 gap-2 mb-2">
-                                <div className="text-center p-2 bg-gray-50 rounded-xl">
+                                <h4 className="font-semibold text-lg flex items-center mb-2">
+                                  <MessageSquare className="h-5 w-5 mr-2 text-indigo-500" />
+                                  车机响应
+                                </h4>
+                                {response ? (
+                                  <div className="flex items-start justify-between text-sm bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md">
+                                    <p className="text-gray-800 dark:text-gray-200">
+                                      {response.text}
+                                    </p>
+                                    <Badge
+                                      variant={
+                                        response.connected
+                                          ? "default"
+                                          : "destructive"
+                                      }
+                                      className="text-xs ml-2 flex-shrink-0"
+                                    >
+                                      {response.connected ? "已连接" : "未连接"}
+                                    </Badge>
+                                  </div>
+                                ) : (
                                   <p className="text-sm text-muted-foreground">
-                                    语义正确性
+                                    无响应数据
                                   </p>
-                                  <p className="font-mono font-bold">
-                                    {result.assessment.semantic_correctness.score.toFixed(
-                                      1
-                                    )}
-                                  </p>
-                                </div>
-                                <div className="text-center p-2 bg-gray-50 rounded-xl">
-                                  <p className="text-sm text-muted-foreground">
-                                    状态变更确认
-                                  </p>
-                                  <p className="font-mono font-bold">
-                                    {result.assessment.state_change_confirmation.score.toFixed(
-                                      1
-                                    )}
-                                  </p>
-                                </div>
-                                <div className="text-center p-2 bg-gray-50 rounded-xl">
-                                  <p className="text-sm text-muted-foreground">
-                                    表达无歧义
-                                  </p>
-                                  <p className="font-mono font-bold">
-                                    {result.assessment.unambiguous_expression.score.toFixed(
-                                      1
-                                    )}
-                                  </p>
-                                </div>
+                                )}
                               </div>
-                              <div className="text-center p-2 bg-gray-100 rounded-xl mb-2">
-                                <p className="text-sm text-muted-foreground">
-                                  总分
-                                </p>
-                                <p className="font-mono font-bold text-lg">
-                                  {result.assessment.overall_score.toFixed(1)}
-                                </p>
-                              </div>
-                              {result.assessment.suggestions.length > 0 && (
-                                <div>
-                                  <p className="text-sm text-muted-foreground mb-1">
-                                    改进建议:
-                                  </p>
-                                  <ul className="text-sm list-disc list-inside">
-                                    {result.assessment.suggestions.map(
-                                      (suggestion, idx) => (
-                                        <li key={idx}>{suggestion}</li>
+                              <div>
+                                <h4 className="font-semibold text-lg flex items-center mb-2">
+                                  <Timer className="h-5 w-5 mr-2 text-orange-500" />
+                                  时间参数
+                                </h4>
+                                {timing ? (
+                                  <div className="space-y-2 text-sm bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md">
+                                    {Object.entries(timing)
+                                      .filter(
+                                        ([, value]) =>
+                                          value !== null && value !== undefined
                                       )
-                                    )}
-                                  </ul>
-                                </div>
-                              )}
+                                      .map(([key, value]) => {
+                                        const displayName =
+                                          timingKeyMap[key] || key;
+                                        const displayValue =
+                                          key.endsWith("Time") &&
+                                          typeof value === "string"
+                                            ? formatDateTime(value)
+                                            : `${value} ms`;
+
+                                        return (
+                                          <div
+                                            key={key}
+                                            className="flex justify-between items-center"
+                                          >
+                                            <span className="text-muted-foreground">
+                                              {displayName}:
+                                            </span>
+                                            <span className="font-mono text-xs">
+                                              {displayValue}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground">
+                                    无时间数据
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                          )
-                        )}
-                      </div>
-                    </div>
-                  )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* ================= End of Unified Card ================= */}
 
                 <div className="flex justify-end space-x-2 pt-4">
                   <Button
@@ -829,19 +902,6 @@ export default function TaskManage() {
                   )}
                 </div>
 
-                {/* 时间参数展示 */}
-                {currentTask.task_status === "completed" && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">时间参数</p>
-                    <TimingDataDisplay 
-                      timingData={timingData} 
-                      samples={currentTask.test_samples_ids.map(id => ({
-                        id,
-                        text: samples.find(s => s.id === id)?.text || `语料 #${id}`
-                      }))} 
-                    />
-                  </div>
-                )}
               </div>
             )}
           </DialogContent>

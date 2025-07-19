@@ -1052,48 +1052,100 @@ impl DatabaseService {
         .fetch_all(&self.pool)
         .await?;
 
+        log::info!("[DB_SERVICE] Found {} timing data rows for task_id: {}", rows.len(), task_id);
+
         let mut results = HashMap::new();
         for row in rows {
             let mut timing = TimingData::new();
             
+            // 更健壮的时间解析，记录解析错误但不中断处理
             if let Some(time_str) = row.voice_command_start_time {
-                timing.voice_command_start_time = chrono::DateTime::parse_from_rfc3339(&time_str)
-                    .ok()
-                    .map(|dt| dt.with_timezone(&chrono::Utc));
+                match chrono::DateTime::parse_from_rfc3339(&time_str) {
+                    Ok(dt) => {
+                        timing.voice_command_start_time = Some(dt.with_timezone(&chrono::Utc));
+                        log::debug!("[DB_SERVICE] Parsed voice_command_start_time: {}", time_str);
+                    }
+                    Err(e) => {
+                        log::warn!("[DB_SERVICE] Failed to parse voice_command_start_time '{}': {}", time_str, e);
+                    }
+                }
             }
+            
             if let Some(time_str) = row.first_char_appear_time {
-                timing.first_char_appear_time = chrono::DateTime::parse_from_rfc3339(&time_str)
-                    .ok()
-                    .map(|dt| dt.with_timezone(&chrono::Utc));
+                match chrono::DateTime::parse_from_rfc3339(&time_str) {
+                    Ok(dt) => {
+                        timing.first_char_appear_time = Some(dt.with_timezone(&chrono::Utc));
+                        log::debug!("[DB_SERVICE] Parsed first_char_appear_time: {}", time_str);
+                    }
+                    Err(e) => {
+                        log::warn!("[DB_SERVICE] Failed to parse first_char_appear_time '{}': {}", time_str, e);
+                    }
+                }
             }
+            
             if let Some(time_str) = row.voice_command_end_time {
-                timing.voice_command_end_time = chrono::DateTime::parse_from_rfc3339(&time_str)
-                    .ok()
-                    .map(|dt| dt.with_timezone(&chrono::Utc));
+                match chrono::DateTime::parse_from_rfc3339(&time_str) {
+                    Ok(dt) => {
+                        timing.voice_command_end_time = Some(dt.with_timezone(&chrono::Utc));
+                        log::debug!("[DB_SERVICE] Parsed voice_command_end_time: {}", time_str);
+                    }
+                    Err(e) => {
+                        log::warn!("[DB_SERVICE] Failed to parse voice_command_end_time '{}': {}", time_str, e);
+                    }
+                }
             }
+            
             if let Some(time_str) = row.full_text_appear_time {
-                timing.full_text_appear_time = chrono::DateTime::parse_from_rfc3339(&time_str)
-                    .ok()
-                    .map(|dt| dt.with_timezone(&chrono::Utc));
+                match chrono::DateTime::parse_from_rfc3339(&time_str) {
+                    Ok(dt) => {
+                        timing.full_text_appear_time = Some(dt.with_timezone(&chrono::Utc));
+                        log::debug!("[DB_SERVICE] Parsed full_text_appear_time: {}", time_str);
+                    }
+                    Err(e) => {
+                        log::warn!("[DB_SERVICE] Failed to parse full_text_appear_time '{}': {}", time_str, e);
+                    }
+                }
             }
+            
             if let Some(time_str) = row.action_start_time {
-                timing.action_start_time = chrono::DateTime::parse_from_rfc3339(&time_str)
-                    .ok()
-                    .map(|dt| dt.with_timezone(&chrono::Utc));
+                match chrono::DateTime::parse_from_rfc3339(&time_str) {
+                    Ok(dt) => {
+                        timing.action_start_time = Some(dt.with_timezone(&chrono::Utc));
+                        log::debug!("[DB_SERVICE] Parsed action_start_time: {}", time_str);
+                    }
+                    Err(e) => {
+                        log::warn!("[DB_SERVICE] Failed to parse action_start_time '{}': {}", time_str, e);
+                    }
+                }
             }
+            
             if let Some(time_str) = row.tts_first_frame_time {
-                timing.tts_first_frame_time = chrono::DateTime::parse_from_rfc3339(&time_str)
-                    .ok()
-                    .map(|dt| dt.with_timezone(&chrono::Utc));
+                match chrono::DateTime::parse_from_rfc3339(&time_str) {
+                    Ok(dt) => {
+                        timing.tts_first_frame_time = Some(dt.with_timezone(&chrono::Utc));
+                        log::debug!("[DB_SERVICE] Parsed tts_first_frame_time: {}", time_str);
+                    }
+                    Err(e) => {
+                        log::warn!("[DB_SERVICE] Failed to parse tts_first_frame_time '{}': {}", time_str, e);
+                    }
+                }
             }
             
             timing.voice_recognition_time_ms = row.voice_recognition_time_ms;
             timing.interaction_response_time_ms = row.interaction_response_time_ms;
             timing.tts_response_time_ms = row.tts_response_time_ms;
             
+            log::info!("[DB_SERVICE] Timing data for sample {}: voice_recognition={}ms, interaction_response={}ms, tts_response={}ms", 
+                row.sample_id, 
+                timing.voice_recognition_time_ms.unwrap_or(-1),
+                timing.interaction_response_time_ms.unwrap_or(-1),
+                timing.tts_response_time_ms.unwrap_or(-1)
+            );
+            
             results.insert(row.sample_id as u32, timing);
         }
 
+        log::info!("[DB_SERVICE] Successfully processed {} timing data entries for task_id: {}", results.len(), task_id);
         Ok(results)
     }
 

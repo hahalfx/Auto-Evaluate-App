@@ -229,21 +229,27 @@ pub struct AnalysisCompletedEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimingData {
     /// 语音指令开始时间（audio_task开始播放时）
+    #[serde(with = "chrono::serde::ts_milliseconds_option")]
     pub voice_command_start_time: Option<DateTime<Utc>>,
     
     /// 车机首字上屏时间（OCR检测到第一个字符）
+    #[serde(with = "chrono::serde::ts_milliseconds_option")]
     pub first_char_appear_time: Option<DateTime<Utc>>,
     
     /// 语音指令结束时间（audio_task播放完成时）
+    #[serde(with = "chrono::serde::ts_milliseconds_option")]
     pub voice_command_end_time: Option<DateTime<Utc>>,
     
     /// 语音全部上屏时间（OCR检测到完整文本）
+    #[serde(with = "chrono::serde::ts_milliseconds_option")]
     pub full_text_appear_time: Option<DateTime<Utc>>,
     
     /// 动作开始执行时间（检测到车机动作开始）
+    #[serde(with = "chrono::serde::ts_milliseconds_option")]
     pub action_start_time: Option<DateTime<Utc>>,
     
     /// TTS回复第一帧时间（检测到TTS音频开始）
+    #[serde(with = "chrono::serde::ts_milliseconds_option")]
     pub tts_first_frame_time: Option<DateTime<Utc>>,
     
     /// 语音识别时间 = 首字上屏时间 - 语音指令开始时间
