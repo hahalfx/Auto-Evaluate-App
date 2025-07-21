@@ -98,6 +98,7 @@ pub fn run() {
             commands::get_ocr_task_status,
             commands::new_meta_workflow,
             commands::delete_wake_word_safe,
+            commands::precheck_samples,
             commands::get_timing_data_by_task,
         ])
         .run(tauri::generate_context!())

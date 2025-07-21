@@ -25,12 +25,16 @@ pub struct OcrSessionManager {
     has_detected_text: bool,
     /// 首次检测到文本的时间戳
     first_text_timestamp: Option<u64>,
+    /// 最后一次检测到文本的时间戳
+    last_text_seen_timestamp: Option<u64>,
     /// 文本历史记录（最多30条）（1秒内的数据）
     text_history: VecDeque<(String, u64)>,
     /// 稳定性阈值（帧数）
     stability_threshold: usize,
     /// 文本相似度阈值
     similarity_threshold: f64,
+    /// 无文本稳定超时（毫秒）
+    no_text_stabilization_timeout: u64,
     /// 当前会话帧数
     current_frame: usize,
 }
@@ -41,9 +45,11 @@ impl OcrSessionManager {
         Self {
             has_detected_text: false,
             first_text_timestamp: None,
+            last_text_seen_timestamp: None,
             text_history: VecDeque::with_capacity(30),
             stability_threshold: 30,
             similarity_threshold: 0.95,
+            no_text_stabilization_timeout: 5000, // 5秒
             current_frame: 0,
         }
     }
@@ -52,6 +58,7 @@ impl OcrSessionManager {
     pub fn reset(&mut self) {
         self.has_detected_text = false;
         self.first_text_timestamp = None;
+        self.last_text_seen_timestamp = None;
         self.text_history.clear();
         self.current_frame = 0;
     }
@@ -65,14 +72,24 @@ impl OcrSessionManager {
         self.current_frame += 1;
 
         let clean_text = text.trim().to_string();
+        let mut no_text_timeout_stabilized = false;
 
-        if !self.has_detected_text && !clean_text.is_empty() {
-            self.has_detected_text = true;
-            self.first_text_timestamp = Some(timestamp);
+        if !clean_text.is_empty() {
+            if !self.has_detected_text {
+                self.has_detected_text = true;
+                self.first_text_timestamp = Some(timestamp);
+            }
+            self.last_text_seen_timestamp = Some(timestamp);
+        } else if self.has_detected_text {
+            if let Some(last_seen) = self.last_text_seen_timestamp {
+                if timestamp - last_seen > self.no_text_stabilization_timeout {
+                    no_text_timeout_stabilized = true;
+                }
+            }
         }
 
         let mut history_for_check: Option<VecDeque<(String, u64)>> = None;
-        if self.has_detected_text {
+        if self.has_detected_text && !no_text_timeout_stabilized {
             self.text_history
                 .push_back((clean_text.clone(), timestamp));
 
@@ -85,12 +102,14 @@ impl OcrSessionManager {
             }
         }
 
+        let is_stable = no_text_timeout_stabilized;
+
         let result = OcrSessionResult {
             first_text_detected_time: self.first_text_timestamp,
-            text_stabilized_time: None,
+            text_stabilized_time: if is_stable { Some(timestamp) } else { None },
             final_text: self.get_latest_text(),
-            is_session_complete: false,
-            should_stop_ocr: false,
+            is_session_complete: is_stable,
+            should_stop_ocr: is_stable,
             current_frame: self.current_frame,
         };
 

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import type { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/ui/data-table";
 import type { TestSample } from "@/types/api";
-import { useTauriSamples } from "@/hooks/useTauriSamples"; // New hook
+import { useTauriSamples } from "@/hooks/useTauriSamples";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,7 +24,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -35,7 +34,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -49,6 +47,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { TauriAudioApiService } from "@/services/tauri-audio-api";
+import { useToast } from "@/components/ui/use-toast";
 
 interface TestSamplesProps {
   initialPageSize?: number;
@@ -57,32 +56,31 @@ interface TestSamplesProps {
 
 export function TestSamples({
   initialPageSize,
-  onDeleteSample, // This prop might need to be re-evaluated or removed if delete is handled by the hook directly
+  onDeleteSample,
 }: TestSamplesProps = {}) {
   const {
     samples,
     selectedSampleIds,
-    isLoading, // Renamed from loading to avoid conflict with local loading if any
-    error: samplesError, // Renamed to avoid conflict
+    isLoading,
+    error: samplesError,
     fetchAllSamples,
     createSample,
-    // createSamplesBatch, // Used by importSamplesFromExcel
-    deleteSample: deleteSampleHook, // Renamed to avoid conflict
-    setSelectedSampleIds: setSelectedSampleIdsHook, // Renamed
+    deleteSample: deleteSampleHook,
+    setSelectedSampleIds: setSelectedSampleIdsHook,
     importSamplesFromExcel,
+    precheckSamples,
   } = useTauriSamples();
-  // const dispatch = useAppDispatch(); // May not be needed if all sample logic moves to hook
+  
   const [newSampleText, setNewSampleText] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  // const [loading, setLoading] = useState(true); // Replaced by isLoading from hook
-  // const [error, setError] = useState<string | null>(null); // Replaced by samplesError from hook
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [isPrechecking, setIsPrechecking] = useState(false);
+  const [precheckResult, setPrecheckResult] = useState<{ new_texts: string[], duplicate_texts: string[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { playMatchedAudio } = useAudioPlayer();
+  const { toast } = useToast();
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
-  const [sampleForDetail, setSampleForDetail] = useState<TestSample | null>(
-    null
-  );
+  const [sampleForDetail, setSampleForDetail] = useState<TestSample | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [sampleToDelete, setSampleToDelete] = useState<TestSample | null>(null);
 
@@ -92,14 +90,73 @@ export function TestSamples({
     if (createdId) {
       setNewSampleText("");
       setIsDialogOpen(false);
-      // fetchAllSamples(); // createSample in hook already calls fetchAllSamples
     }
-    // Error handling is done within the hook via toast
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setImportFile(e.target.files[0]); // Keep local state for the file object
+      const file = e.target.files[0];
+      setImportFile(file);
+      setPrecheckResult(null);
+      setIsPrechecking(true);
+      try {
+        console.log("开始处理Excel文件:", file.name, "大小:", file.size);
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { 
+          type: "array",
+          cellText: false,
+          cellDates: false,
+          cellNF: false,
+          cellStyles: false
+        });
+        console.log("Excel工作表:", workbook.SheetNames);
+        
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json<{ 序号?: number; 语料: string }>(worksheet);
+        console.log("解析到的数据行数:", jsonData.length);
+        console.log("前几行数据:", jsonData.slice(0, 3));
+        
+        // 检查数据结构
+        if (jsonData.length > 0) {
+          const firstRow = jsonData[0];
+          console.log("第一行数据的键:", Object.keys(firstRow));
+          console.log("第一行数据:", firstRow);
+        }
+        
+        const sampleTexts = jsonData.map(row => row.语料).filter(text => typeof text === 'string' && text.trim() !== '');
+        console.log("有效语料数量:", sampleTexts.length);
+        console.log("前几个语料:", sampleTexts.slice(0, 3));
+        
+        if (sampleTexts.length > 0) {
+          console.log("开始预检查...");
+          const result = await precheckSamples(sampleTexts);
+          console.log("预检查结果:", result);
+          setPrecheckResult(result);
+        } else {
+          console.log("没有找到有效的语料文本");
+          setPrecheckResult({ new_texts: [], duplicate_texts: [] });
+        }
+              } catch (error) {
+          console.error("File precheck failed:", error);
+          // 显示错误信息给用户
+          let errorMessage = "未知错误";
+          if (error instanceof Error) {
+            errorMessage = error.message;
+          } else if (typeof error === 'string') {
+            errorMessage = error;
+          } else {
+            errorMessage = String(error);
+          }
+          
+          toast({
+            variant: "destructive",
+            title: "文件预处理失败",
+            description: `处理Excel文件时发生错误: ${errorMessage}`,
+          });
+        } finally {
+        setIsPrechecking(false);
+      }
     }
   };
 
@@ -107,21 +164,14 @@ export function TestSamples({
     if (!importFile) return;
     const result = await importSamplesFromExcel(importFile);
     if (result) {
-      // Successfully imported, toast is handled by hook
-      setImportFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
       setIsDialogOpen(false);
+      setImportFile(null);
+      setPrecheckResult(null);
     }
-    // Error handling is done within the hook via toast
   };
-
-  // const samplesStatus = useAppSelector(selectSamplesStatus); // Removed
-
-  // useEffect(() => { // This is handled by the useTauriSamples hook's own useEffect
-  //   fetchAllSamples();
-  // }, [fetchAllSamples]);
 
   const columns: ColumnDef<TestSample>[] = [
     {
@@ -134,9 +184,7 @@ export function TestSamples({
           }
           onCheckedChange={(value) => {
             table.toggleAllPageRowsSelected(!!value);
-            const allRowIds = table
-              .getCoreRowModel()
-              .rows.map((r) => r.original.id);
+            const allRowIds = table.getCoreRowModel().rows.map((r) => r.original.id);
             setSelectedSampleIdsHook(!!value ? allRowIds : []);
           }}
           aria-label="Select all"
@@ -163,18 +211,16 @@ export function TestSamples({
     },
     {
       accessorKey: "id",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="p-0 hover:bg-transparent"
-          >
-            ID
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        );
-      },
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="p-0 hover:bg-transparent"
+        >
+          ID
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
       cell: ({ row }) => {
         const id = row.getValue("id") as number;
         return <div className="text-left font-medium">#{id}</div>;
@@ -194,18 +240,16 @@ export function TestSamples({
     },
     {
       accessorKey: "result",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="p-0 hover:bg-transparent"
-          >
-            测试结果
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        );
-      },
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="p-0 hover:bg-transparent"
+        >
+          测试结果
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
       cell: ({ row }) => {
         const result = row.getValue("result") as string;
         {
@@ -231,7 +275,6 @@ export function TestSamples({
       cell: ({ row }) => {
         const sample = row.original;
         const handlePlay = () => {
-          // playMatchedAudio(sample.text).catch(console.error);
           TauriAudioApiService.playMatchAudio(sample.text).catch(console.error);
         };
 
@@ -272,10 +315,7 @@ export function TestSamples({
                 <DropdownMenuItem
                   onClick={() => {
                     if (!selectedSampleIds.includes(sample.id)) {
-                      setSelectedSampleIdsHook([
-                        ...selectedSampleIds,
-                        sample.id,
-                      ]);
+                      setSelectedSampleIdsHook([...selectedSampleIds, sample.id]);
                     }
                   }}
                 >
@@ -285,7 +325,7 @@ export function TestSamples({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSampleForDetail(sample); // Set the sample for detail view
+                    setSampleForDetail(sample);
                     setIsDetailDialogOpen(true);
                   }}
                 >
@@ -322,7 +362,7 @@ export function TestSamples({
         </div>
       </CardHeader>
       <CardContent className="flex-1 p-4 overflow-auto">
-        {isLoading && samples.length === 0 ? ( // Show skeleton only on initial load
+        {isLoading && samples.length === 0 ? (
           <div className="space-y-3">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
@@ -335,7 +375,7 @@ export function TestSamples({
             <Button
               variant="outline"
               className="mt-2"
-              onClick={fetchAllSamples} // Retry fetching
+              onClick={fetchAllSamples}
             >
               重试
             </Button>
@@ -355,29 +395,20 @@ export function TestSamples({
                 setSelectedSampleIdsHook([...selectedSampleIds, currentId]);
               }
             }}
-            // selectedRowId prop might need adjustment based on DataTable's API if it expects a single ID
-            // For multiple selections, DataTable's internal state or rowSelection prop is usually used.
-            // The Checkbox in columns now directly updates selectedSampleIdsHook.
-            // The DataTable component itself will need to be configured to use an external row selection state
-            // if we want to control it fully from selectedSampleIds.
-            // For now, removing these props as they are causing TS errors and selection is handled by checkboxes.
-            // rowSelection={
-            //   samples.reduce((acc, sample) => {
-            //     acc[sample.id.toString()] = selectedSampleIds.includes(sample.id);
-            //     return acc;
-            //   }, {} as Record<string, boolean>)
-            // }
-            // setRowSelection={(updater: any) => { // Added 'any' to temporarily resolve TS error, but this needs proper typing or removal
-            //     // This logic needs to be robust if DataTable provides functional updater
-            // }}
             filterPlaceholder="搜索语音指令..."
-            // onSelectRows prop might be part of a custom DataTable or an older version.
-            // Standard TanStack Table uses `onRowSelectionChange` or direct state management.
-            // For now, individual checkbox clicks and toggleAllPageRowsSelected handle selection.
           />
         )}
       </CardContent>
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={(isOpen) => {
+        setIsDialogOpen(isOpen);
+        if (!isOpen) {
+          setImportFile(null);
+          setPrecheckResult(null);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+          }
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>添加自定义语音指令</DialogTitle>
@@ -408,16 +439,34 @@ export function TestSamples({
                   onChange={handleFileChange}
                   ref={fileInputRef}
                   className="cursor-pointer"
+                  disabled={isPrechecking}
                 />
-                <Button
-                  onClick={handleImportExcel}
-                  disabled={!importFile}
-                  variant="outline"
-                >
-                  导入Excel
-                </Button>
               </div>
-              <div className="flex flex-row items-center">
+              {isPrechecking && (
+                <div className="mt-4 text-center">
+                  <p className="text-sm text-muted-foreground">正在预检查文件...</p>
+                </div>
+              )}
+              {precheckResult && !isPrechecking && (
+                <div className="mt-4 p-3 bg-muted rounded-lg">
+                  <h4 className="font-semibold mb-2">预检查结果</h4>
+                  <p className="text-sm">
+                    发现 <span className="font-bold text-green-600">{precheckResult.new_texts.length}</span> 条新语料。
+                  </p>
+                  <p className="text-sm">
+                    发现 <span className="font-bold text-yellow-600">{precheckResult.duplicate_texts.length}</span> 条重复语料（将被忽略）。
+                  </p>
+                  <Button
+                    onClick={handleImportExcel}
+                    disabled={!importFile || precheckResult.new_texts.length === 0}
+                    variant="default"
+                    className="w-full mt-4"
+                  >
+                    {precheckResult.new_texts.length > 0 ? `确认导入 ${precheckResult.new_texts.length} 条新语料` : "没有可导入的新语料"}
+                  </Button>
+                </div>
+              )}
+              <div className="flex flex-row items-center mt-2">
                 <p className="text-xs text-muted-foreground text-center">
                   请确保Excel文件包含"序号"和"语料"列
                 </p>
@@ -432,7 +481,7 @@ export function TestSamples({
         onOpenChange={(isOpen) => {
           setIsDetailDialogOpen(isOpen);
           if (!isOpen) {
-            setSampleForDetail(null); // Clear sample when dialog closes
+            setSampleForDetail(null);
           }
         }}
       >
@@ -460,7 +509,6 @@ export function TestSamples({
                   {sampleForDetail.status || "N/A"}
                 </p>
               </div>
-              {/* Add more details as needed, e.g., associated tasks, creation date */}
             </div>
           )}
         </DialogContent>
@@ -486,8 +534,7 @@ export function TestSamples({
             <AlertDialogAction
               onClick={async () => {
                 if (sampleToDelete) {
-                  await deleteSampleHook(sampleToDelete.id, true); // Using safe delete
-                  setSampleToDelete(null);
+                  await deleteSampleHook(sampleToDelete.id, true);
                 }
               }}
               className="bg-red-600 hover:bg-red-700"

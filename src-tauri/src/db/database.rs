@@ -498,23 +498,110 @@ impl DatabaseService {
     pub async fn create_samples_batch(
         &self,
         sample_texts_with_files: Vec<(String, Option<String>)>,
-    ) -> Result<Vec<i64>> {
-        let mut created_ids = Vec::new();
-        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    ) -> Result<(Vec<i64>, usize)> { // -> (created_ids, ignored_count)
         let mut tx = self.pool.begin().await?;
-        for (text, audio_file) in sample_texts_with_files {
-            let result = sqlx::query(
-                "INSERT INTO test_samples (text, created_at, audio_file) VALUES (?, ?, ?)",
-            )
-            .bind(text)
-            .bind(&now)
-            .bind(audio_file)
-            .execute(&mut *tx)
-            .await?;
-            created_ids.push(result.last_insert_rowid());
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let mut created_ids = Vec::new();
+        let total_count = sample_texts_with_files.len();
+
+        if sample_texts_with_files.is_empty() {
+            return Ok((Vec::new(), 0));
         }
+
+        // 1. 提取所有待插入的文本
+        let texts_to_check: Vec<String> = sample_texts_with_files
+            .iter()
+            .map(|(text, _)| text.clone())
+            .collect();
+
+        // 2. 一次性查询出数据库中已经存在的文本
+        const BATCH_SIZE: usize = 900;
+        let mut existing_texts = std::collections::HashSet::new();
+        for chunk in texts_to_check.chunks(BATCH_SIZE) {
+            if chunk.is_empty() {
+                continue;
+            }
+            let params = vec!["?"; chunk.len()].join(",");
+            let query_str = format!("SELECT text FROM test_samples WHERE text IN ({})", params);
+            
+            let mut query = sqlx::query_scalar::<_, String>(&query_str);
+            for text in chunk {
+                query = query.bind(text);
+            }
+            let found_texts: Vec<String> = query.fetch_all(&mut *tx).await?;
+            existing_texts.extend(found_texts);
+        }
+
+        // 3. 遍历并只插入新数据
+        for (text, audio_file) in sample_texts_with_files {
+            if !existing_texts.contains(&text) {
+                let result = sqlx::query(
+                    "INSERT INTO test_samples (text, created_at, audio_file) VALUES (?, ?, ?)",
+                )
+                .bind(text)
+                .bind(&now)
+                .bind(audio_file)
+                .execute(&mut *tx)
+                .await?;
+                created_ids.push(result.last_insert_rowid());
+            }
+        }
+
         tx.commit().await?;
-        Ok(created_ids)
+        let ignored_count = total_count - created_ids.len();
+        Ok((created_ids, ignored_count))
+    }
+
+    pub async fn precheck_samples(&self, texts_to_check: Vec<String>) -> Result<(Vec<String>, Vec<String>)> {
+        log::info!("[DB_SERVICE] Starting precheck_samples with {} texts", texts_to_check.len());
+        
+        if texts_to_check.is_empty() {
+            log::info!("[DB_SERVICE] No texts to check, returning empty result");
+            return Ok((Vec::new(), Vec::new()));
+        }
+
+        const BATCH_SIZE: usize = 900;
+        let mut existing_texts_set = std::collections::HashSet::new();
+        let mut tx = self.pool.begin().await?;
+        log::info!("[DB_SERVICE] Database transaction started");
+
+        for (chunk_index, chunk) in texts_to_check.chunks(BATCH_SIZE).enumerate() {
+            if chunk.is_empty() {
+                continue;
+            }
+            log::debug!("[DB_SERVICE] Processing chunk {} with {} texts", chunk_index, chunk.len());
+            
+            let params = vec!["?"; chunk.len()].join(",");
+            let query_str = format!("SELECT text FROM test_samples WHERE text IN ({})", params);
+            
+            let mut query = sqlx::query_scalar::<_, String>(&query_str);
+            for text in chunk {
+                query = query.bind(text);
+            }
+            let found_texts: Vec<String> = query.fetch_all(&mut *tx).await?;
+            log::debug!("[DB_SERVICE] Found {} existing texts in chunk {}", found_texts.len(), chunk_index);
+            existing_texts_set.extend(found_texts);
+        }
+        
+        tx.commit().await?;
+        log::info!("[DB_SERVICE] Database transaction committed");
+
+        let mut new_texts = Vec::new();
+        let mut duplicate_texts = Vec::new();
+
+        let unique_texts_to_check: std::collections::HashSet<String> = texts_to_check.into_iter().collect();
+        log::info!("[DB_SERVICE] Processing {} unique texts", unique_texts_to_check.len());
+
+        for text in unique_texts_to_check {
+            if existing_texts_set.contains(&text) {
+                duplicate_texts.push(text);
+            } else {
+                new_texts.push(text);
+            }
+        }
+
+        log::info!("[DB_SERVICE] Precheck completed: {} new texts, {} duplicate texts", new_texts.len(), duplicate_texts.len());
+        Ok((new_texts, duplicate_texts))
     }
 
     pub async fn delete_sample(&self, sample_id: i64) -> Result<()> {

@@ -28,7 +28,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import { set } from "date-fns";
 
 // 2. 定义与 Rust 后端匹配的类型
 interface RustOcrResultItem {
@@ -79,7 +78,7 @@ export function OCRVideoComponent() {
     x: number;
     y: number;
   } | null>(null);
-  const [ocrInterval, setOcrInterval] = useState<number>(0.033); // 识别间隔 (秒)
+  const [ocrInterval, setOcrInterval] = useState<number>(0.02); // 识别间隔 (秒)
   const { toast } = useToast();
   const [isInitializing, setIsInitializing] = useState(false);
   const [devicesLoaded, setDevicesLoaded] = useState(false);
@@ -106,36 +105,6 @@ export function OCRVideoComponent() {
   useEffect(() => {
     isCapturingRef.current = isCapturing;
   }, [isCapturing]);
-
-  // // 初始化WebWorker
-  // useEffect(() => {
-  //   workerRef.current = new Worker("/ocr-worker.js");
-
-  //   workerRef.current.onmessage = (e) => {
-  //     const { type, data } = e.data;
-  //     if (type === "FRAME_QUEUED") {
-  //       // 使用新的push_video_frame API
-  //       invoke("push_video_frame", {
-  //         imageData: data.imageData,
-  //         timestamp: data.timestamp,
-  //         width: data.width,
-  //         height: data.height,
-  //       });
-  //     } else if (type === "ERROR") {
-  //       console.error("WebWorker error:", data);
-  //     }
-  //   };
-
-  //   workerRef.current.onerror = (error) => {
-  //     console.error("WebWorker error:", error);
-  //   };
-
-  //   return () => {
-  //     if (workerRef.current) {
-  //       workerRef.current.terminate();
-  //     }
-  //   };
-  // }, []);
 
   useEffect(() => {
     // 使用一个变量来防止在组件卸载后继续执行异步代码
@@ -447,28 +416,6 @@ export function OCRVideoComponent() {
         return;
       }
       const timestamp = Date.now();
-      // // 使用新的push_video_frame API
-
-      // if (workerRef.current) {
-      //   workerRef.current.postMessage({
-      //     type: "PROCESS_FRAME",
-      //     data: {
-      //       imageData: encodedImageBytes,
-      //       roi: roiRef.current,
-      //       timestamp: timestamp,
-      //       width: canvas.width,
-      //       height: canvas.height,
-      //     },
-      //   });
-      // } else {
-      //   // 回退到直接调用新的API
-      //   await invoke("push_video_frame", {
-      //     imageData: encodedImageBytes,
-      //     timestamp: timestamp,
-      //     width: canvas.width,
-      //     height: canvas.height,
-      //   });
-      // }
 
       await invoke("push_video_frame", {
         imageData: encodedImageBytes,
@@ -500,22 +447,6 @@ export function OCRVideoComponent() {
       messageHandlerRef.current = null;
     }
 
-    // // 清理WebWorker队列
-    // if (workerRef.current) {
-    //   workerRef.current.postMessage({ type: "CLEAR_QUEUE" });
-    // }
-
-    // invoke("stop_ocr_session")
-    //   .then(() => {
-    //     toast({ title: "OCR识别已停止" });
-    //     // 在停止会话后，自动关闭引擎
-    //     return invoke("shutdown_ocr_engine");
-    //   })
-    //   .then(() => {
-    //     console.log("OCR engine shutdown automatically.");
-    //   })
-    //   .catch(console.error);
-
     console.log("前端视频帧采集结束完毕，清理通道");
   }, [toast]);
 
@@ -526,31 +457,12 @@ export function OCRVideoComponent() {
       console.log("OCR component unmounting. Cleaning up all resources.");
       // 调用 stopCapturing 可以完美地停止所有正在运行的流程并清理 channel 和引擎
       stopCapturing();
-
-      // // 确保摄像头也被关闭
-      // if (activeStreamRef.current) {
-      //   activeStreamRef.current.getTracks().forEach((track) => track.stop());
-      // }
     };
   }, [stopCapturing]); // 依赖 stopCapturing
 
   // 4. 开始 OCR 会话 (自动启动引擎)
   const startCapturing = useCallback(async () => {
     toast({ title: "正在启动 OCR 引擎..." });
-
-    // 这一步目前已经改为后端ocr_task先启动了，所以这里可以注释掉
-    // try {
-    //   // 第一步：自动初始化引擎
-    //   await invoke("initialize_ocr_engine");
-    //   toast({ title: "引擎已就绪，正在准备识别会话..." });
-    // } catch (error) {
-    //   toast({
-    //     title: "OCR 引擎启动失败",
-    //     description: String(error),
-    //     variant: "destructive",
-    //   });
-    //   return; // 引擎启动失败，则不继续
-    // }
 
     // 创建持久的消息处理器
     const messageHandler = (event: OcrEvent) => {
@@ -565,12 +477,6 @@ export function OCRVideoComponent() {
             title: "OCR会话完成",
             description: `文本已稳定，最终内容: ${event.session.final_text}`,
           });
-
-          //这里停止ocr的消息不通过channel获得，通过event获得，这里先注释掉
-          // // 如果应该停止OCR
-          // if (event.session.should_stop_ocr) {
-          //   stopCapturing();
-          // }
         }
 
         // 显示时间信息
@@ -915,7 +821,7 @@ export function OCRVideoComponent() {
                     <SelectValue placeholder="选择间隔" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0.033">0 (30 FPS)</SelectItem>
+                    <SelectItem value="0.02">0 (30 FPS)</SelectItem>
                     <SelectItem value="0.1">0.1 (10 FPS)</SelectItem>
                     <SelectItem value="0.2">0.2 (5 FPS)</SelectItem>
                     <SelectItem value="0.5">0.5 (2 FPS)</SelectItem>

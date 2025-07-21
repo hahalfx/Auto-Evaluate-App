@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use tokio::sync::watch;
+use tokio::time;
 use std::error::Error;
 use chrono::Utc;
 use crate::services::workflow::{ControlSignal, Task, WorkflowContext};
@@ -32,6 +33,7 @@ impl Task for audio_task {
                 ControlSignal::Running => {
                     // 只有在运行状态下才执行音频播放
                     println!("执行音频播放");
+                    time::sleep(std::time::Duration::from_secs(1)).await;
                     
                     // 记录语音指令开始时间
                     let voice_start_time = Utc::now();

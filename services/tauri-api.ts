@@ -44,11 +44,12 @@ export class TauriApiService {
     return await invoke('create_sample', { text, audioFile });
   }
 
-  static async createSamplesBatch(samples: Array<{ text: string; audio_file?: string | null }>): Promise<number[]> {
+  static async createSamplesBatch(samples: Array<{ text: string; audio_file?: string | null }>): Promise<{ created_ids: number[]; ignored_count: number }> {
     // The payload for the Rust command is Vec<SampleCreationPayload>
     // where SampleCreationPayload is { text: String, audio_file: Option<String> }
     // So, we need to ensure the key is `audio_file` as expected by Rust's serde.
     const payload = samples.map(s => ({ text: s.text, audio_file: s.audio_file }));
+    // The backend now returns a BatchCreationResult object: { created_ids: Vec<i64>, ignored_count: usize }
     return await invoke('create_samples_batch', { samples: payload });
   }
 
@@ -88,6 +89,11 @@ export class TauriApiService {
 
   static async deleteWakeWordSafe(wakeWordId: number): Promise<void> {
     return await invoke('delete_wake_word_safe', { wakeWordId });
+  }
+
+  // Precheck samples before import
+  static async precheckSamples(texts: string[]): Promise<{ new_texts: string[], duplicate_texts: string[] }> {
+    return await invoke('precheck_samples', { texts });
   }
 
   // 测试相关

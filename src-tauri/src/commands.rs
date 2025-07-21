@@ -341,20 +341,62 @@ pub async fn get_ocr_task_status(state: State<'_, Arc<AppState>>) -> Result<crat
     })
 }
 
+#[derive(serde::Serialize)]
+pub struct BatchCreationResult {
+    created_ids: Vec<i64>,
+    ignored_count: usize,
+}
+
+#[derive(serde::Serialize)]
+pub struct PrecheckResult {
+    new_texts: Vec<String>,
+    duplicate_texts: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn precheck_samples(
+    state: State<'_, Arc<AppState>>,
+    texts: Vec<String>,
+) -> Result<PrecheckResult, String> {
+    log::info!("[COMMAND] precheck_samples called with {} texts", texts.len());
+    
+    let (new_texts, duplicate_texts) = state
+        .db
+        .precheck_samples(texts)
+        .await
+        .map_err(|e| {
+            log::error!("[COMMAND] precheck_samples failed: {}", e);
+            format!("预检查样本失败: {}", e)
+        })?;
+    
+    log::info!("[COMMAND] precheck_samples completed: {} new, {} duplicate", new_texts.len(), duplicate_texts.len());
+    
+    Ok(PrecheckResult {
+        new_texts,
+        duplicate_texts,
+    })
+}
+
 #[tauri::command]
 pub async fn create_samples_batch(
     state: State<'_, Arc<AppState>>,
-    samples: Vec<SampleCreationPayload>, // Changed to accept a new payload
-) -> Result<Vec<i64>, String> {
+    samples: Vec<SampleCreationPayload>,
+) -> Result<BatchCreationResult, String> {
     let samples_to_create: Vec<(String, Option<String>)> = samples
         .into_iter()
         .map(|s| (s.text, s.audio_file))
         .collect();
-    state
+    
+    let (created_ids, ignored_count) = state
         .db
         .create_samples_batch(samples_to_create)
         .await
-        .map_err(|e| format!("批量创建样本失败: {}", e))
+        .map_err(|e| format!("批量创建样本失败: {}", e))?;
+
+    Ok(BatchCreationResult {
+        created_ids,
+        ignored_count,
+    })
 }
 
 // Define a helper struct for the payload of create_samples_batch

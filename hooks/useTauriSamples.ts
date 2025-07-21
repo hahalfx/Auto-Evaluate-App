@@ -63,13 +63,13 @@ export function useTauriSamples() {
     setError(null);
     try {
       const samplesToCreate = sampleTexts.map(text => ({ text, audio_file: null }));
-      const newSampleIds = await TauriApiService.createSamplesBatch(samplesToCreate);
+      const result = await TauriApiService.createSamplesBatch(samplesToCreate);
       await fetchAllSamples(); // Refresh
       toast({
         title: "批量创建样本成功",
-        description: `${newSampleIds.length} 个样本已成功创建。`,
+        description: `${result.created_ids.length} 个样本已成功创建。忽略了 ${result.ignored_count} 个重复项。`,
       });
-      return newSampleIds;
+      return result.created_ids;
     } catch (err: any) {
       setError(err.message || 'Failed to batch create samples');
       toast({
@@ -114,7 +114,7 @@ export function useTauriSamples() {
     }
   }, [fetchAllSamples, toast]);
 
-  const importSamplesFromExcel = useCallback(async (file: File): Promise<TestSample[] | null> => {
+  const importSamplesFromExcel = useCallback(async (file: File): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
     try {
@@ -126,31 +126,51 @@ export function useTauriSamples() {
 
       if (jsonData.length === 0) {
         toast({ variant: "default", title: "文件为空", description: "Excel 文件中没有找到可导入的数据。" });
-        return [];
+        setIsLoading(false);
+        return false;
       }
       
       const sampleTextsToCreate = jsonData.map(row => row.语料).filter(text => typeof text === 'string' && text.trim() !== '');
 
       if (sampleTextsToCreate.length === 0) {
         toast({ variant: "default", title: "无有效数据", description: "Excel 文件中没有有效的语料文本可导入。" });
-        return [];
+        setIsLoading(false);
+        return false;
       }
 
       const samplesForBatch = sampleTextsToCreate.map(text => ({ text, audio_file: null }));
-      const createdIds = await TauriApiService.createSamplesBatch(samplesForBatch);
+      const result = await TauriApiService.createSamplesBatch(samplesForBatch);
+      
       await fetchAllSamples(); // Refresh the full list
 
-      if (createdIds) {
+      const { created_ids, ignored_count } = result;
+
+      if (created_ids.length > 0 && ignored_count > 0) {
+        toast({
+          title: "Excel 导入部分完成",
+          description: `成功导入 ${created_ids.length} 条新语料，忽略 ${ignored_count} 条已存在的重复语料。`,
+        });
+      } else if (created_ids.length > 0) {
         toast({
           title: "Excel 导入成功",
-          description: `${createdIds.length} 条语料已成功导入。`,
+          description: `全部 ${created_ids.length} 条语料已成功导入。`,
         });
-        // Construct TestSample objects for return, though IDs might not match perfectly if some failed
-        // This part is tricky as backend returns i64, frontend uses u32. Assuming direct mapping for now.
-        return createdIds.map((id, index) => ({ id: id as number, text: sampleTextsToCreate[index], status: 'pending' }));
+      } else if (ignored_count > 0) {
+        toast({
+          variant: "default",
+          title: "无新语料导入",
+          description: `所有 ${ignored_count} 条语料均已存在，未执行任何操作。`,
+        });
       } else {
-        throw new Error("批量创建样本的后端调用未返回预期的ID列表。");
+         // This case should ideally not be hit if checks above are correct
+         toast({
+          variant: "default",
+          title: "无数据导入",
+          description: "文件中没有找到可导入的新语料。",
+        });
       }
+      
+      return true;
 
     } catch (err: any) {
       setError(err.message || 'Failed to import from Excel');
@@ -159,12 +179,35 @@ export function useTauriSamples() {
         title: "Excel 导入失败",
         description: err.message || '从 Excel 文件导入样本时发生错误。',
       });
-      return null;
+      return false;
     } finally {
       setIsLoading(false);
     }
   }, [fetchAllSamples, toast]);
   
+  const precheckSamples = useCallback(async (texts: string[]): Promise<{ new_texts: string[], duplicate_texts: string[] } | null> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      console.log("开始预检查样本，数量:", texts.length);
+      const result = await TauriApiService.precheckSamples(texts);
+      console.log("预检查完成，结果:", result);
+      return result;
+    } catch (err: any) {
+      console.error("预检查失败:", err);
+      const errorMessage = err.message || 'Failed to precheck samples';
+      setError(errorMessage);
+      toast({
+        variant: "destructive",
+        title: "预检查失败",
+        description: errorMessage,
+      });
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
+
   const getSamplesByTaskId = useCallback(async (taskId: number): Promise<TestSample[] | null> => {
     setIsLoading(true);
     setError(null);
@@ -239,5 +282,6 @@ export function useTauriSamples() {
     importSamplesFromExcel,
     getSamplesByTaskId,
     updateTaskSampleAssociations,
+    precheckSamples,
   };
 }
