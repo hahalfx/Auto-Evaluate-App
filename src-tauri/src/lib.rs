@@ -107,6 +107,9 @@ pub fn run() {
             commands::push_video_frame_visual,
             commands::validate_template_paths,
             commands::get_loaded_templates,
+            commands::save_template_image,
+            commands::get_templates_from_folder,
+            commands::load_template_from_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

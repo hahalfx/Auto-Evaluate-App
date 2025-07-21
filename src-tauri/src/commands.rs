@@ -876,3 +876,106 @@ pub async fn push_video_frame_visual(
 
     Ok(())
 }
+
+/// 保存模板图像到templates文件夹
+#[tauri::command]
+pub async fn save_template_image(
+    filename: String,
+    image_data: String, // Base64编码的图像数据
+) -> Result<(), String> {
+    use std::fs;
+    use std::path::Path;
+    use base64::prelude::*;
+
+    // 创建templates目录（如果不存在）
+    // 使用相对路径指向主目录的public/templates
+    let templates_dir = Path::new("../public/templates");
+    if !templates_dir.exists() {
+        fs::create_dir_all(templates_dir)
+            .map_err(|e| format!("创建templates目录失败: {}", e))?;
+    }
+
+    // 构建完整的文件路径
+    let file_path = templates_dir.join(&filename);
+
+    // 解码Base64数据
+    let image_bytes = BASE64_STANDARD
+        .decode(&image_data)
+        .map_err(|e| format!("Base64解码失败: {}", e))?;
+
+    // 写入文件
+    fs::write(&file_path, image_bytes)
+        .map_err(|e| format!("保存文件失败: {}", e))?;
+
+    println!("✅ 模板图像已保存: {:?}", file_path);
+    Ok(())
+}
+
+/// 获取templates文件夹中的所有模板文件
+#[tauri::command]
+pub async fn get_templates_from_folder() -> Result<Vec<String>, String> {
+    use std::fs;
+    use std::path::Path;
+
+    // 使用相对路径指向主目录的public/templates
+    let templates_dir = Path::new("../public/templates");
+    
+    if !templates_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut template_files = Vec::new();
+    
+    match fs::read_dir(templates_dir) {
+        Ok(entries) => {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.is_file() {
+                        if let Some(extension) = path.extension() {
+                            let ext = extension.to_string_lossy().to_lowercase();
+                            // 只包含图片文件
+                            if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp") {
+                                if let Some(filename) = path.file_name() {
+                                    template_files.push(filename.to_string_lossy().to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            return Err(format!("读取templates目录失败: {}", e));
+        }
+    }
+
+    // 排序文件名
+    template_files.sort();
+    Ok(template_files)
+}
+
+/// 从templates文件夹加载指定模板的Base64数据
+#[tauri::command]
+pub async fn load_template_from_folder(filename: String) -> Result<String, String> {
+    use std::fs;
+    use std::path::Path;
+    use base64::prelude::*;
+
+    // 使用相对路径指向主目录的public/templates
+    let templates_dir = Path::new("../public/templates");
+    let file_path = templates_dir.join(&filename);
+
+    if !file_path.exists() {
+        return Err(format!("模板文件不存在: {}", filename));
+    }
+
+    // 读取文件
+    let file_bytes = fs::read(&file_path)
+        .map_err(|e| format!("读取文件失败: {}", e))?;
+
+    // 转换为Base64
+    let base64_data = BASE64_STANDARD.encode(&file_bytes);
+    
+    Ok(base64_data)
+}
