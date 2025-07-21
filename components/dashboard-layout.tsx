@@ -58,6 +58,11 @@ const navItems: NavItem[] = [
     icon: <ChartColumnBig className="h-5 w-5" />,
   },
   {
+    title: "视觉唤醒检测",
+    href: "/wake-detection",
+    icon: <TestTube className="h-5 w-5" />,
+  },
+  {
     title: "Tauri后端测试",
     href: "/tauri-test",
     icon: <TestTube className="h-5 w-5" />,

@@ -100,6 +100,13 @@ pub fn run() {
             commands::delete_wake_word_safe,
             commands::precheck_samples,
             commands::get_timing_data_by_task,
+            commands::start_visual_wake_detection,
+            commands::start_visual_wake_detection_with_data,
+            commands::stop_visual_wake_detection,
+            commands::calibrate_visual_detection,
+            commands::push_video_frame_visual,
+            commands::validate_template_paths,
+            commands::get_loaded_templates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

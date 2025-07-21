@@ -9,3 +9,4 @@ pub mod ocr_task;
 pub mod meta_task_executor;
 pub mod ocr_session;
 pub mod middle_task;
+pub mod visual_wake_detection;

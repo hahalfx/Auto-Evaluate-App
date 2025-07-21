@@ -47,6 +47,9 @@ rustls = { version = "0.23.28", features = ["ring"] }
 tesseract = "0.15.2"
 image = "0.25.6"
 parking_lot = "0.12.4"
+opencv = { version = "0.95.0", features = ["clang-runtime"] }
+tauri-plugin-fs = "2.0.0-beta"
+once_cell = "1.19"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"

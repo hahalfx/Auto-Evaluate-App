@@ -5,11 +5,12 @@ use crate::services::audio_task::audio_task;
 use crate::services::finish_task::finish_task;
 use crate::services::meta_task_executor::meta_task_executor;
 use crate::services::workflow::Workflow;
+use crate::services::visual_wake_detection::{VisualWakeDetector, get_or_create_detector};
 use crate::state::AppState;
 use chrono::Utc;
 use std::sync::Arc;
 use tauri::ipc::Channel;
-use tauri::State;
+use tauri::{Emitter, State};
 use tokio::time::{timeout, Duration};
 
 #[tauri::command]
@@ -302,16 +303,16 @@ pub async fn push_video_frame(
     height: u32,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    // 步骤 1: 快速获取锁，克隆 Sender，然后立即释放锁
-    let sender_clone = { // 使用代码块来限定 sender_guard 的作用域
+    // 步骤 1: 检查OCR任务是否启动
+    let sender_clone = {
         let sender_guard = state.ocr_frame_sender.lock().await;
         match sender_guard.as_ref() {
-            Some(sender) => sender.clone(), // 克隆 Sender
+            Some(sender) => sender.clone(),
             None => return Err("OCR任务未启动，请先启动OCR任务".to_string()),
         }
-    }; // <- sender_guard 在这里被丢弃，锁立即被释放！
+    };
 
-    // 步骤 2: 在锁之外，从容地准备和发送数据
+    // 步骤 3: OCR处理逻辑
     let frame = crate::models::VideoFrame {
         data: image_data,
         timestamp,
@@ -319,7 +320,6 @@ pub async fn push_video_frame(
         height,
     };
 
-    // 50毫秒超时检查
     const SEND_TIMEOUT: Duration = Duration::from_millis(75);
     
     match timeout(SEND_TIMEOUT, sender_clone.send(frame)).await {
@@ -703,4 +703,176 @@ pub async fn get_timing_data_by_task(
         .get_timing_data_by_task(task_id as i64)
         .await
         .map_err(|e| format!("获取时间参数失败: {}", e))
+}
+
+// ==================== 视觉唤醒检测相关命令 ====================
+
+/// 启动视觉唤醒检测
+#[tauri::command]
+pub async fn start_visual_wake_detection(
+    template_paths: Vec<String>,
+    roi: Option<[i32; 4]>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let detector = get_or_create_detector().await;
+    let mut detector_guard = detector.lock().await;
+    
+    // 由于现在使用HTML文件选择器，暂时跳过模板加载
+    // 后续可以改为接受Base64数据
+    println!("启动视觉检测，模板数量: {}", template_paths.len());
+    
+    // 手动启用检测器
+    detector_guard.set_enabled(true);
+    
+    // 设置ROI
+    if let Some(roi_data) = roi {
+        detector_guard.set_roi(roi_data);
+    }
+    
+    // 发送启动事件
+    app_handle.emit("visual_wake_status", "started").ok();
+    
+    Ok(())
+}
+
+/// 启动视觉唤醒检测（使用Base64模板数据）
+#[tauri::command]
+pub async fn start_visual_wake_detection_with_data(
+    template_data: Vec<(String, String)>, // (文件名, Base64数据)
+    roi: Option<[i32; 4]>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    println!("🚀 start_visual_wake_detection_with_data 被调用");
+    println!("📊 接收到的模板数据数量: {}", template_data.len());
+    
+    let detector = get_or_create_detector().await;
+    let mut detector_guard = detector.lock().await;
+    
+    println!("🔒 获取检测器锁成功");
+    
+    // 加载Base64模板数据
+    println!("📷 开始加载模板数据...");
+    match detector_guard.load_templates_from_base64(template_data).await {
+        Ok(_) => println!("✅ 模板加载成功"),
+        Err(e) => {
+            println!("❌ 模板加载失败: {}", e);
+            return Err(e);
+        }
+    }
+    
+    // 注意：ROI处理已经在前端完成，这里只是记录ROI信息用于调试
+    if let Some(roi_data) = roi {
+        println!("🎯 ROI信息（前端已处理）: {:?}", roi_data);
+        // detector_guard.set_roi(roi_data); // 注释掉，因为前端已经裁剪了
+    } else {
+        println!("🎯 未设置ROI");
+    }
+    
+    // 手动启用检测器
+    detector_guard.set_enabled(true);
+    println!("🟢 检测器已启用");
+    
+    // 发送启动事件
+    match app_handle.emit("visual_wake_status", "started") {
+        Ok(_) => println!("📡 启动事件发送成功"),
+        Err(e) => println!("📡 启动事件发送失败: {}", e),
+    }
+    
+    println!("🎉 视觉检测启动完成");
+    Ok(())
+}
+
+/// 停止视觉唤醒检测
+#[tauri::command]
+pub async fn stop_visual_wake_detection(
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let detector = get_or_create_detector().await;
+    let mut detector_guard = detector.lock().await;
+    
+    // 禁用检测器
+    detector_guard.set_enabled(false);
+    
+    // 发送停止事件
+    app_handle.emit("visual_wake_status", "stopped").ok();
+    
+    Ok(())
+}
+
+/// 校准视觉检测阈值
+#[tauri::command]
+pub async fn calibrate_visual_detection(
+    frame_data: Vec<u8>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let detector = get_or_create_detector().await;
+    let mut detector_guard = detector.lock().await;
+    
+    detector_guard.calibrate_threshold(&frame_data).await?;
+    
+    // 发送校准完成事件
+    app_handle.emit("visual_wake_status", "calibrated").ok();
+    
+    Ok(())
+}
+
+/// 验证模板路径是否有效
+#[tauri::command]
+pub async fn validate_template_paths(paths: Vec<String>) -> Result<Vec<String>, String> {
+    let mut valid_paths = Vec::new();
+    
+    for path in paths {
+        if std::path::Path::new(&path).exists() {
+            // 检查文件扩展名
+            if let Some(extension) = std::path::Path::new(&path).extension() {
+                let ext = extension.to_string_lossy().to_lowercase();
+                if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp") {
+                    valid_paths.push(path);
+                }
+            }
+        }
+    }
+    
+    Ok(valid_paths)
+}
+
+/// 获取已加载的模板信息
+#[tauri::command]
+pub async fn get_loaded_templates() -> Result<Vec<String>, String> {
+    // 从检测器中获取当前已加载的模板路径
+    let detector = get_or_create_detector().await;
+    let detector_guard = detector.lock().await;
+    
+    // 简单实现，返回空数组（实际实现需要在VisualWakeDetector中添加获取模板路径的方法）
+    Ok(Vec::new())
+}
+
+/// 推送视频帧到视觉检测（独立于OCR）
+#[tauri::command]
+pub async fn push_video_frame_visual(
+    image_data: Vec<u8>,
+    timestamp: u64,
+    width: u32,
+    height: u32,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    // 检查视觉检测是否启动
+    let visual_detection_enabled = {
+        let detector = get_or_create_detector().await;
+        let detector_guard = detector.lock().await;
+        detector_guard.is_enabled()
+    };
+
+    if !visual_detection_enabled {
+        return Err("视觉检测未启动，请先启动视觉检测".to_string());
+    }
+
+    // 执行视觉检测
+    tokio::spawn(async move {
+        if let Err(e) = crate::services::visual_wake_detection::perform_visual_wake_detection(&image_data, &app_handle).await {
+            eprintln!("视觉检测失败: {}", e);
+        }
+    });
+
+    Ok(())
 }
