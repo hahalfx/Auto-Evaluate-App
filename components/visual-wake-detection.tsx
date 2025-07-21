@@ -12,11 +12,11 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { 
-  Play, 
-  Square, 
-  Settings, 
-  Camera, 
+import {
+  Play,
+  Square,
+  Settings,
+  Camera,
   Target,
   CheckCircle,
   XCircle,
@@ -87,8 +87,8 @@ const TemplatePreview: React.FC<TemplatePreviewProps> = ({ filename }) => {
   }
 
   return (
-    <img 
-      src={`data:image/png;base64,${imageData}`} 
+    <img
+      src={`data:image/png;base64,${imageData}`}
       alt={filename}
       className="w-full h-full object-contain max-w-full max-h-full"
     />
@@ -115,17 +115,17 @@ export function VisualWakeDetectionComponent() {
   const [lastDetection, setLastDetection] = useState<DetectionResult | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [devicesLoaded, setDevicesLoaded] = useState(false);
-  
+
   // 模板相关状态
-  const [templateFiles, setTemplateFiles] = useState<{name: string, data: string}[]>([]);
+  const [templateFiles, setTemplateFiles] = useState<{ name: string, data: string }[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [isCapturingTemplate, setIsCapturingTemplate] = useState(false);
-  
+
   // 命名弹窗相关状态
   const [showNamingDialog, setShowNamingDialog] = useState(false);
   const [capturedImageData, setCapturedImageData] = useState<string>("");
   const [templateName, setTemplateName] = useState("");
-  
+
   // 模板选择相关状态
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [availableTemplates, setAvailableTemplates] = useState<string[]>([]);
@@ -226,7 +226,7 @@ export function VisualWakeDetectionComponent() {
       try {
         unlistenVisualWake = await listen<VisualWakeEvent>('visual_wake_event', (event) => {
           const { event_type, confidence, timestamp, message } = event.payload;
-          
+
           const result: DetectionResult = {
             success: event_type === 'wake_detected',
             confidence,
@@ -255,7 +255,7 @@ export function VisualWakeDetectionComponent() {
         unlistenVisualStatus = await listen('visual_wake_status', (event) => {
           const status = event.payload;
           console.log('视觉检测状态:', status);
-          
+
           if (status === 'started') {
             setIsDetecting(true);
             toast({
@@ -302,19 +302,19 @@ export function VisualWakeDetectionComponent() {
     input.type = 'file';
     input.multiple = true;
     input.accept = 'image/png,image/jpeg,image/jpg,image/bmp';
-    
+
     input.onchange = async (event) => {
       const files = (event.target as HTMLInputElement).files;
       if (files && files.length > 0) {
         setIsLoadingTemplates(true);
         try {
-          const newTemplates: {name: string, data: string}[] = [];
-          
+          const newTemplates: { name: string, data: string }[] = [];
+
           // 读取每个文件并转换为Base64
           for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const reader = new FileReader();
-            
+
             await new Promise<void>((resolve, reject) => {
               reader.onload = () => {
                 if (reader.result) {
@@ -330,7 +330,7 @@ export function VisualWakeDetectionComponent() {
               reader.readAsDataURL(file);
             });
           }
-          
+
           setTemplateFiles(prev => [...prev, ...newTemplates]);
           toast({
             title: "模板选择成功",
@@ -348,7 +348,7 @@ export function VisualWakeDetectionComponent() {
         }
       }
     };
-    
+
     input.click();
   };
 
@@ -393,22 +393,22 @@ export function VisualWakeDetectionComponent() {
       }
 
       const video = videoRef.current;
-      
+
       // 根据是否有ROI来决定截取区域
       if (roi && roi[2] > 0 && roi[3] > 0) {
         // 验证ROI边界
         const videoWidth = video.videoWidth;
         const videoHeight = video.videoHeight;
-        
+
         const clampedX = Math.max(0, Math.min(roi[0], videoWidth - 1));
         const clampedY = Math.max(0, Math.min(roi[1], videoHeight - 1));
         const clampedWidth = Math.min(roi[2], videoWidth - clampedX);
         const clampedHeight = Math.min(roi[3], videoHeight - clampedY);
-        
+
         if (clampedWidth > 0 && clampedHeight > 0) {
           canvas.width = clampedWidth;
           canvas.height = clampedHeight;
-          
+
           // 只截取ROI区域
           ctx.drawImage(
             video,
@@ -439,12 +439,12 @@ export function VisualWakeDetectionComponent() {
       // 转换为Base64
       const arrayBuffer = await blob.arrayBuffer();
       const base64Data = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-      
+
       // 暂存图片数据并显示命名弹窗
       setCapturedImageData(base64Data);
       setTemplateName(""); // 清空之前的名称
       setShowNamingDialog(true);
-      
+
     } catch (error) {
       console.error("截取模板失败:", error);
       toast({
@@ -479,35 +479,35 @@ export function VisualWakeDetectionComponent() {
 
     try {
       // 确保文件名以.png结尾
-      const filename = templateName.trim().endsWith('.png') 
-        ? templateName.trim() 
+      const filename = templateName.trim().endsWith('.png')
+        ? templateName.trim()
         : `${templateName.trim()}.png`;
-      
+
       // 保存文件到templates文件夹
       await invoke('save_template_image', {
         filename,
         imageData: capturedImageData
       });
-      
+
       // 添加到模板列表
       const newTemplate = {
         name: filename,
         data: capturedImageData
       };
-      
+
       setTemplateFiles(prev => [...prev, newTemplate]);
-      
+
       toast({
         title: "模板保存成功",
         description: `已保存为 ${filename}`,
         variant: "default",
       });
-      
+
       // 关闭弹窗并清理状态
       setShowNamingDialog(false);
       setCapturedImageData("");
       setTemplateName("");
-      
+
     } catch (error) {
       console.error("保存模板失败:", error);
       toast({
@@ -547,18 +547,18 @@ export function VisualWakeDetectionComponent() {
   const loadSelectedTemplate = async (filename: string) => {
     try {
       const base64Data = await invoke<string>('load_template_from_folder', { filename });
-      
+
       // 检查是否已经存在同名模板
       const existingIndex = templateFiles.findIndex(t => t.name === filename);
-      
+
       const newTemplate = {
         name: filename,
         data: base64Data
       };
-      
+
       if (existingIndex >= 0) {
         // 更新现有模板
-        setTemplateFiles(prev => prev.map((template, index) => 
+        setTemplateFiles(prev => prev.map((template, index) =>
           index === existingIndex ? newTemplate : template
         ));
         toast({
@@ -575,7 +575,7 @@ export function VisualWakeDetectionComponent() {
           variant: "default",
         });
       }
-      
+
       // 自动关闭选择器
       closeTemplateSelector();
     } catch (error) {
@@ -598,7 +598,7 @@ export function VisualWakeDetectionComponent() {
   const startVisualDetection = async () => {
     console.log("startVisualDetection 被调用");
     console.log("模板文件数量:", templateFiles.length);
-    
+
     if (templateFiles.length === 0) {
       console.log("没有模板文件，显示错误提示");
       toast({
@@ -616,16 +616,16 @@ export function VisualWakeDetectionComponent() {
       console.log("模板数据准备完成，数量:", templateData.length);
       console.log("ROI数据:", roi);
       console.log("处理后的ROI:", roi ? roi.map(val => Math.round(val)) : undefined);
-      
+
       await invoke('start_visual_wake_detection_with_data', {
         templateData,
         roi: roi ? roi.map(val => Math.round(val)) : undefined
       });
-      
+
       console.log("Tauri 命令调用成功");
       setIsDetecting(true);
       setIsCapturing(true);
-      
+
       toast({
         title: "检测已启动",
         description: "视觉检测已成功启动",
@@ -660,21 +660,21 @@ export function VisualWakeDetectionComponent() {
   const calibrateVisualDetection = async () => {
     try {
       setIsCalibrating(true);
-      
+
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (videoRef.current && ctx) {
         canvas.width = videoRef.current.videoWidth;
         canvas.height = videoRef.current.videoHeight;
         ctx.drawImage(videoRef.current, 0, 0);
-        
+
         const blob = await new Promise<Blob>((resolve) => {
           canvas.toBlob((blob) => resolve(blob!), 'image/jpeg', 0.8);
         });
-        
+
         const arrayBuffer = await blob.arrayBuffer();
         const imageData = new Uint8Array(arrayBuffer);
-        
+
         await invoke('calibrate_visual_detection', {
           frameData: Array.from(imageData)
         });
@@ -702,10 +702,10 @@ export function VisualWakeDetectionComponent() {
 
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isSelectingROI) return;
-    
+
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const pos = getMousePos(canvas, event);
     setRoiStartPoint(pos);
     setIsDrawing(pos);
@@ -713,22 +713,22 @@ export function VisualWakeDetectionComponent() {
 
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isSelectingROI || !roiStartPoint) return;
-    
+
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const pos = getMousePos(canvas, event);
     setIsDrawing(pos);
   }, [isSelectingROI, roiStartPoint, getMousePos]);
 
   const handleMouseUp = useCallback(() => {
     if (!isSelectingROI || !roiStartPoint || !isDrawing) return;
-    
+
     const x = Math.min(roiStartPoint.x, isDrawing.x);
     const y = Math.min(roiStartPoint.y, isDrawing.y);
     const width = Math.abs(isDrawing.x - roiStartPoint.x);
     const height = Math.abs(isDrawing.y - roiStartPoint.y);
-    
+
     if (width > 10 && height > 10) {
       setRoi([Math.round(x), Math.round(y), Math.round(width), Math.round(height)]);
       toast({
@@ -737,7 +737,7 @@ export function VisualWakeDetectionComponent() {
         variant: "default",
       });
     }
-    
+
     setIsSelectingROI(false);
     setRoiStartPoint(null);
     setIsDrawing(null);
@@ -767,7 +767,7 @@ export function VisualWakeDetectionComponent() {
       ctx.lineWidth = 3;
       ctx.setLineDash([]);
       ctx.strokeRect(roi[0], roi[1], roi[2], roi[3]);
-      
+
       // 添加ROI标签
       ctx.fillStyle = "rgba(0, 255, 0, 0.8)";
       ctx.font = "16px Arial";
@@ -779,12 +779,12 @@ export function VisualWakeDetectionComponent() {
       ctx.strokeStyle = "#ffff00";
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 5]);
-      
+
       const x = Math.min(roiStartPoint.x, isDrawing.x);
       const y = Math.min(roiStartPoint.y, isDrawing.y);
       const width = Math.abs(isDrawing.x - roiStartPoint.x);
       const height = Math.abs(isDrawing.y - roiStartPoint.y);
-      
+
       ctx.strokeRect(x, y, width, height);
       ctx.setLineDash([]);
     }
@@ -820,15 +820,15 @@ export function VisualWakeDetectionComponent() {
           // 验证ROI边界
           const videoWidth = videoRef.current.videoWidth;
           const videoHeight = videoRef.current.videoHeight;
-          
+
           console.log(`视频尺寸: ${videoWidth}x${videoHeight}, ROI: [${roi[0]}, ${roi[1]}, ${roi[2]}, ${roi[3]}]`);
-          
+
           // 确保ROI不超出视频边界
           const clampedX = Math.max(0, Math.min(roi[0], videoWidth - 1));
           const clampedY = Math.max(0, Math.min(roi[1], videoHeight - 1));
           const clampedWidth = Math.min(roi[2], videoWidth - clampedX);
           const clampedHeight = Math.min(roi[3], videoHeight - clampedY);
-          
+
           if (clampedWidth > 0 && clampedHeight > 0) {
             canvas.width = clampedWidth;
             canvas.height = clampedHeight;
@@ -909,12 +909,12 @@ export function VisualWakeDetectionComponent() {
 
       for (const filename of selectedTemplates) {
         const base64Data = await invoke<string>('load_template_from_folder', { filename });
-        
+
         const existingIndex = templateFiles.findIndex(t => t.name === filename);
         const newTemplate = { name: filename, data: base64Data };
-        
+
         if (existingIndex >= 0) {
-          setTemplateFiles(prev => prev.map((template, index) => 
+          setTemplateFiles(prev => prev.map((template, index) =>
             index === existingIndex ? newTemplate : template
           ));
           updatedCount++;
@@ -942,42 +942,17 @@ export function VisualWakeDetectionComponent() {
 
   return (
     <>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="flex flex-row gap-6 w-full h-full flex-1" style={{ display: 'flex', flexDirection: 'row', height: '100%' }}>
         {/* 左侧：视频显示和控制 */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
+        <Card className="w-3/5 flex flex-col h-full" style={{ width: '70%', height: '100%' }}>
+          <CardHeader className="flex-shrink-0">
             <CardTitle className="flex items-center gap-2">
               <Camera className="h-5 w-5" />
               视频监控
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* 摄像头选择器 */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">选择摄像头设备</label>
-              <Select 
-                value={selectedDevice} 
-                onValueChange={setSelectedDevice}
-                disabled={isInitializing || !devicesLoaded}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={
-                    isInitializing 
-                      ? "正在初始化..." 
-                      : !devicesLoaded 
-                        ? "加载设备中..." 
-                        : "请选择摄像头设备"
-                  } />
-                </SelectTrigger>
-                <SelectContent>
-                  {videoDevices.map((device) => (
-                    <SelectItem key={device.deviceId} value={device.deviceId}>
-                      {device.label || `摄像头 ${device.deviceId.slice(0, 8)}...`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <CardContent className="flex-1 flex flex-col space-y-4 min-h-0">
+
 
             {/* 控制按钮 */}
             <div className="flex flex-wrap gap-2">
@@ -989,10 +964,20 @@ export function VisualWakeDetectionComponent() {
                 <Target className="h-4 w-4 mr-1" />
                 {isSelectingROI ? "取消选择" : "选择ROI"}
               </Button>
-              
+
               {roi && (
                 <Button
-                  onClick={() => setRoi(null)}
+                  onClick={() => {
+                    setRoi(null);
+                    // 强制清除画布上的ROI框
+                    const canvas = canvasRef.current;
+                    if (canvas) {
+                      const ctx = canvas.getContext('2d');
+                      if (ctx) {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                      }
+                    }
+                  }}
                   variant="outline"
                   size="sm"
                 >
@@ -1000,7 +985,7 @@ export function VisualWakeDetectionComponent() {
                   清除ROI
                 </Button>
               )}
-              
+
               <Button
                 onClick={calibrateVisualDetection}
                 disabled={isCalibrating || templateFiles.length === 0}
@@ -1014,7 +999,7 @@ export function VisualWakeDetectionComponent() {
                 )}
                 {isCalibrating ? "校准中..." : "校准阈值"}
               </Button>
-              
+
               <Button
                 onClick={isDetecting ? stopVisualDetection : startVisualDetection}
                 disabled={isCalibrating || (templateFiles.length === 0 && !isDetecting)}
@@ -1028,10 +1013,37 @@ export function VisualWakeDetectionComponent() {
                 )}
                 {isDetecting ? "停止检测" : "开始检测"}
               </Button>
+
+              {/* 摄像头选择器 */}
+              <div>
+                {/* <label className="text-sm font-medium text-gray-700">选择摄像头设备</label> */}
+                <Select
+                  value={selectedDevice}
+                  onValueChange={setSelectedDevice}
+                  disabled={isInitializing || !devicesLoaded}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={
+                      isInitializing
+                        ? "正在初始化..."
+                        : !devicesLoaded
+                          ? "加载设备中..."
+                          : "请选择摄像头设备"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {videoDevices.map((device) => (
+                      <SelectItem key={device.deviceId} value={device.deviceId}>
+                        {device.label || `摄像头 ${device.deviceId.slice(0, 8)}...`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* 视频显示区域 */}
-            <div className="relative bg-gray-900 rounded-lg overflow-hidden">
+            <div className="relative bg-gray-900 rounded-lg overflow-hidden flex-1" style={{ minHeight: '300px' }}>
               {isInitializing && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
                   <div className="flex items-center gap-2 text-white">
@@ -1040,10 +1052,10 @@ export function VisualWakeDetectionComponent() {
                   </div>
                 </div>
               )}
-              
+
               <video
                 ref={videoRef}
-                className="w-full h-auto"
+                className="w-full h-full object-contain"
                 playsInline
                 autoPlay
                 muted
@@ -1051,11 +1063,12 @@ export function VisualWakeDetectionComponent() {
               <canvas
                 ref={canvasRef}
                 className="absolute top-0 left-0 w-full h-full pointer-events-auto cursor-crosshair"
+                style={{ width: '100%', height: '100%' }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
               />
-              
+
               {isSelectingROI && (
                 <div className="absolute top-2 left-1/2 -translate-x-1/2 p-2 bg-black/70 rounded-md text-yellow-400 text-sm z-10">
                   点击并拖动鼠标，选择要检测的区域
@@ -1078,7 +1091,7 @@ export function VisualWakeDetectionComponent() {
                   模板: {templateFiles.length}
                 </Badge>
               </div>
-              
+
               {lastDetection && (
                 <div className="flex items-center gap-2">
                   {lastDetection.success ? (
@@ -1099,29 +1112,29 @@ export function VisualWakeDetectionComponent() {
         </Card>
 
         {/* 右侧：模板管理和检测结果 */}
-        <Card>
-          <CardHeader>
+        <Card className="w-2/5 flex flex-col h-full overflow-hidden" style={{ width: '30%', height: '100%' }}>
+          <CardHeader className="flex-shrink-0">
             <CardTitle className="flex items-center gap-2">
               <Target className="h-5 w-5" />
               模板管理与检测结果
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1 flex flex-col overflow-hidden">
             {/* 模板管理 */}
-            <div className="mb-6">
-              <h4 className="font-medium mb-3 flex items-center gap-2">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <h4 className="font-medium mb-3 flex items-center gap-2 flex-shrink-0">
                 <FileImage className="h-5 w-5" />
                 模板管理
               </h4>
-              <div className="text-xs text-gray-600 mb-3 p-2 bg-blue-50 rounded-md">
+              <div className="text-xs text-gray-600 mb-3 p-2 bg-blue-50 rounded-md flex-shrink-0">
                 💡 您可以通过"上传模板"上传图片文件，点击"选择已保存"以画廊方式浏览templates文件夹中的模板（支持多选），或点击"截取画面"从当前视频帧截取模板。
                 {roi && "当前有ROI区域，截图将只保存ROI区域内容。"}
               </div>
-              <div className="flex flex-wrap gap-2 mb-3">
-                <Button 
-                  onClick={selectTemplateImages} 
-                  disabled={isLoadingTemplates} 
-                  variant="outline" 
+              <div className="flex flex-wrap gap-2 mb-3 flex-shrink-0">
+                <Button
+                  onClick={selectTemplateImages}
+                  disabled={isLoadingTemplates}
+                  variant="outline"
                   size="sm"
                 >
                   {isLoadingTemplates ? (
@@ -1131,10 +1144,10 @@ export function VisualWakeDetectionComponent() {
                   )}
                   上传模板
                 </Button>
-                <Button 
-                  onClick={selectTemplatesFromFolder} 
-                  disabled={isLoadingTemplates} 
-                  variant="outline" 
+                <Button
+                  onClick={selectTemplatesFromFolder}
+                  disabled={isLoadingTemplates}
+                  variant="outline"
                   size="sm"
                 >
                   {isLoadingTemplates ? (
@@ -1144,10 +1157,10 @@ export function VisualWakeDetectionComponent() {
                   )}
                   选择已保存
                 </Button>
-                <Button 
-                  onClick={captureTemplate} 
-                  disabled={isCapturingTemplate || isInitializing || !videoRef.current} 
-                  variant="outline" 
+                <Button
+                  onClick={captureTemplate}
+                  disabled={isCapturingTemplate || isInitializing || !videoRef.current}
+                  variant="outline"
                   size="sm"
                 >
                   {isCapturingTemplate ? (
@@ -1158,9 +1171,9 @@ export function VisualWakeDetectionComponent() {
                   {roi ? "截取ROI" : "截取画面"}
                 </Button>
                 {templateFiles.length > 0 && (
-                  <Button 
-                    onClick={clearAllTemplates} 
-                    variant="outline" 
+                  <Button
+                    onClick={clearAllTemplates}
+                    variant="outline"
                     size="sm"
                   >
                     <Trash2 className="h-4 w-4 mr-1" />
@@ -1168,10 +1181,10 @@ export function VisualWakeDetectionComponent() {
                   </Button>
                 )}
               </div>
-              
+
               {/* 模板列表 */}
               {templateFiles.length > 0 ? (
-                <div className="space-y-2 max-h-40 overflow-y-auto">
+                <div className="space-y-2 overflow-y-auto min-h-0" style={{ height: '47%', maxHeight: '47%' }}>
                   {templateFiles.map((template, index) => (
                     <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
                       <div className="flex items-center gap-2 text-sm">
@@ -1192,7 +1205,7 @@ export function VisualWakeDetectionComponent() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-gray-500 flex-1 flex flex-col justify-center">
                   <FileImage className="h-12 w-12 mx-auto mb-2 text-gray-300" />
                   <p className="text-sm">尚未选择模板图像</p>
                   <p className="text-xs text-gray-400">点击"选择模板"按钮添加模板</p>
@@ -1200,31 +1213,29 @@ export function VisualWakeDetectionComponent() {
               )}
             </div>
 
-            <Separator className="my-4" />
+            <Separator className="m-4 flex-shrink-0" />
 
             {/* 检测结果 */}
-            <div>
-              <h4 className="font-medium mb-3 flex items-center gap-2">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <h4 className="font-medium mb-3 flex items-center gap-2 flex-shrink-0">
                 <AlertCircle className="h-5 w-5" />
                 检测结果
               </h4>
-              
+
               {/* 最新结果 */}
               {lastDetection && (
-                <div className={`p-3 rounded-md mb-3 ${
-                  lastDetection.success 
-                    ? 'bg-green-50 border border-green-200' 
+                <div className={`p-3 rounded-md mb-3 flex-shrink-0 ${lastDetection.success
+                    ? 'bg-green-50 border border-green-200'
                     : 'bg-red-50 border border-red-200'
-                }`}>
+                  }`}>
                   <div className="flex items-center gap-2 mb-1">
                     {lastDetection.success ? (
                       <CheckCircle className="h-5 w-5 text-green-500" />
                     ) : (
                       <XCircle className="h-5 w-5 text-red-500" />
                     )}
-                    <span className={`font-medium ${
-                      lastDetection.success ? 'text-green-700' : 'text-red-700'
-                    }`}>
+                    <span className={`font-medium ${lastDetection.success ? 'text-green-700' : 'text-red-700'
+                      }`}>
                       最新检测
                     </span>
                   </div>
@@ -1239,16 +1250,15 @@ export function VisualWakeDetectionComponent() {
 
               {/* 历史结果 */}
               {detectionResults.length > 0 ? (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  <h5 className="text-sm font-medium text-gray-700">历史记录</h5>
+                <div className="space-y-2 overflow-y-auto min-h-0" style={{ height: '70%', maxHeight: '70%' }}>
+                  <h5 className="text-sm font-medium text-gray-700 flex-shrink-0">历史记录</h5>
                   {detectionResults.map((result, index) => (
-                    <div 
-                      key={index} 
-                      className={`flex items-center justify-between p-2 rounded text-sm ${
-                        result.success 
-                          ? 'bg-green-50 text-green-700' 
+                    <div
+                      key={index}
+                      className={`flex items-center justify-between p-2 rounded text-sm ${result.success
+                          ? 'bg-green-50 text-green-700'
                           : 'bg-gray-50 text-gray-600'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2">
                         {result.success ? (
@@ -1265,12 +1275,12 @@ export function VisualWakeDetectionComponent() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-6 text-gray-500">
+                <div className="text-center py-6 text-gray-500 flex-1 flex flex-col justify-center">
                   <AlertCircle className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                   <p className="text-sm">暂无检测结果</p>
                   <p className="text-xs text-gray-400">
-                    {templateFiles.length === 0 
-                      ? "请先选择模板图像" 
+                    {templateFiles.length === 0
+                      ? "请先选择模板图像"
                       : "点击开始检测开始监控"}
                   </p>
                 </div>
@@ -1305,8 +1315,8 @@ export function VisualWakeDetectionComponent() {
             {capturedImageData && (
               <div className="text-center">
                 <p className="text-sm text-gray-600 mb-2">预览图像:</p>
-                <img 
-                  src={`data:image/png;base64,${capturedImageData}`} 
+                <img
+                  src={`data:image/png;base64,${capturedImageData}`}
                   alt="截取的模板"
                   className="max-w-full max-h-48 mx-auto border rounded"
                 />
@@ -1337,7 +1347,7 @@ export function VisualWakeDetectionComponent() {
               )}
             </div>
           </DialogHeader>
-          
+
           <div className="flex-1 min-h-0">
             {availableTemplates.length > 0 ? (
               <div className="h-full overflow-y-auto pr-2">
@@ -1347,14 +1357,13 @@ export function VisualWakeDetectionComponent() {
                     return (
                       <div
                         key={filename}
-                        className={`group relative border rounded-md overflow-hidden hover:shadow-md transition-all cursor-pointer bg-white ${
-                          isSelected ? 'ring-2 ring-blue-500 border-blue-500' : 'hover:border-gray-300'
-                        }`}
+                        className={`group relative border rounded-md overflow-hidden hover:shadow-md transition-all cursor-pointer bg-white ${isSelected ? 'ring-2 ring-blue-500 border-blue-500' : 'hover:border-gray-300'
+                          }`}
                         onClick={() => toggleTemplateSelection(filename)}
                       >
                         <div className="aspect-square bg-gray-50 flex items-center justify-center relative">
                           <TemplatePreview filename={filename} />
-                          
+
                           {/* 悬停效果 */}
                           <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 flex items-center justify-center">
                             <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -1384,11 +1393,11 @@ export function VisualWakeDetectionComponent() {
               </div>
             )}
           </div>
-          
+
           <DialogFooter className="flex-shrink-0 pt-3 border-t">
             <div className="flex items-center justify-between w-full">
               <div className="text-xs text-gray-500">
-                {selectedTemplates.size > 0 
+                {selectedTemplates.size > 0
                   ? `已选择 ${selectedTemplates.size} 个模板`
                   : "点击模板卡片选择模板"
                 }
@@ -1397,7 +1406,7 @@ export function VisualWakeDetectionComponent() {
                 <Button variant="outline" onClick={closeTemplateSelector}>
                   取消
                 </Button>
-                <Button 
+                <Button
                   onClick={loadSelectedTemplates}
                   disabled={selectedTemplates.size === 0}
                 >
