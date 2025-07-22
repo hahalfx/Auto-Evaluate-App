@@ -728,6 +728,7 @@ pub async fn start_wake_detection_workflow(
         template_data,
         frame_rate,
         threshold,
+        max_detection_time_secs: Some(5),
     };
 
     // 3. 创建主工作流

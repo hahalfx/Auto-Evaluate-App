@@ -531,6 +531,9 @@ export function WakeDetectionWorkflowComponent() {
                     } else if (status === 'stopped') {
                         console.log("收到 active_task_info stopped 事件");
                         stopVisualDetection();
+                    } else if (status === 'timeout') {
+                        console.log("收到 active_task_info timeout 事件");
+                        stopVisualDetection();
                     }
                 });
 
@@ -544,6 +547,9 @@ export function WakeDetectionWorkflowComponent() {
                         switch (taskType) {
                             case "wake_task_completed":
                                 newStatus.wake_task = TaskStatus.COMPLETED;
+                                break;
+                            case "active_task_timeout":
+                                newStatus.active_task = TaskStatus.FAILED;
                                 break;
                             case "active_task_completed":
                                 newStatus.active_task = TaskStatus.COMPLETED;

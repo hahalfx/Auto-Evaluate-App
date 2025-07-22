@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use tauri::Emitter;
 use tokio::sync::watch;
 use std::error::Error;
+use std::time::{Duration, Instant};
 use crate::services::workflow::{ControlSignal, Task, WorkflowContext};
 use crate::services::visual_wake_detection::get_or_create_detector;
 
@@ -11,6 +12,7 @@ pub struct VisualWakeConfig {
     // pub roi: Option<[i32; 4]>,
     pub frame_rate: u32,
     pub threshold: f64,
+    pub max_detection_time_secs: Option<u64>, // 最大检测时间（秒）
 }
 
 pub struct ActiveTask {
@@ -50,6 +52,10 @@ impl Task for ActiveTask {
 
         let mut last_signal = ControlSignal::Stopped;
         let mut wake_detected = false; // 标记是否检测到唤醒事件
+        let mut detection_start_time: Option<Instant> = None; // 检测开始时间
+        let max_detection_time = config.max_detection_time_secs
+            .map(|secs| Duration::from_secs(secs))
+            .unwrap_or(Duration::from_secs(30)); // 默认30秒超时
         
         loop {
             let signal = control_rx.borrow().clone();
@@ -58,11 +64,13 @@ impl Task for ActiveTask {
                 match signal {
                     ControlSignal::Running => {
                         detector_guard.set_enabled(true);
+                        detection_start_time = Some(Instant::now()); // 记录检测开始时间
                         app_handle.emit("active_task_info", "started").ok();
-                        println!("ActiveTask: 唤醒前端进行检测");
+                        println!("ActiveTask: 唤醒前端进行检测，最大检测时间: {}秒", max_detection_time.as_secs());
                     }
                     ControlSignal::Paused => {
                         detector_guard.set_enabled(false);
+                        detection_start_time = None; // 暂停时重置开始时间
                         app_handle.emit("active_task_info", "stopped").ok();
                     }
                     ControlSignal::Stopped => {
@@ -77,6 +85,18 @@ impl Task for ActiveTask {
             // 检查检测器状态
             let detector_guard = detector.lock().await;
             if detector_guard.is_enabled() {
+                // 检查是否超时
+                if let Some(start_time) = detection_start_time {
+                    let elapsed = start_time.elapsed();
+                    if elapsed >= max_detection_time {
+                        drop(detector_guard);
+                        println!("ActiveTask: 检测超时 ({}秒)，未检测到唤醒事件", max_detection_time.as_secs());
+                        app_handle.emit("active_task_info", "timeout").ok();
+                        app_handle.emit("task_completed", "active_task_timeout").ok();
+                        return Ok(());
+                    }
+                }
+                
                 // 如果检测器仍然启用，继续等待
                 drop(detector_guard);
                 // 等待信号变化或超时，使用更短的检查间隔
