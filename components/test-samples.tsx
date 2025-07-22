@@ -351,7 +351,7 @@ export function TestSamples({
   ];
 
   return (
-    <Card className="flex flex-col flex-1 shadow-sm rounded-lg h-full">
+    <Card className="flex flex-col flex-1 shadow-sm rounded-lg h-full max-h-full overflow-hidden">
       <CardHeader className="rounded-lg bg-background p-3 flex flex-col space-y-2 border-b">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground">测试语料</h3>
@@ -361,7 +361,7 @@ export function TestSamples({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 p-4 overflow-auto">
+      <CardContent className="flex-1 p-4 overflow-auto min-h-0 max-h-full">
         {isLoading && samples.length === 0 ? (
           <div className="space-y-3">
             <Skeleton className="h-10 w-full" />

@@ -780,7 +780,7 @@ export function OCRVideoComponent() {
   };
 
   return (
-    <div className="flex flex-col p-4 rounded-lg border bg-white space-y-2 h-full">
+    <div className="flex flex-col px-4 py-2 rounded-lg border bg-white space-y-2 h-full overflow-hidden max-h-full">
       <div className="flex items-center flex-wrap gap-2">
         <Popover>
           <PopoverTrigger asChild>
@@ -877,7 +877,7 @@ export function OCRVideoComponent() {
         </div>
       </div>
 
-      <div className="flex-grow relative flex justify-center items-center bg-gray-900/50 rounded-lg overflow-hidden">
+      <div className="flex-1 relative flex justify-center items-center bg-gray-900/50 rounded-lg overflow-hidden min-h-0 max-h-full">
         <video
           ref={videoRef}
           className="max-w-full max-h-full"
@@ -899,7 +899,7 @@ export function OCRVideoComponent() {
         )}
       </div>
 
-      <div className="h-20 overflow-y-auto text-sm pr-2">
+      <div className="overflow-y-auto text-sm pr-2" style={{ height: '5%', maxHeight: '5%' }}>
         {ocrResults?.length || 0 ? (
           ocrResults.map((result, index) => (
             <div
@@ -917,7 +917,7 @@ export function OCRVideoComponent() {
           </div>
         )}
       </div>
-      <div className="flex flex-row text-sm pr-2">
+      <div className="flex flex-row text-sm pr-2 flex-shrink-0" style={{ height: '40px' }}>
         <div className="flex-1">
           首次检测到文本时间:
           {firstTextDetectedTime && (

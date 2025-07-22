@@ -113,7 +113,7 @@ export function AnalysisResults({
   };
 
   return (
-    <Card className="flex flex-1 h-full flex-col shadow-sm rounded-lg overflow-auto">
+    <Card className="flex flex-1 h-full flex-col shadow-sm rounded-lg overflow-hidden max-h-full">
       <CardHeader className="bg-white p-3 space-y-0 border-b flex flex-row justify-between items-center">
         <h3 className="font-semibold text-foreground text-center">
           结果判定和解析
@@ -339,7 +339,7 @@ export function AnalysisResults({
           </DialogContent>
         </Dialog>
       </CardHeader>
-      <CardContent className="p-5 overflow-auto h-full">
+      <CardContent className="p-5 overflow-auto h-full flex-1 min-h-0 max-h-full">
         {/* 结果判定部分 - 始终显示标题 */}
         <div className="mb-6">
           <span className="font-bold text-primary flex items-center text-lg">

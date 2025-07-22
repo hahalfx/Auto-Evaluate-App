@@ -94,13 +94,13 @@ export function LLMAnalysisInterface() {
   }, [dispatch, currentReduxTask]); // Depend on dispatch and currentReduxTask
 
   return (
-    <div>
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header section commented out, can be restored if needed */}
-      <div className="grid grid-cols-3 p-6 gap-6 bg-background">
-        <div className="row-span-3 row-start-1 col-start-1 col-span-2">
+      <div className="grid grid-cols-3 p-6 gap-6 bg-background h-full flex-1 overflow-hidden">
+        <div className="row-span-3 row-start-1 col-start-1 col-span-2 overflow-hidden">
           <OCRPage />
         </div>
-        <div className="row-start-1 col-start-3">
+        <div className="row-start-1 col-start-3 overflow-hidden">
           <ProgressBar
             progressname={progressName}
             samplelength={selectedSample.length}
@@ -115,7 +115,7 @@ export function LLMAnalysisInterface() {
             hasNextResult={hasNextResult}     // Pass function reference
           />
         </div>
-        <div className="row-start-4 col-start-1 col-span-2">
+        <div className="row-start-4 col-start-1 col-span-2 overflow-hidden">
           <MachineResponse
             ref={machineResponseRef}
             value={machineResponse}
@@ -126,8 +126,8 @@ export function LLMAnalysisInterface() {
           />
         </div>
         
-        <div className="row-span-3 col-start-3">
-          <div className="flex-1 h-full overflow-auto">
+        <div className="row-span-3 col-start-3 overflow-hidden">
+          <div className="flex-1 h-full overflow-hidden">
             <AnalysisResults
               error={error}
             />

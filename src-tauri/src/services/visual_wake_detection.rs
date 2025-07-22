@@ -38,7 +38,7 @@ impl VisualWakeDetector {
 
     /// 检查视觉检测是否已启用
     pub fn is_enabled(&self) -> bool {
-        self.is_enabled || !self.templates.is_empty()
+        self.is_enabled
     }
     
     /// 手动设置启用状态
@@ -48,6 +48,11 @@ impl VisualWakeDetector {
 
     /// 检查是否应该处理当前帧
     pub fn should_process_frame(&mut self) -> bool {
+        // 首先检查检测器是否启用
+        if !self.is_enabled {
+            return false;
+        }
+        
         let now = std::time::Instant::now();
         if now.duration_since(self.last_process_time).as_millis() >= self.min_interval_ms as u128 {
             self.last_process_time = now;
@@ -156,25 +161,6 @@ impl VisualWakeDetector {
     /// 执行模板匹配
     pub fn detect_wake_event(&self, frame_data: &[u8]) -> Result<Option<f64>, String> {
         if self.templates.is_empty() {
-            // 如果没有模板但检测器已启用，返回随机结果用于测试
-            if self.is_enabled {
-                use std::collections::hash_map::DefaultHasher;
-                use std::hash::{Hash, Hasher};
-                
-                let mut hasher = DefaultHasher::new();
-                frame_data.len().hash(&mut hasher);
-                let hash_value = hasher.finish();
-                
-                // 生成一个0.1-0.9之间的随机匹配度
-                let confidence = 0.1 + (hash_value % 80) as f64 / 100.0;
-                
-                // 30%的概率返回"检测到"（高于阈值）
-                if hash_value % 10 < 3 && confidence > 0.7 {
-                    return Ok(Some(confidence + 0.1));
-                } else {
-                    return Ok(None);
-                }
-            }
             return Err("未加载模板图像".to_string());
         }
 
@@ -407,6 +393,11 @@ pub async fn perform_visual_wake_detection(
     let detector = get_or_create_detector().await;
     let mut detector_guard = detector.lock().await;
     
+    // 检查检测器是否启用
+    if !detector_guard.is_enabled() {
+        return Ok(());
+    }
+    
     // 检查是否应该处理当前帧
     if !detector_guard.should_process_frame() {
         return Ok(());
@@ -416,6 +407,9 @@ pub async fn perform_visual_wake_detection(
     match detector_guard.detect_wake_event(image_data) {
         Ok(Some(score)) => {
             println!("检测到唤醒事件！匹配度: {:.3}", score);
+            
+            // 自动禁用检测器，停止后续检测
+            detector_guard.set_enabled(false);
             
             // 发送事件到前端
             let event_data = VisualWakeEvent {
@@ -427,6 +421,10 @@ pub async fn perform_visual_wake_detection(
             
             app_handle.emit("visual_wake_event", event_data)
                 .map_err(|e| format!("发送事件失败: {}", e))?;
+            
+            // 发送任务完成事件，通知工作流结束任务
+            app_handle.emit("task_completed", "visual_wake_detected")
+                .map_err(|e| format!("发送任务完成事件失败: {}", e))?;
         }
         Ok(None) => {
             // 未检测到唤醒事件，可以选择发送低置信度事件

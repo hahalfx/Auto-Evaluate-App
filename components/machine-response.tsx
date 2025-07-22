@@ -124,22 +124,22 @@ export const MachineResponse = forwardRef<
 
   return (
     <>
-      <Card className="shadow-sm rounded-lg h-full">
-        <CardHeader className="rounded-lg bg-white p-3 flex-col space-y-2 border-b">
-          <div className="flex items-center justify-between">
+      <Card className="shadow-sm rounded-lg h-full flex flex-col max-h-full overflow-hidden">
+        <CardHeader className="rounded-lg bg-white p-3 flex-col space-y-2 border-b flex-shrink-0">
+          <div className="flex items-center gap-4">
             <h3 className="font-semibold text-foreground">被测车机响应</h3>
-          </div>
-          <div className="flex items-center">
-            <Badge variant="outline" className="bg-muted">
-              当前测试指令
-            </Badge>
-            <span className="ml-2 text-sm font-medium">
-              {currentSampleText}
-            </span>
+            <div className="flex items-center">
+              <Badge variant="outline" className="bg-muted">
+                当前测试指令
+              </Badge>
+              <span className="ml-2 text-sm font-medium">
+                {currentSampleText}
+              </span>
+            </div>
           </div>
         </CardHeader>
-        <CardContent className="p-5">
-          <div className="flex">
+        <CardContent className="p-5 flex-1 flex flex-col min-h-0 max-h-full">
+          <div className="flex flex-1 min-h-0">
             <div className="flex-shrink-0 mr-5 self-start mt-1">
               <Button
                 variant="outline"
@@ -149,7 +149,7 @@ export const MachineResponse = forwardRef<
                   asrEvent == "started" && "bg-primary/10 border-primary"
                   //error && "border-destructive"
                 )}
-                // onClick={handleVoiceRecognition}
+              // onClick={handleVoiceRecognition}
               >
                 {asrEvent == "started" ? (
                   <Loader2 className="h-8 w-8 text-primary animate-spin" />
@@ -158,10 +158,10 @@ export const MachineResponse = forwardRef<
                 )}
               </Button>
             </div>
-            <div className="flex-1">
+            <div className="flex-1 flex flex-col min-h-0">
               <Textarea
                 placeholder="输入车机响应内容或点击麦克风按钮进行语音识别..."
-                className="min-h-[120px] resize-none"
+                className="flex-1 resize-none min-h-0"
                 value={backendMessage}
                 onChange={(e) => onChange(e.target.value)}
               />
@@ -175,7 +175,7 @@ export const MachineResponse = forwardRef<
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex justify-end pb-5">
+        {/* <CardFooter className="flex justify-end pb-5 flex-shrink-0">
           <Button
             onClick={() => onSubmit()}
             disabled={!value.trim() || isAnalyzing}
@@ -188,7 +188,7 @@ export const MachineResponse = forwardRef<
             )}
             测评
           </Button>
-        </CardFooter>
+        </CardFooter> */}
       </Card>
     </>
   );

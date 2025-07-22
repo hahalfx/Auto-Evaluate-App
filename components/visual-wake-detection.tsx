@@ -115,6 +115,7 @@ export function VisualWakeDetectionComponent() {
   const [lastDetection, setLastDetection] = useState<DetectionResult | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [devicesLoaded, setDevicesLoaded] = useState(false);
+  const [selectedFrameRate, setSelectedFrameRate] = useState<number>(10); // 默认10 FPS
 
   // 模板相关状态
   const [templateFiles, setTemplateFiles] = useState<{ name: string, data: string }[]>([]);
@@ -221,6 +222,7 @@ export function VisualWakeDetectionComponent() {
   useEffect(() => {
     let unlistenVisualWake: (() => void) | null = null;
     let unlistenVisualStatus: (() => void) | null = null;
+    let unlistenTaskCompleted: (() => void) | null = null;
 
     const setupListeners = async () => {
       try {
@@ -258,6 +260,7 @@ export function VisualWakeDetectionComponent() {
 
           if (status === 'started') {
             setIsDetecting(true);
+            setIsCapturing(true); // 启动推流
             toast({
               title: "视觉检测已启动",
               description: "正在监控唤醒UI",
@@ -265,9 +268,18 @@ export function VisualWakeDetectionComponent() {
             });
           } else if (status === 'stopped') {
             setIsDetecting(false);
+            setIsCapturing(false); // 停止推流
             toast({
               title: "视觉检测已停止",
               description: "停止监控唤醒UI",
+              variant: "default",
+            });
+          } else if (status === 'paused') {
+            setIsDetecting(false);
+            setIsCapturing(false); // 暂停推流
+            toast({
+              title: "视觉检测已暂停",
+              description: "已暂停监控唤醒UI",
               variant: "default",
             });
           } else if (status === 'calibrated') {
@@ -275,6 +287,22 @@ export function VisualWakeDetectionComponent() {
             toast({
               title: "校准完成",
               description: "阈值已自动调整",
+              variant: "default",
+            });
+          }
+        });
+
+        // 监听任务完成事件
+        unlistenTaskCompleted = await listen('task_completed', (event) => {
+          const taskType = event.payload;
+          console.log('任务完成:', taskType);
+          
+          if (taskType === 'visual_wake_detected') {
+            setIsDetecting(false);
+            setIsCapturing(false); // 确保推流停止
+            toast({
+              title: "唤醒检测成功",
+              description: "检测到唤醒事件，任务已完成",
               variant: "default",
             });
           }
@@ -292,6 +320,9 @@ export function VisualWakeDetectionComponent() {
       }
       if (unlistenVisualStatus) {
         unlistenVisualStatus();
+      }
+      if (unlistenTaskCompleted) {
+        unlistenTaskCompleted();
       }
     };
   }, [toast]);
@@ -623,9 +654,7 @@ export function VisualWakeDetectionComponent() {
       });
 
       console.log("Tauri 命令调用成功");
-      setIsDetecting(true);
-      setIsCapturing(true);
-
+      // 不再 setIsCapturing(true) 由事件控制
       toast({
         title: "检测已启动",
         description: "视觉检测已成功启动",
@@ -645,8 +674,7 @@ export function VisualWakeDetectionComponent() {
   const stopVisualDetection = async () => {
     try {
       await invoke('stop_visual_wake_detection');
-      setIsDetecting(false);
-      setIsCapturing(false);
+      // 不再 setIsCapturing(false) 由事件控制
     } catch (error) {
       toast({
         title: "停止视觉检测失败",
@@ -769,8 +797,8 @@ export function VisualWakeDetectionComponent() {
       ctx.strokeRect(roi[0], roi[1], roi[2], roi[3]);
 
       // 添加ROI标签
-      ctx.fillStyle = "rgba(0, 255, 0, 0.8)";
-      ctx.font = "16px Arial";
+      ctx.fillStyle = "rgba(0, 255, 128, 0.8)";
+      ctx.font = "14px Arial";
       ctx.fillText("ROI", roi[0] + 5, roi[1] + 20);
     }
 
@@ -794,7 +822,7 @@ export function VisualWakeDetectionComponent() {
   useEffect(() => {
     let animationFrameId: number;
     let lastFrameTime = 0;
-    const frameInterval = 100; // 10 FPS
+    const frameInterval = 1000 / selectedFrameRate; // 根据选择的帧率计算间隔
 
     const captureAndSendFrame = async () => {
       if (!isCapturing || !videoRef.current || videoRef.current.paused) {
@@ -853,15 +881,25 @@ export function VisualWakeDetectionComponent() {
         const arrayBuffer = await blob.arrayBuffer();
         const imageData = new Uint8Array(arrayBuffer);
 
-        await invoke('push_video_frame_visual', {
-          imageData: Array.from(imageData),
-          timestamp: Date.now(),
-          width: canvas.width,
-          height: canvas.height,
-        });
-      } catch (error) {
-        console.error('推送视频帧失败:', error);
-      }
+        try {
+          await invoke('push_video_frame_visual', {
+            imageData: Array.from(imageData),
+            timestamp: Date.now(),
+            width: canvas.width,
+            height: canvas.height,
+          });
+        } catch (error) {
+          console.error('推送视频帧失败:', error);
+          // 如果检测器被禁用，停止捕获
+          if (String(error).includes('视觉检测未启动') || String(error).includes('视觉检测失败')) {
+            setIsCapturing(false);
+            toast({
+              title: "视觉检测已停止",
+              description: "检测器已被禁用，停止视频捕获",
+              variant: "default",
+            });
+          }
+        }
     };
 
     const animationLoop = () => {
@@ -879,7 +917,7 @@ export function VisualWakeDetectionComponent() {
         cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [isCapturing, isSelectingROI, roi, drawROI]);
+  }, [isCapturing, isSelectingROI, roi, drawROI, selectedFrameRate]);
 
   // 切换模板选择状态
   const toggleTemplateSelection = (filename: string) => {
@@ -942,9 +980,9 @@ export function VisualWakeDetectionComponent() {
 
   return (
     <>
-      <div className="flex flex-row gap-6 w-full h-full flex-1" style={{ display: 'flex', flexDirection: 'row', height: '100%' }}>
+      <div className="flex flex-row gap-6 w-full h-full flex-1 overflow-hidden" style={{ display: 'flex', flexDirection: 'row', height: '100%' }}>
         {/* 左侧：视频显示和控制 */}
-        <Card className="w-3/5 flex flex-col h-full" style={{ width: '70%', height: '100%' }}>
+        <Card className="w-3/5 flex flex-col h-full max-h-full overflow-hidden" style={{ width: '70%', height: '100%' }}>
           <CardHeader className="flex-shrink-0">
             <CardTitle className="flex items-center gap-2">
               <Camera className="h-5 w-5" />
@@ -1040,6 +1078,27 @@ export function VisualWakeDetectionComponent() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* 帧率选择器 */}
+              <div>
+                <Select
+                  value={selectedFrameRate.toString()}
+                  onValueChange={(value) => setSelectedFrameRate(Number(value))}
+                  disabled={isDetecting}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="选择帧率" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 FPS</SelectItem>
+                    <SelectItem value="5">5 FPS</SelectItem>
+                    <SelectItem value="10">10 FPS</SelectItem>
+                    <SelectItem value="15">15 FPS</SelectItem>
+                    <SelectItem value="20">20 FPS</SelectItem>
+                    <SelectItem value="30">30 FPS</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* 视频显示区域 */}
@@ -1090,6 +1149,9 @@ export function VisualWakeDetectionComponent() {
                 <Badge variant="outline">
                   模板: {templateFiles.length}
                 </Badge>
+                <Badge variant="outline">
+                  帧率: {selectedFrameRate} FPS
+                </Badge>
               </div>
 
               {lastDetection && (
@@ -1103,7 +1165,7 @@ export function VisualWakeDetectionComponent() {
                     {lastDetection.confidence?.toFixed(3) || "N/A"}
                   </span>
                   <span className="text-xs text-gray-400">
-                    (阈值: 0.3)
+                    (阈值: 0.5)
                   </span>
                 </div>
               )}
@@ -1112,7 +1174,7 @@ export function VisualWakeDetectionComponent() {
         </Card>
 
         {/* 右侧：模板管理和检测结果 */}
-        <Card className="w-2/5 flex flex-col h-full overflow-hidden" style={{ width: '30%', height: '100%' }}>
+        <Card className="w-2/5 flex flex-col h-full overflow-hidden max-h-full" style={{ width: '30%', height: '100%' }}>
           <CardHeader className="flex-shrink-0">
             <CardTitle className="flex items-center gap-2">
               <Target className="h-5 w-5" />

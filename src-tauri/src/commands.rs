@@ -1,9 +1,11 @@
 use crate::models::*;
+use crate::services::active_task::VisualWakeConfig;
 use crate::services::analysis_task::analysis_task;
 use crate::services::asr_task::AsrTask;
 use crate::services::audio_task::audio_task;
 use crate::services::finish_task::finish_task;
 use crate::services::meta_task_executor::meta_task_executor;
+use crate::services::wake_detection_meta_executor::wake_detection_meta_executor;
 use crate::services::workflow::Workflow;
 use crate::services::visual_wake_detection::{VisualWakeDetector, get_or_create_detector};
 use crate::state::AppState;
@@ -705,6 +707,54 @@ pub async fn get_timing_data_by_task(
         .map_err(|e| format!("获取时间参数失败: {}", e))
 }
 
+#[tauri::command]
+pub async fn start_wake_detection_workflow(
+    state: State<'_, Arc<AppState>>,
+    app_handle: tauri::AppHandle,
+    wake_word_id: u32,
+    repeat_count: u32,
+    template_data: Vec<(String, String)>,
+    frame_rate: u32,
+    threshold: f64,
+) -> Result<(), String> {
+    // 1. 获取唤醒词信息
+    let wakeword = state.db.get_wake_word_by_id(wake_word_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("唤醒词不存在")?;
+
+    // 2. 创建视觉配置
+    let visual_config = VisualWakeConfig {
+        template_data,
+        frame_rate,
+        threshold,
+    };
+
+    // 3. 创建主工作流
+    let (mut main_workflow, _) = Workflow::new();
+
+    // 4. 创建唤醒检测元任务
+    let wake_detection_executor = wake_detection_meta_executor::new(
+        &format!("wake_detection_task_{}", wake_word_id),
+        wakeword,
+        repeat_count,
+        visual_config,
+        state.inner().clone(),
+    );
+
+    // 5. 将元任务添加到主工作流
+    main_workflow.add_task(wake_detection_executor);
+
+    // 6. 运行主工作流，获取总控制句柄
+    let handle = main_workflow.run(app_handle).await;
+
+    // 7. 将总控制句柄存入全局状态
+    let mut workflow_handle_guard = state.workflow_handle.lock().await;
+    *workflow_handle_guard = Some(handle);
+
+    Ok(())
+}
+
 // ==================== 视觉唤醒检测相关命令 ====================
 
 /// 启动视觉唤醒检测
@@ -856,23 +906,12 @@ pub async fn push_video_frame_visual(
     height: u32,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    // 检查视觉检测是否启动
-    let visual_detection_enabled = {
-        let detector = get_or_create_detector().await;
-        let detector_guard = detector.lock().await;
-        detector_guard.is_enabled()
-    };
-
-    if !visual_detection_enabled {
-        return Err("视觉检测未启动，请先启动视觉检测".to_string());
+    // 直接执行视觉检测，让函数内部检查状态
+    // 这样可以避免竞态条件
+    if let Err(e) = crate::services::visual_wake_detection::perform_visual_wake_detection(&image_data, &app_handle).await {
+        eprintln!("视觉检测失败: {}", e);
+        return Err(format!("视觉检测失败: {}", e));
     }
-
-    // 执行视觉检测
-    tokio::spawn(async move {
-        if let Err(e) = crate::services::visual_wake_detection::perform_visual_wake_detection(&image_data, &app_handle).await {
-            eprintln!("视觉检测失败: {}", e);
-        }
-    });
 
     Ok(())
 }

@@ -246,7 +246,7 @@ export function WakeSamples({
   ];
 
   return (
-    <Card className="flex flex-col flex-1 shadow-sm rounded-lg h-full">
+    <Card className="flex flex-col flex-1 shadow-sm rounded-lg h-full max-h-full overflow-hidden">
       <CardHeader className="rounded-lg bg-background p-3 flex flex-col space-y-2 border-b">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground">唤醒词语料</h3>

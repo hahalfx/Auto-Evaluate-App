@@ -132,8 +132,8 @@ export function ProgressBar({
   }
 
   return (
-    <Card className="shadow-sm rounded-lg h-full">
-      <CardHeader className="bg-white p-4 rounded-t-lg flex justify-between space-y-0 border-b">
+    <Card className="shadow-sm rounded-lg h-full flex flex-col max-h-full overflow-hidden">
+      <CardHeader className="bg-white p-4 rounded-t-lg flex justify-between space-y-0 border-b flex-shrink-0">
         <CardTitle className="text-2xl  font-semibold text-gray-800 dark:text-gray-100">
           {currentTask?.name
             ? currentTask?.name
@@ -143,7 +143,7 @@ export function ProgressBar({
           {currentTask?.name ? currentTask?.name : "当前没有被选中的测试任务"}
         </CardDescription>
       </CardHeader>
-      <CardContent className="p-4">
+      <CardContent className="p-4 flex-1 flex flex-col min-h-0 max-h-full">
         <Progress value={detailedProgress.value} className="h-3" />
         <div className="flex justify-between">
           <p className="text-sm text-muted-foreground py-1">
@@ -155,59 +155,59 @@ export function ProgressBar({
               : `已选择${samplelength}条待测试`}
           </p>
         </div>
-      </CardContent>
-      <CardFooter className="grid grid-cols-5 gap-2 justify-between px-4 pb-3">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={goToPreviousResult}
-          disabled={!hasPreviousResult()}
-          className="col-span-1"
-        >
-          <ChevronLeft className="h-4 w-4 mr-1" />
-          上一条
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={goToNextResult}
-          disabled={!hasNextResult()}
-          className="col-span-1"
-        >
-          下一条
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+        <div className="flex flex-1 flex-row gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={goToPreviousResult}
+            disabled={!hasPreviousResult()}
+            className="col-span-1"
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            上一条
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={goToNextResult}
+            disabled={!hasNextResult()}
+            className="col-span-1"
+          >
+            下一条
+            <ChevronRight className="h-4 w-4" />
+          </Button>
 
-        <Button
-          onClick={() => {
-            if (testStatus === "running") {
-              handlePause();
-              setTestStatus("paused");
-            } else if (testStatus === "paused") {
-              handleResume();
-              setTestStatus("running");
-            } else {
-              onStartAutomatedTest();
-              setTestStatus("running");
-            }
-          }}
-          disabled={testStatus === "finished" || currentTask === null}
-          className="col-span-2 col-start-4 gap-2 bg-blue-700 hover:bg-blue-500 w-full"
-          variant="default"
-        >
-          {testStatus === "running" ? (
-            <>
-              <Pause className="h-4 w-4" />
-              暂停任务
-            </>
-          ) : (
-            <>
-              <Play className="h-4 w-4" />
-              {testStatus === "paused" ? "恢复任务" : "开始任务"}
-            </>
-          )}
-        </Button>
-      </CardFooter>
+          <Button
+            onClick={() => {
+              if (testStatus === "running") {
+                handlePause();
+                setTestStatus("paused");
+              } else if (testStatus === "paused") {
+                handleResume();
+                setTestStatus("running");
+              } else {
+                onStartAutomatedTest();
+                setTestStatus("running");
+              }
+            }}
+            disabled={testStatus === "finished" || currentTask === null}
+            className="col-span-2 col-start-4 gap-2 bg-blue-700 hover:bg-blue-500 w-full"
+            variant="default"
+          >
+            {testStatus === "running" ? (
+              <>
+                <Pause className="h-4 w-4" />
+                暂停任务
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4" />
+                {testStatus === "paused" ? "恢复任务" : "开始任务"}
+              </>
+            )}
+          </Button>
+        </div>
+      </CardContent>
     </Card>
   );
 }

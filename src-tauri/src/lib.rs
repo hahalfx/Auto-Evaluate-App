@@ -110,6 +110,7 @@ pub fn run() {
             commands::save_template_image,
             commands::get_templates_from_folder,
             commands::load_template_from_folder,
+            commands::start_wake_detection_workflow,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -63,6 +63,11 @@ const navItems: NavItem[] = [
     icon: <TestTube className="h-5 w-5" />,
   },
   {
+    title: "唤醒检测工作流",
+    href: "/wake-detection-workflow",
+    icon: <TestTube className="h-5 w-5" />,
+  },
+  {
     title: "Tauri后端测试",
     href: "/tauri-test",
     icon: <TestTube className="h-5 w-5" />,
