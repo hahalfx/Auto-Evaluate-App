@@ -466,9 +466,6 @@ export function WakeDetectionWorkflowComponent() {
                         message: message || event_type,
                     };
 
-                    // setLastDetection(result);
-                    // setDetectionResults(prev => [result, ...prev.slice(0, 9)]); // 保留最近10个结果
-
                     if (event_type === 'wake_detected') {
                         toast({
                             title: "检测成功",
@@ -946,6 +943,42 @@ export function WakeDetectionWorkflowComponent() {
         } catch (error) {
             toast({
                 title: "加载模板失败",
+                description: String(error),
+                variant: "destructive",
+            });
+        }
+    };
+
+    // 删除已保存的模板
+    const handleDeleteTemplateFromFolder = async (filename: string, event: React.MouseEvent) => {
+        event.stopPropagation(); // 阻止触发父元素的点击事件
+
+        try {
+            await invoke('delete_template_from_folder', { filename });
+
+            // 更新可用模板列表
+            setAvailableTemplates(prev => prev.filter(f => f !== filename));
+
+            // 如果已选择，则从选择列表中移除
+            if (selectedTemplates.has(filename)) {
+                setSelectedTemplates(prev => {
+                    const newSelected = new Set(prev);
+                    newSelected.delete(filename);
+                    return newSelected;
+                });
+            }
+
+            // 从当前工作流的模板列表中移除
+            setTemplateFiles(prev => prev.filter(t => t.name !== filename));
+
+            toast({
+                title: "模板已删除",
+                description: `${filename} 已被永久删除。`,
+                variant: "default",
+            });
+        } catch (error) {
+            toast({
+                title: "删除模板失败",
                 description: String(error),
                 variant: "destructive",
             });
@@ -2041,6 +2074,16 @@ export function WakeDetectionWorkflowComponent() {
                                                     }`}
                                                 onClick={() => toggleTemplateSelection(filename)}
                                             >
+                                                <Button
+                                                    variant="destructive"
+                                                    size="icon"
+                                                    className="absolute top-1 right-1 h-5 w-5 z-20 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0"
+                                                    onClick={(e) => handleDeleteTemplateFromFolder(filename, e)}
+                                                    title={`删除 ${filename}`}
+                                                >
+                                                    <XCircle className="h-4 w-4" />
+                                                </Button>
+
                                                 <div className="aspect-square bg-gray-50 flex items-center justify-center relative">
                                                     <TemplatePreview filename={filename} />
 

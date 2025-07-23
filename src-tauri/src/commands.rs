@@ -1019,3 +1019,19 @@ pub async fn load_template_from_folder(filename: String) -> Result<String, Strin
     
     Ok(base64_data)
 }
+
+#[tauri::command]
+pub fn delete_template_from_folder(app_handle: tauri::AppHandle, filename: String) -> Result<(), String> {
+    use std::fs;
+    use std::path::Path;
+    
+    // 使用相对路径指向主目录的public/templates
+    let templates_dir = Path::new("../public/templates");
+    let file_path = templates_dir.join(&filename);
+
+    if file_path.exists() && file_path.is_file() {
+        fs::remove_file(file_path).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}

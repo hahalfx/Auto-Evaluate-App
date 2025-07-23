@@ -156,12 +156,40 @@ impl Task for wake_detection_meta_executor {
             let test_end_time = chrono::Utc::now().timestamp_millis();
             let duration_ms = (test_end_time - test_start_time) as u64;
 
+            let (workflow_succeeded, maybe_context) = match result {
+                Ok(context) => (true, Some(context)),
+                Err(_) => (false, None),
+            };
+
+            let mut active_task_is_completed = false;
+            let mut test_is_successful = workflow_succeeded;
+
+            if let Some(context) = &maybe_context {
+                let context_guard = context.read().await;
+                if let Some(active_task_result_any) = context_guard.get(&active_task_id) {
+                    if let Some(active_task_result) = active_task_result_any.downcast_ref::<serde_json::Value>() {
+                        if let Some(status) = active_task_result.get("status").and_then(|s| s.as_str()) {
+                            if status == "completed" {
+                                active_task_is_completed = true;
+                            } else if status == "timeout" {
+                                test_is_successful = false;
+                                println!("[WakeDetectionMetaTask] Active task timed out for test {}.", test_index + 1);
+                            }
+                        }
+                    }
+                }
+            } else {
+                test_is_successful = false;
+            }
+            
+            let wake_task_is_completed = workflow_succeeded;
+
             // 记录结果
             let test_result = WakeDetectionResult {
                 test_index: test_index + 1,
-                wake_task_completed: true, // 如果工作流完成，说明任务都完成了
-                active_task_completed: true,
-                success: result.is_ok(),
+                wake_task_completed: wake_task_is_completed,
+                active_task_completed: active_task_is_completed,
+                success: test_is_successful,
                 confidence: None, // 可以从视觉检测结果中获取
                 timestamp: test_end_time,
                 duration_ms,
@@ -188,8 +216,14 @@ impl Task for wake_detection_meta_executor {
                 .emit("wake_detection_test_result", test_result)
                 .ok();
 
-            if let Err(e) = result {
-                let error_message = format!("第 {} 次测试失败: {}. 终止所有测试。", test_index + 1, e);
+            if let Some(context) = maybe_context {
+                // 在这里，你可以安全地访问 context
+                // 例如，打印 context 中的所有键
+                let context_guard = context.read().await;
+                println!("[WakeDetectionMetaTask] Sub-workflow context keys for test {}: {:?}", test_index + 1, context_guard.keys());
+                // 你可以在这里添加更复杂的逻辑来提取和使用 context 中的数据
+            } else {
+                let error_message = format!("第 {} 次测试失败. 终止所有测试。", test_index + 1);
                 eprintln!("[WakeDetectionMetaTask] {}", error_message);
                 app_handle.emit("wake_detection_meta_error", &error_message).ok();
                 return Err(error_message.into());

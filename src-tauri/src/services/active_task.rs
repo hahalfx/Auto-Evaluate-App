@@ -35,7 +35,7 @@ impl Task for ActiveTask {
     async fn execute(
         &mut self,
         control_rx: &mut watch::Receiver<ControlSignal>,
-        _context: WorkflowContext,
+        context: WorkflowContext,
         app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = &self.visual_wake_config;
@@ -89,8 +89,14 @@ impl Task for ActiveTask {
                 if let Some(start_time) = detection_start_time {
                     let elapsed = start_time.elapsed();
                     if elapsed >= max_detection_time {
-                        drop(detector_guard);
                         println!("ActiveTask: 检测超时 ({}秒)，未检测到唤醒事件", max_detection_time.as_secs());
+                        
+                        // 写入超时状态到 context
+                        let mut context_guard = context.write().await;
+                        context_guard.insert(self.id(), Box::new(serde_json::json!({ "status": "timeout" })));
+                        drop(context_guard);
+
+                        drop(detector_guard);
                         app_handle.emit("active_task_info", "timeout").ok();
                         app_handle.emit("task_completed", "active_task_timeout").ok();
                         return Ok(());
@@ -124,6 +130,12 @@ impl Task for ActiveTask {
                 if !wake_detected && last_signal != ControlSignal::Stopped {
                     wake_detected = true;
                     println!("ActiveTask: 检测器被禁用，检测到了唤醒事件，任务完成");
+
+                    // 写入成功状态到 context
+                    let mut context_guard = context.write().await;
+                    context_guard.insert(self.id(), Box::new(serde_json::json!({ "status": "completed" })));
+                    drop(context_guard);
+                    
                     app_handle.emit("active_task_info", "stopped").ok();
                     app_handle.emit("task_completed", "active_task_completed").ok();
                     return Ok(());

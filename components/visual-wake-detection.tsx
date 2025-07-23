@@ -900,6 +900,9 @@ export function VisualWakeDetectionComponent() {
             });
           }
         }
+      } catch (error) {
+        console.error('帧捕获或发送失败:', error);
+      }
     };
 
     const animationLoop = () => {

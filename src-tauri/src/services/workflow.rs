@@ -118,7 +118,7 @@ impl Workflow {
         app_handle: AppHandle,
         // 我们也需要把控制信号接收器传进来，以便子流程能被外部主流程控制
         mut control_rx: watch::Receiver<ControlSignal>,
-    ) -> Result<(), String> {
+    ) -> Result<WorkflowContext, String> {
         // 注意：这里我们不再创建新的 control channel，而是复用传入的
         // 我们也不再 tokio::spawn，而是直接 .await
         let mut workflow_runner = WorkflowRunner::new(self.tasks, self.dependencies, control_rx);
@@ -167,7 +167,7 @@ impl WorkflowRunner {
         }
     }
 
-    async fn execute(&mut self, app_handle: tauri::AppHandle) -> Result<(), String> {
+    async fn execute(&mut self, app_handle: tauri::AppHandle) -> Result<WorkflowContext, String> {
         // 创建上下文
         let context = Arc::new(RwLock::new(HashMap::new()));
         let mut running_tasks: FuturesUnordered<JoinHandle<(String, Result<(), String>)>> =
@@ -185,7 +185,7 @@ impl WorkflowRunner {
         if ready_queue.is_empty() && self.tasks.is_empty() {
              println!("[Workflow] No tasks to run.");
              app_handle.emit("workflow_event", "workflow finished (no tasks)").ok();
-             return Ok(());
+             return Ok(context);
         }
 
         loop {
@@ -214,7 +214,7 @@ impl WorkflowRunner {
                 let data = String::from("workflow finished");
                 app_handle.emit("workflow_event", data).ok();
 
-                return Ok(());
+                return Ok(context);
             }
 
             // 等待任何一个正在运行的任务完成
