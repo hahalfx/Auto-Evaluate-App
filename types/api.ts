@@ -18,7 +18,7 @@ export interface Task {
   name: string
   id: number
   test_samples_ids: number[]
-  wake_word_id: number
+  wake_word_ids: number[] // 修改为支持多个唤醒词
   machine_response?: Record<number,MachineResponseData>
   test_result?: Record<number, AnalysisResult>
   task_status: string

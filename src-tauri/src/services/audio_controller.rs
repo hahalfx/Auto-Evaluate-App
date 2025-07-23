@@ -187,6 +187,14 @@ pub fn play_audio_sync(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// 同步播放指定路径的音频文件
+pub fn play(path: &str) -> Result<()> {
+    println!("[Audio Sync] 开始同步播放: {}", path);
+    
+    let path_buf = PathBuf::from(path);
+    play_audio_sync(&path_buf)
+}
+
 /// 同步播放匹配关键字的音频文件的直接函数
 pub fn play_matching_sync(keyword: &str, music_dir: Option<String>) -> Result<()> {
     println!("[Audio Sync] 查找匹配关键字 '{}' 的音频文件", keyword);

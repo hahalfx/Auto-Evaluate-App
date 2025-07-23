@@ -17,7 +17,7 @@ export function useExportCurrentTask() {
         taskName: Task.name,
         date: Task.created_at,
         audioType: Task.audioType || "",
-        audioFile: Task.audioFile || "",
+        audioFile: Task.wake_word_ids.length > 0 ? wakeWords[Task.wake_word_ids[0]-1]?.text || "" : "",
         audioDuration: Task.audioDuration || "",
         audioCategory: Task.audioCategory || "",
         testCollection: Task.testCollection || "",

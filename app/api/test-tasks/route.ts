@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     const newTask = await request.json();
     
     // 验证必要字段
-    if (!newTask.test_samples_ids || !newTask.wake_word_id || !newTask.task_status) {
+    if (!newTask.test_samples_ids || !newTask.wake_word_ids || !newTask.task_status) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }

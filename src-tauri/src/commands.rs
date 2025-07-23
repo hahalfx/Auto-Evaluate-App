@@ -1,13 +1,9 @@
 use crate::models::*;
 use crate::services::active_task::VisualWakeConfig;
-use crate::services::analysis_task::analysis_task;
-use crate::services::asr_task::AsrTask;
-use crate::services::audio_task::audio_task;
-use crate::services::finish_task::finish_task;
 use crate::services::meta_task_executor::meta_task_executor;
 use crate::services::wake_detection_meta_executor::wake_detection_meta_executor;
 use crate::services::workflow::Workflow;
-use crate::services::visual_wake_detection::{VisualWakeDetector, get_or_create_detector};
+use crate::services::visual_wake_detection::get_or_create_detector;
 use crate::state::AppState;
 use chrono::Utc;
 use std::sync::Arc;
@@ -65,6 +61,15 @@ pub async fn get_all_samples(state: State<'_, Arc<AppState>>) -> Result<Vec<Test
 }
 
 #[tauri::command]
+pub async fn get_all_samples_raw(state: State<'_, Arc<AppState>>) -> Result<Vec<TestSampleRow>, String> {
+    state
+        .db
+        .get_all_samples_raw()
+        .await
+        .map_err(|e| format!("获取样本原始数据失败: {}", e))
+}
+
+#[tauri::command]
 pub async fn get_all_wake_words(state: State<'_, Arc<AppState>>) -> Result<Vec<WakeWord>, String> {
     state
         .db
@@ -74,18 +79,27 @@ pub async fn get_all_wake_words(state: State<'_, Arc<AppState>>) -> Result<Vec<W
 }
 
 #[tauri::command]
+pub async fn get_all_wake_words_raw(state: State<'_, Arc<AppState>>) -> Result<Vec<WakeWordRow>, String> {
+    state
+        .db
+        .get_all_wake_words_raw()
+        .await
+        .map_err(|e| format!("获取唤醒词原始数据失败: {}", e))
+}
+
+#[tauri::command]
 pub async fn create_task(
     state: State<'_, Arc<AppState>>,
     name: String,
     test_samples_ids: Vec<u32>,
-    wake_word_id: u32,
+    wake_word_ids: Vec<u32>,
 ) -> Result<i64, String> {
     let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let task = Task {
         id: 0, // 将被数据库自动分配
         name,
         test_samples_ids,
-        wake_word_id,
+        wake_word_ids,
         machine_response: None,
         test_result: None,
         task_status: "pending".to_string(),
@@ -349,35 +363,7 @@ pub struct BatchCreationResult {
     ignored_count: usize,
 }
 
-#[derive(serde::Serialize)]
-pub struct PrecheckResult {
-    new_texts: Vec<String>,
-    duplicate_texts: Vec<String>,
-}
 
-#[tauri::command]
-pub async fn precheck_samples(
-    state: State<'_, Arc<AppState>>,
-    texts: Vec<String>,
-) -> Result<PrecheckResult, String> {
-    log::info!("[COMMAND] precheck_samples called with {} texts", texts.len());
-    
-    let (new_texts, duplicate_texts) = state
-        .db
-        .precheck_samples(texts)
-        .await
-        .map_err(|e| {
-            log::error!("[COMMAND] precheck_samples failed: {}", e);
-            format!("预检查样本失败: {}", e)
-        })?;
-    
-    log::info!("[COMMAND] precheck_samples completed: {} new, {} duplicate", new_texts.len(), duplicate_texts.len());
-    
-    Ok(PrecheckResult {
-        new_texts,
-        duplicate_texts,
-    })
-}
 
 #[tauri::command]
 pub async fn create_samples_batch(
@@ -481,87 +467,11 @@ pub async fn play_match_audio_with_url(
 }
 
 #[tauri::command]
-pub async fn new_workflow(
+pub async fn play_audio(
     state: State<'_, Arc<AppState>>,
-    app_handle: tauri::AppHandle,
+    path: String,
 ) -> Result<(), String> {
-    let (mut workflow, _handle) = Workflow::new();
-    if let Some(task_id) = *state.current_task_id.read().await {
-        // We check if the task exists, but we don't need to use it further in this function.
-        let task_samples = state
-            .db
-            .get_samples_by_task_id(task_id)
-            .await
-            .map_err(|e| format!("获取任务失败: {}", e))?;
-
-        let keyword = task_samples
-            .first()
-            .map(|sample| sample.text.clone())
-            .ok_or("任务样本列表为空")?;
-
-        let task = state
-            .db
-            .get_task_by_id(task_id)
-            .await
-            .map_err(|e| format!("获取任务失败: {}", e))?
-            .ok_or("任务不存在")?;
-
-        let wakewordid = task.wake_word_id;
-        let wakeword = state
-            .db
-            .get_wake_word_by_id(wakewordid)
-            .await
-            .map_err(|e| format!("获取唤醒词失败: {}", e))?
-            .ok_or("唤醒词不存在")?;
-
-        // 为第一个样本创建工作流（简化版本，后续可以扩展为多样本）
-        let sample_id = task_samples.first().map(|s| s.id).unwrap_or(0);
-
-        workflow.add_task(audio_task {
-            id: "wakeword_task".to_string(),
-            keyword: wakeword.text.clone(),
-            url: Some("/Volumes/应用/LLM Analysis Interface/public/audio/wakeword".to_string()),
-        });
-
-        workflow.add_task(audio_task {
-            id: "audio_task".to_string(),
-            keyword: keyword.clone(),
-            url: None,
-        });
-        workflow.add_task(AsrTask::new("asr_task".to_string(), keyword.clone()));
-        workflow.add_task(analysis_task {
-            id: "analysis_task".to_string(),
-            dependency_id: "asr_task".to_string(),
-            http_client: state.http_client.clone(),
-        });
-        workflow.add_task(finish_task::new(
-            "finish_task".to_string(),
-            task_id,
-            sample_id,
-            "asr_task".to_string(),
-            "analysis_task".to_string(),
-            "audio_ocr_task".to_string(),
-            "ocr_task".to_string(),
-            "audio_task".to_string(),
-            state.db.clone(),
-        ));
-
-        workflow.add_dependency("audio_task", "wakeword_task");
-        workflow.add_dependency("asr_task", "audio_task");
-        workflow.add_dependency("analysis_task", "asr_task");
-        workflow.add_dependency("finish_task", "analysis_task");
-
-        // 开始工作流
-        let handle = workflow.run(app_handle).await;
-
-        // 将控制器 handle 交给全局状态 AppState
-        let mut workflow_handle_guard = state.workflow_handle.lock().await;
-        *workflow_handle_guard = Some(handle);
-
-        Ok(())
-    } else {
-        Err("没有设置当前任务".to_string())
-    }
+    state.audio_controller.play(path).await.map_err(|e| format!("播放音频失败: {}", e))
 }
 
 #[tauri::command]
@@ -664,10 +574,14 @@ pub async fn new_meta_workflow(
         .ok_or("任务不存在")?;
     
     // [FIX] Converted anyhow::Error to String
-    let wakeword = state.db.get_wake_word_by_id(task.wake_word_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or("唤醒词不存在")?;
+    let wakeword = if let Some(first_wake_word_id) = task.wake_word_ids.first() {
+        state.db.get_wake_word_by_id(*first_wake_word_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("唤醒词不存在")?
+    } else {
+        return Err("任务没有关联的唤醒词".to_string());
+    };
 
     // 3. 创建主工作流
     let (mut main_workflow, _) = Workflow::new();
@@ -711,19 +625,24 @@ pub async fn get_timing_data_by_task(
 pub async fn start_wake_detection_workflow(
     state: State<'_, Arc<AppState>>,
     app_handle: tauri::AppHandle,
-    wake_word_id: u32,
-    repeat_count: u32,
     template_data: Vec<(String, String)>,
     frame_rate: u32,
     threshold: f64,
 ) -> Result<(), String> {
-    // 1. 获取唤醒词信息
-    let wakeword = state.db.get_wake_word_by_id(wake_word_id)
+    // 1. 获取当前任务ID
+    let task_id = state.current_task_id.read().await.ok_or("没有设置当前任务ID")?;
+
+    // 2. 从数据库获取任务信息
+    let task = state.db.get_task_by_id(task_id)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or("唤醒词不存在")?;
+        .ok_or("任务不存在")?;
 
-    // 2. 创建视觉配置
+    if task.wake_word_ids.is_empty() {
+        return Err("任务没有关联的唤醒词".to_string());
+    }
+
+    // 3. 创建视觉配置
     let visual_config = VisualWakeConfig {
         template_data,
         frame_rate,
@@ -731,25 +650,24 @@ pub async fn start_wake_detection_workflow(
         max_detection_time_secs: Some(5),
     };
 
-    // 3. 创建主工作流
+    // 4. 创建主工作流
     let (mut main_workflow, _) = Workflow::new();
 
-    // 4. 创建唤醒检测元任务
+    // 5. 创建唤醒检测元任务
     let wake_detection_executor = wake_detection_meta_executor::new(
-        &format!("wake_detection_task_{}", wake_word_id),
-        wakeword,
-        repeat_count,
+        &format!("wake_detection_task_{}", task_id),
+        task_id,
         visual_config,
         state.inner().clone(),
     );
 
-    // 5. 将元任务添加到主工作流
+    // 6. 将元任务添加到主工作流
     main_workflow.add_task(wake_detection_executor);
 
-    // 6. 运行主工作流，获取总控制句柄
+    // 7. 运行主工作流，获取总控制句柄
     let handle = main_workflow.run(app_handle).await;
 
-    // 7. 将总控制句柄存入全局状态
+    // 8. 将总控制句柄存入全局状态
     let mut workflow_handle_guard = state.workflow_handle.lock().await;
     *workflow_handle_guard = Some(handle);
 
@@ -766,18 +684,18 @@ pub async fn start_visual_wake_detection(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let detector = get_or_create_detector().await;
-    let mut detector_guard = detector.lock().await;
+    let mut _detector_guard = detector.lock().await;
     
     // 由于现在使用HTML文件选择器，暂时跳过模板加载
     // 后续可以改为接受Base64数据
     println!("启动视觉检测，模板数量: {}", template_paths.len());
     
     // 手动启用检测器
-    detector_guard.set_enabled(true);
+    _detector_guard.set_enabled(true);
     
     // 设置ROI
     if let Some(roi_data) = roi {
-        detector_guard.set_roi(roi_data);
+        _detector_guard.set_roi(roi_data);
     }
     
     // 发送启动事件
@@ -892,7 +810,7 @@ pub async fn validate_template_paths(paths: Vec<String>) -> Result<Vec<String>, 
 pub async fn get_loaded_templates() -> Result<Vec<String>, String> {
     // 从检测器中获取当前已加载的模板路径
     let detector = get_or_create_detector().await;
-    let detector_guard = detector.lock().await;
+    let _detector_guard = detector.lock().await;
     
     // 简单实现，返回空数组（实际实现需要在VisualWakeDetector中添加获取模板路径的方法）
     Ok(Vec::new())
@@ -902,9 +820,9 @@ pub async fn get_loaded_templates() -> Result<Vec<String>, String> {
 #[tauri::command]
 pub async fn push_video_frame_visual(
     image_data: Vec<u8>,
-    timestamp: u64,
-    width: u32,
-    height: u32,
+    _timestamp: u64,
+    _width: u32,
+    _height: u32,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     // 直接执行视觉检测，让函数内部检查状态
@@ -1021,8 +939,7 @@ pub async fn load_template_from_folder(filename: String) -> Result<String, Strin
 }
 
 #[tauri::command]
-pub fn delete_template_from_folder(app_handle: tauri::AppHandle, filename: String) -> Result<(), String> {
-    use std::fs;
+pub fn delete_template_from_folder(_app_handle: tauri::AppHandle, filename: String) -> Result<(), String> {
     use std::path::Path;
     
     // 使用相对路径指向主目录的public/templates
@@ -1030,8 +947,342 @@ pub fn delete_template_from_folder(app_handle: tauri::AppHandle, filename: Strin
     let file_path = templates_dir.join(&filename);
 
     if file_path.exists() && file_path.is_file() {
-        fs::remove_file(file_path).map_err(|e| e.to_string())?;
+        std::fs::remove_file(file_path).map_err(|e| e.to_string())?;
     }
 
     Ok(())
+}
+
+// ==================== 任务包导入相关命令 ====================
+
+use std::path::Path;
+use calamine::{Reader, open_workbook};
+
+// 路径规范化辅助函数
+fn normalize_path(path: &Path) -> String {
+    // 转换为绝对路径（如果可能）
+    let absolute_path = if path.is_relative() {
+        // 对于相对路径，我们保持原样，但确保格式一致
+        path.to_string_lossy().to_string()
+    } else {
+        path.to_string_lossy().to_string()
+    };
+    
+    // 统一路径分隔符
+    let normalized = if cfg!(windows) {
+        absolute_path.replace('/', "\\")
+    } else {
+        absolute_path.replace('\\', "/")
+    };
+    
+    // 移除末尾的斜杠（如果有）
+    normalized.trim_end_matches(|c| c == '/' || c == '\\').to_string()
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TaskPackageImportResult {
+    pub task_id: i64,
+    pub wake_words_created: usize,
+    pub samples_created: usize,
+    pub wake_words_ignored: usize,
+    pub samples_ignored: usize,
+}
+
+#[tauri::command]
+pub async fn import_task_package(
+    state: State<'_, Arc<AppState>>,
+    package_path: String,
+    task_name: String,
+) -> Result<TaskPackageImportResult, String> {
+    println!("Rust import_task_package - 接收到的参数:");
+    println!("  package_path: {:?}", package_path);
+    println!("  package_path类型: {}", std::any::type_name::<String>());
+    println!("  package_path长度: {}", package_path.len());
+    println!("  task_name: {:?}", task_name);
+    
+    // 检查路径是否为空或无效
+    if package_path.trim().is_empty() {
+        return Err("接收到的路径为空".to_string());
+    }
+    
+    // 如果路径是"/"，说明可能有问题
+    if package_path == "/" {
+        return Err("接收到根路径，这可能表示dialog API有问题".to_string());
+    }
+    
+    let package_path = Path::new(&package_path);
+    
+    // 添加调试信息
+    println!("导入任务包 - 路径: {:?}", package_path);
+    println!("导入任务包 - 路径存在: {}", package_path.exists());
+    println!("导入任务包 - 是目录: {}", package_path.is_dir());
+    
+    // 验证任务包路径
+    if !package_path.exists() || !package_path.is_dir() {
+        return Err(format!("任务包路径不存在或不是目录: {:?}", package_path));
+    }
+
+    // 列出目录内容以进行调试
+    if let Ok(entries) = std::fs::read_dir(package_path) {
+        println!("目录内容:");
+        for entry in entries {
+            if let Ok(entry) = entry {
+                println!("  - {:?}", entry.file_name());
+            }
+        }
+    }
+
+    // 查找Excel文件
+    let wake_word_excel = package_path.join("唤醒词语料列表.xlsx");
+    let sample_excel = package_path.join("测试语料列表.xlsx");
+    
+    println!("唤醒词Excel路径: {:?}, 存在: {}", wake_word_excel, wake_word_excel.exists());
+    println!("测试语料Excel路径: {:?}, 存在: {}", sample_excel, sample_excel.exists());
+    
+    if !wake_word_excel.exists() {
+        return Err(format!("未找到唤醒词语料列表.xlsx文件，路径: {:?}", wake_word_excel));
+    }
+    
+    if !sample_excel.exists() {
+        return Err(format!("未找到测试语料列表.xlsx文件，路径: {:?}", sample_excel));
+    }
+
+    // 查找audio文件夹
+    let audio_dir = package_path.join("audio");
+    println!("audio文件夹路径: {:?}, 存在: {}, 是目录: {}", audio_dir, audio_dir.exists(), audio_dir.is_dir());
+    
+    if !audio_dir.exists() || !audio_dir.is_dir() {
+        return Err(format!("未找到audio文件夹，路径: {:?}", audio_dir));
+    }
+
+    let wake_word_audio_dir = audio_dir.join("wakeword");
+    let sample_audio_dir = audio_dir.join("samples");
+    
+    println!("wakeword文件夹路径: {:?}, 存在: {}, 是目录: {}", wake_word_audio_dir, wake_word_audio_dir.exists(), wake_word_audio_dir.is_dir());
+    println!("samples文件夹路径: {:?}, 存在: {}, 是目录: {}", sample_audio_dir, sample_audio_dir.exists(), sample_audio_dir.is_dir());
+    
+    if !wake_word_audio_dir.exists() || !wake_word_audio_dir.is_dir() {
+        return Err(format!("未找到audio/wakeword文件夹，路径: {:?}", wake_word_audio_dir));
+    }
+    
+    if !sample_audio_dir.exists() || !sample_audio_dir.is_dir() {
+        return Err(format!("未找到audio/samples文件夹，路径: {:?}", sample_audio_dir));
+    }
+
+    // 读取唤醒词Excel文件
+    let wake_words_data = read_excel_file(&wake_word_excel)?;
+    
+    // 读取测试语料Excel文件
+    let samples_data = read_excel_file(&sample_excel)?;
+
+    // 处理唤醒词 - 确保所有Excel中的数据都包含在任务中
+    let mut wake_word_ids = Vec::new();
+    let mut wake_words_created = 0;
+    let mut wake_words_ignored = 0;
+    
+    // 准备唤醒词数据（包含音频文件路径）
+    let mut wake_words_with_files = Vec::new();
+    let mut processed_wake_words = std::collections::HashSet::new();
+    
+    for (filename, text) in wake_words_data {
+        // 跳过重复的文本
+        if processed_wake_words.contains(&text) {
+            println!("跳过重复的唤醒词文本: {}", text);
+            continue;
+        }
+        processed_wake_words.insert(text.clone());
+        
+        let audio_path = wake_word_audio_dir.join(&filename);
+        let audio_file = if audio_path.exists() {
+            // 规范化路径
+            let normalized_path = normalize_path(&audio_path);
+            Some(normalized_path)
+        } else {
+            println!("警告: 唤醒词音频文件不存在: {:?}", audio_path);
+            None
+        };
+        
+        wake_words_with_files.push((text, audio_file));
+    }
+    
+    // 使用新的预检查函数
+    let (new_wake_words, duplicate_wake_words) = state.db.precheck_wake_words(wake_words_with_files.clone())
+        .await
+        .map_err(|e| format!("预检查唤醒词失败: {}", e))?;
+    
+    // 处理新的唤醒词
+    for (text, audio_file) in new_wake_words {
+        let new_wake_word_id = state.db.create_wake_word(&text, audio_file.as_deref())
+            .await
+            .map_err(|e| format!("创建唤醒词失败: {}", e))?;
+        wake_word_ids.push(new_wake_word_id);
+        wake_words_created += 1;
+        println!("创建新唤醒词: {} -> {} (音频文件: {:?})", text, new_wake_word_id, audio_file);
+    }
+    
+    // 处理重复的唤醒词（获取现有ID）
+    for (text, audio_file) in duplicate_wake_words {
+        let existing_id = state.db.check_wake_word_exists(&text, audio_file.as_deref())
+            .await
+            .map_err(|e| format!("检查唤醒词存在性失败: {}", e))?
+            .expect("重复检查中应该能找到现有ID");
+        wake_word_ids.push(existing_id);
+        wake_words_ignored += 1;
+        println!("唤醒词已存在，使用现有ID: {} -> {} (音频文件: {:?})", text, existing_id, audio_file);
+    }
+
+    // 处理测试语料 - 确保所有Excel中的数据都包含在任务中
+    let mut sample_ids = Vec::new();
+    let mut samples_created = 0;
+    let mut samples_ignored = 0;
+    
+    // 准备测试语料数据（包含音频文件路径）
+    let mut samples_with_files = Vec::new();
+    let mut processed_samples = std::collections::HashSet::new();
+    
+    for (filename, text) in samples_data {
+        // 跳过重复的文本
+        if processed_samples.contains(&text) {
+            println!("跳过重复的测试语料文本: {}", text);
+            continue;
+        }
+        processed_samples.insert(text.clone());
+        
+        let audio_path = sample_audio_dir.join(&filename);
+        let audio_file = if audio_path.exists() {
+            // 规范化路径
+            let normalized_path = normalize_path(&audio_path);
+            Some(normalized_path)
+        } else {
+            println!("警告: 测试语料音频文件不存在: {:?}", audio_path);
+            None
+        };
+        
+        samples_with_files.push((text, audio_file));
+    }
+    
+    // 使用新的预检查函数
+    let (new_samples, duplicate_samples) = state.db.precheck_samples_with_files(samples_with_files.clone())
+        .await
+        .map_err(|e| format!("预检查测试语料失败: {}", e))?;
+    
+    // 处理新的测试语料
+    for (text, audio_file) in new_samples {
+        let new_sample_id = state.db.create_sample(&text, audio_file.as_deref())
+            .await
+            .map_err(|e| format!("创建测试语料失败: {}", e))?;
+        sample_ids.push(new_sample_id);
+        samples_created += 1;
+        println!("创建新测试语料: {} -> {} (音频文件: {:?})", text, new_sample_id, audio_file);
+    }
+    
+    // 处理重复的测试语料（获取现有ID）
+    for (text, audio_file) in duplicate_samples {
+        let existing_id = state.db.check_sample_exists(&text, audio_file.as_deref())
+            .await
+            .map_err(|e| format!("检查测试语料存在性失败: {}", e))?
+            .expect("重复检查中应该能找到现有ID");
+        sample_ids.push(existing_id);
+        samples_ignored += 1;
+        println!("测试语料已存在，使用现有ID: {} -> {} (音频文件: {:?})", text, existing_id, audio_file);
+    }
+
+    // 打印调试信息
+    println!("准备创建任务:");
+    println!("  任务名称: {}", task_name);
+    println!("  唤醒词ID列表: {:?}", wake_word_ids);
+    println!("  测试语料ID列表: {:?}", sample_ids);
+    println!("  唤醒词统计: 创建 {} 个, 忽略 {} 个", wake_words_created, wake_words_ignored);
+    println!("  测试语料统计: 创建 {} 个, 忽略 {} 个", samples_created, samples_ignored);
+
+    // 检查是否已存在同名任务
+    let existing_tasks = state.db.get_all_tasks()
+        .await
+        .map_err(|e| format!("获取现有任务失败: {}", e))?;
+    
+    let existing_task = existing_tasks.iter().find(|t| t.name == task_name);
+    if let Some(existing_task) = existing_task {
+        println!("警告: 已存在同名任务 (ID: {}), 但将继续创建新任务", existing_task.id);
+    }
+
+    // 创建任务
+    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let task = Task {
+        id: 0,
+        name: task_name,
+        test_samples_ids: sample_ids.iter().map(|&id| id as u32).collect(),
+        wake_word_ids: wake_word_ids.iter().map(|&id| id as u32).collect(),
+        machine_response: None,
+        test_result: None,
+        task_status: "pending".to_string(),
+        task_progress: Some(0.0),
+        created_at: now,
+        audio_type: None,
+        audio_file: None,
+        audio_duration: None,
+        audio_category: None,
+        test_collection: None,
+        test_duration: None,
+        sentence_accuracy: None,
+        word_accuracy: None,
+        character_error_rate: None,
+        recognition_success_rate: None,
+        total_words: None,
+        insertion_errors: None,
+        deletion_errors: None,
+        substitution_errors: None,
+        fastest_recognition_time: None,
+        slowest_recognition_time: None,
+        average_recognition_time: None,
+        completed_samples: None,
+    };
+
+    let task_id = state.db.create_task(&task)
+        .await
+        .map_err(|e| format!("创建任务失败: {}", e))?;
+    
+    Ok(TaskPackageImportResult {
+        task_id,
+        wake_words_created,
+        samples_created,
+        wake_words_ignored,
+        samples_ignored,
+    })
+}
+
+
+
+fn read_excel_file(file_path: &Path) -> Result<Vec<(String, String)>, String> {
+    let mut workbook: calamine::Xlsx<_> = open_workbook(file_path)
+        .map_err(|e| format!("无法打开Excel文件: {}", e))?;
+    
+    let sheet_name = workbook.sheet_names()[0].clone();
+    let range = workbook.worksheet_range(&sheet_name)
+        .map_err(|e| format!("读取工作表失败: {}", e))?;
+
+    let mut data = Vec::new();
+    
+    for row in range.rows().skip(1) { // 跳过标题行
+        if row.len() >= 2 {
+            let filename = match &row[0] {
+                calamine::Data::String(s) => s.clone(),
+                calamine::Data::Int(i) => i.to_string(),
+                calamine::Data::Float(f) => f.to_string(),
+                _ => continue,
+            };
+            
+            let text = match &row[1] {
+                calamine::Data::String(s) => s.clone(),
+                calamine::Data::Int(i) => i.to_string(),
+                calamine::Data::Float(f) => f.to_string(),
+                _ => continue,
+            };
+            
+            if !filename.trim().is_empty() && !text.trim().is_empty() {
+                data.push((filename, text));
+            }
+        }
+    }
+    
+    Ok(data)
 }

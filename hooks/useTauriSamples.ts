@@ -185,28 +185,7 @@ export function useTauriSamples() {
     }
   }, [fetchAllSamples, toast]);
   
-  const precheckSamples = useCallback(async (texts: string[]): Promise<{ new_texts: string[], duplicate_texts: string[] } | null> => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      console.log("开始预检查样本，数量:", texts.length);
-      const result = await TauriApiService.precheckSamples(texts);
-      console.log("预检查完成，结果:", result);
-      return result;
-    } catch (err: any) {
-      console.error("预检查失败:", err);
-      const errorMessage = err.message || 'Failed to precheck samples';
-      setError(errorMessage);
-      toast({
-        variant: "destructive",
-        title: "预检查失败",
-        description: errorMessage,
-      });
-      return null;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
+
 
   const getSamplesByTaskId = useCallback(async (taskId: number): Promise<TestSample[] | null> => {
     setIsLoading(true);
@@ -282,6 +261,6 @@ export function useTauriSamples() {
     importSamplesFromExcel,
     getSamplesByTaskId,
     updateTaskSampleAssociations,
-    precheckSamples,
+
   };
 }

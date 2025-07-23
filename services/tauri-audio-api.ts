@@ -8,4 +8,8 @@ export class TauriAudioApiService {
     static async playMatchAudioWithurl(keyword: string, url: string): Promise<void> {
         await invoke('play_match_audio_with_url', { keyword, url });
     }
+
+    static async playAudio(path: string): Promise<void> {
+        await invoke('play_audio', { path });
+    }
 }

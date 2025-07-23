@@ -43,6 +43,8 @@ interface WakeWord {
 
 interface WakeDetectionResult {
     test_index: number;
+    wake_word_id: number;
+    wake_word_text: string;
     wake_task_completed: boolean;
     active_task_completed: boolean;
     success: boolean;
@@ -193,9 +195,6 @@ export function WakeDetectionWorkflowComponent() {
     });
 
     // 配置状态
-    const [wakewords, setWakewords] = useState<WakeWord[]>([]);
-    const [selectedWakeWordId, setSelectedWakeWordId] = useState<number | null>(null);
-    const [repeatCount, setRepeatCount] = useState<number>(5);
     const [templateFiles, setTemplateFiles] = useState<{ name: string, data: string }[]>([]);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
 
@@ -225,6 +224,7 @@ export function WakeDetectionWorkflowComponent() {
     const [testResults, setTestResults] = useState<WakeDetectionResult[]>([]);
     const [workflowStats, setWorkflowStats] = useState<WorkflowStats | null>(null);
     const [workflowMessages, setWorkflowMessages] = useState<string[]>([]);
+    const [currentTaskInfo, setCurrentTaskInfo] = useState<{ name: string; wake_word_count: number } | null>(null);
 
     const { toast } = useToast();
 
@@ -315,10 +315,7 @@ export function WakeDetectionWorkflowComponent() {
         const loadWakeWords = async () => {
             try {
                 const fetchedWakeWords = await invoke<WakeWord[]>('get_all_wake_words');
-                setWakewords(fetchedWakeWords);
-                if (fetchedWakeWords.length > 0 && !selectedWakeWordId) {
-                    setSelectedWakeWordId(fetchedWakeWords[0].id);
-                }
+                // 不再需要设置唤醒词状态，因为现在从数据库任务中获取
             } catch (err) {
                 console.error("Failed to fetch wake words:", err);
                 toast({
@@ -330,6 +327,27 @@ export function WakeDetectionWorkflowComponent() {
         };
         loadWakeWords();
     }, [toast]);
+
+    // 获取当前任务信息
+    useEffect(() => {
+        const loadCurrentTaskInfo = async () => {
+            try {
+                const task = await invoke<{ name: string; wake_word_ids: number[] }>('get_current_task');
+                if (task) {
+                    setCurrentTaskInfo({
+                        name: task.name,
+                        wake_word_count: task.wake_word_ids.length
+                    });
+                } else {
+                    setCurrentTaskInfo(null);
+                }
+            } catch (err) {
+                console.error("Failed to fetch current task:", err);
+                setCurrentTaskInfo(null);
+            }
+        };
+        loadCurrentTaskInfo();
+    }, []);
 
     // 开始视觉检测
     const startVisualDetection = useCallback(async () => {
@@ -406,10 +424,14 @@ export function WakeDetectionWorkflowComponent() {
 
         let unlistenTaskCompleted: (() => void) | null = null;
 
+        // 添加一个标志来跟踪组件是否已卸载
+        let isComponentMounted = true;
+
         const setupListeners = async () => {
             try {
                 // 监听元任务更新
                 unlistenMetaUpdate = await listen<string>('wake_detection_meta_update', (event) => {
+                    if (!isComponentMounted) return;
                     const message = event.payload;
                     setWorkflowMessages(prev => [message, ...prev.slice(0, 9)]); // 保留最近10条消息
                     console.log('工作流更新:', message);
@@ -417,18 +439,21 @@ export function WakeDetectionWorkflowComponent() {
 
                 // 监听进度更新
                 unlistenProgress = await listen<TaskProgress>('wake_detection_progress', (event) => {
+                    if (!isComponentMounted) return;
                     setWorkflowProgress(event.payload);
                     console.log('进度更新:', event.payload);
                 });
 
                 // 监听测试结果
                 unlistenTestResult = await listen<WakeDetectionResult>('wake_detection_test_result', (event) => {
+                    if (!isComponentMounted) return;
                     setTestResults(prev => [event.payload, ...prev]);
                     console.log('测试结果:', event.payload);
                 });
 
                 // 监听最终统计
                 unlistenFinalStats = await listen<WorkflowStats>('wake_detection_final_stats', (event) => {
+                    if (!isComponentMounted) return;
                     setWorkflowStats(event.payload);
                     setIsWorkflowRunning(false);
                     setIsWorkflowPaused(false);
@@ -443,6 +468,7 @@ export function WakeDetectionWorkflowComponent() {
 
                 // 监听错误
                 unlistenError = await listen<string>('wake_detection_meta_error', (event) => {
+                    if (!isComponentMounted) return;
                     const error = event.payload;
                     setWorkflowMessages(prev => [`错误: ${error}`, ...prev.slice(0, 9)]);
                     setIsWorkflowRunning(false);
@@ -457,6 +483,7 @@ export function WakeDetectionWorkflowComponent() {
                 });
 
                 unlistenVisualWake = await listen<VisualWakeEvent>('visual_wake_event', (event) => {
+                    if (!isComponentMounted) return;
                     const { event_type, confidence, timestamp, message } = event.payload;
 
                     const result: DetectionResult = {
@@ -482,6 +509,7 @@ export function WakeDetectionWorkflowComponent() {
                 });
 
                 unlistenVisualStatus = await listen('visual_wake_status', (event) => {
+                    if (!isComponentMounted) return;
                     const status = event.payload;
                     console.log('视觉检测状态:', status);
 
@@ -521,6 +549,7 @@ export function WakeDetectionWorkflowComponent() {
 
                 //监听active_task子任务的信息
                 unlistenWakeTask = await listen<string>('active_task_info', (event) => {
+                    if (!isComponentMounted) return;
                     const status = event.payload;
                     if (status === 'started') {
                         console.log("收到 active_task_info started 事件");
@@ -536,6 +565,7 @@ export function WakeDetectionWorkflowComponent() {
 
                 // 监听任务完成事件
                 unlistenTaskCompleted = await listen<string>('task_completed', (event) => {
+                    if (!isComponentMounted) return;
                     const taskType = event.payload;
                     console.log('任务完成:', taskType);
 
@@ -572,18 +602,37 @@ export function WakeDetectionWorkflowComponent() {
         setupListeners();
 
         return () => {
-            if (unlistenMetaUpdate) unlistenMetaUpdate();
-            if (unlistenProgress) unlistenProgress();
-            if (unlistenTestResult) unlistenTestResult();
-            if (unlistenFinalStats) unlistenFinalStats();
-            if (unlistenError) unlistenError();
+            // 标记组件已卸载
+            isComponentMounted = false;
+            
+            // 直接清理事件监听器，模仿 visual-wake-detection 的方式
+            if (unlistenMetaUpdate) {
+                unlistenMetaUpdate();
+            }
+            if (unlistenProgress) {
+                unlistenProgress();
+            }
+            if (unlistenTestResult) {
+                unlistenTestResult();
+            }
+            if (unlistenFinalStats) {
+                unlistenFinalStats();
+            }
+            if (unlistenError) {
+                unlistenError();
+            }
             if (unlistenVisualWake) {
                 unlistenVisualWake();
             }
             if (unlistenVisualStatus) {
                 unlistenVisualStatus();
             }
-            if (unlistenTaskCompleted) unlistenTaskCompleted();
+            if (unlistenWakeTask) {
+                unlistenWakeTask();
+            }
+            if (unlistenTaskCompleted) {
+                unlistenTaskCompleted();
+            }
         };
     }, [toast]);
 
@@ -987,28 +1036,10 @@ export function WakeDetectionWorkflowComponent() {
 
     // 开始工作流
     const startWorkflow = async () => {
-        if (!selectedWakeWordId) {
-            toast({
-                title: "请选择唤醒词",
-                description: "请先选择一个唤醒词",
-                variant: "destructive",
-            });
-            return;
-        }
-
         if (templateFiles.length === 0) {
             toast({
                 title: "请选择模板",
                 description: "请先选择至少一个模板图像",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        if (repeatCount < 1 || repeatCount > 100) {
-            toast({
-                title: "重复次数无效",
-                description: "重复次数必须在1-100之间",
                 variant: "destructive",
             });
             return;
@@ -1022,7 +1053,7 @@ export function WakeDetectionWorkflowComponent() {
             setWorkflowProgress({
                 value: 0,
                 current_sample: 0,
-                total: repeatCount
+                total: 0 // 总数将在工作流启动后从数据库获取
             });
             setSubTaskStatus({
                 wake_task: TaskStatus.PENDING,
@@ -1035,8 +1066,6 @@ export function WakeDetectionWorkflowComponent() {
 
             // 启动工作流
             await invoke('start_wake_detection_workflow', {
-                wakeWordId: selectedWakeWordId,
-                repeatCount: repeatCount,
                 templateData: templateData,
                 frameRate: selectedFrameRate,
                 threshold: 0.5
@@ -1054,7 +1083,7 @@ export function WakeDetectionWorkflowComponent() {
 
             toast({
                 title: "工作流已启动",
-                description: `开始执行 ${repeatCount} 次唤醒检测测试`,
+                description: "开始执行唤醒检测测试",
                 variant: "default",
             });
         } catch (error) {
@@ -1597,6 +1626,11 @@ export function WakeDetectionWorkflowComponent() {
                                 <Badge variant={isWorkflowRunning ? "default" : "secondary"}>
                                     {isWorkflowRunning ? "工作流运行中" : "未运行"}
                                 </Badge>
+                                {currentTaskInfo && (
+                                    <Badge variant="outline">
+                                        任务: {currentTaskInfo.name} ({currentTaskInfo.wake_word_count}个唤醒词)
+                                    </Badge>
+                                )}
                                 {roi && (
                                     <Badge variant="outline">
                                         ROI: {Math.round(roi[2])}x{Math.round(roi[3])}
@@ -1638,40 +1672,6 @@ export function WakeDetectionWorkflowComponent() {
                                 <Settings className="h-5 w-5" />
                                 工作流配置
                             </h4>
-
-                            {/* 唤醒词选择 */}
-                            <div className="space-y-2">
-                                <Label>唤醒词</Label>
-                                <Select
-                                    value={selectedWakeWordId?.toString() || ""}
-                                    onValueChange={(value) => setSelectedWakeWordId(Number(value))}
-                                    disabled={isWorkflowRunning}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="选择唤醒词" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {wakewords.map((wakeword) => (
-                                            <SelectItem key={wakeword.id} value={wakeword.id.toString()}>
-                                                {wakeword.text}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            {/* 重复次数 */}
-                            <div className="space-y-2">
-                                <Label>重复次数</Label>
-                                <Input
-                                    type="number"
-                                    min="1"
-                                    max="100"
-                                    value={repeatCount}
-                                    onChange={(e) => setRepeatCount(Number(e.target.value))}
-                                    disabled={isWorkflowRunning}
-                                />
-                            </div>
 
                             {/* 模板管理 - Popover按钮 */}
                             <div className="space-y-2">
@@ -1800,7 +1800,7 @@ export function WakeDetectionWorkflowComponent() {
                                     {!isWorkflowRunning ? (
                                         <Button
                                             onClick={startWorkflow}
-                                            disabled={!selectedWakeWordId || templateFiles.length === 0}
+                                            disabled={!currentTaskInfo || templateFiles.length === 0}
                                             className="flex-1"
                                         >
                                             <Play className="h-4 w-4 mr-1" />
@@ -1976,7 +1976,7 @@ export function WakeDetectionWorkflowComponent() {
                                                 ) : (
                                                     <XCircle className="h-4 w-4 text-red-500" />
                                                 )}
-                                                <span>测试 {result.test_index}</span>
+                                                <span>测试 {result.test_index}: {result.wake_word_text}</span>
                                             </div>
                                             <div className="flex items-center gap-2 text-xs">
                                                 <span>{result.duration_ms}ms</span>

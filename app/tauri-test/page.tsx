@@ -7,17 +7,27 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown, ChevronRight, FileAudio, Info, Database } from 'lucide-react';
 import type { Task, TestSample, WakeWord } from '@/types/api';
 
 export default function TauriTestPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [samples, setSamples] = useState<TestSample[]>([]);
   const [wakeWords, setWakeWords] = useState<WakeWord[]>([]);
+  const [samplesRaw, setSamplesRaw] = useState<any[]>([]);
+  const [wakeWordsRaw, setWakeWordsRaw] = useState<any[]>([]);
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(false);
   const [newTaskName, setNewTaskName] = useState('');
   const [newSampleText, setNewSampleText] = useState('');
   const [newWakeWordText, setNewWakeWordText] = useState('');
+  const [expandedSamples, setExpandedSamples] = useState<Set<number>>(new Set());
+  const [expandedWakeWords, setExpandedWakeWords] = useState<Set<number>>(new Set());
+  const [showRawData, setShowRawData] = useState(false);
   const { toast } = useToast();
 
   // 检查是否在 Tauri 环境中
@@ -34,17 +44,21 @@ export default function TauriTestPage() {
     
     setLoading(true);
     try {
-      const [tasksData, samplesData, wakeWordsData, currentTaskData] = await Promise.all([
+      const [tasksData, samplesData, wakeWordsData, currentTaskData, samplesRawData, wakeWordsRawData] = await Promise.all([
         TauriApiService.getAllTasks(),
         TauriApiService.getAllSamples(),
         TauriApiService.getAllWakeWords(),
         TauriApiService.getCurrentTask(),
+        TauriApiService.getAllSamplesRaw(),
+        TauriApiService.getAllWakeWordsRaw(),
       ]);
 
       setTasks(tasksData);
       setSamples(samplesData);
       setWakeWords(wakeWordsData);
       setCurrentTask(currentTaskData);
+      setSamplesRaw(samplesRawData);
+      setWakeWordsRaw(wakeWordsRawData);
 
       toast({
         title: "数据加载成功",
@@ -140,11 +154,13 @@ export default function TauriTestPage() {
 
     try {
       await TauriApiService.setCurrentTask(taskId);
+      const currentTaskData = await TauriApiService.getCurrentTask();
+      setCurrentTask(currentTaskData);
+      
       toast({
-        title: "当前任务设置成功",
-        description: `任务ID: ${taskId}`,
+        title: "设置当前任务成功",
+        description: `当前任务: ${currentTaskData?.name || '未知'}`,
       });
-      loadData(); // 重新加载数据
     } catch (error) {
       console.error('设置当前任务失败:', error);
       toast({
@@ -153,6 +169,32 @@ export default function TauriTestPage() {
         variant: "destructive",
       });
     }
+  };
+
+  const toggleSampleExpansion = (sampleId: number) => {
+    const newExpanded = new Set(expandedSamples);
+    if (newExpanded.has(sampleId)) {
+      newExpanded.delete(sampleId);
+    } else {
+      newExpanded.add(sampleId);
+    }
+    setExpandedSamples(newExpanded);
+  };
+
+  const toggleWakeWordExpansion = (wakeWordId: number) => {
+    const newExpanded = new Set(expandedWakeWords);
+    if (newExpanded.has(wakeWordId)) {
+      newExpanded.delete(wakeWordId);
+    } else {
+      newExpanded.add(wakeWordId);
+    }
+    setExpandedWakeWords(newExpanded);
+  };
+
+  const formatFieldValue = (value: any): string => {
+    if (value === null || value === undefined) return 'null';
+    if (typeof value === 'object') return JSON.stringify(value, null, 2);
+    return String(value);
   };
 
   if (!isTauri) {
@@ -176,9 +218,17 @@ export default function TauriTestPage() {
     <div className="container mx-auto p-6 space-y-6 bg-white">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Tauri 后端测试</h1>
-        <Button onClick={loadData} disabled={loading}>
-          {loading ? "加载中..." : "刷新数据"}
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant={showRawData ? "default" : "outline"}
+            onClick={() => setShowRawData(!showRawData)}
+          >
+            {showRawData ? "隐藏原始数据" : "显示原始数据"}
+          </Button>
+          <Button onClick={loadData} disabled={loading}>
+            {loading ? "加载中..." : "刷新数据"}
+          </Button>
+        </div>
       </div>
 
       {/* 当前任务 */}
@@ -292,37 +342,199 @@ export default function TauriTestPage() {
         </CardContent>
       </Card>
 
-      {/* 样本列表 */}
+      {/* 样本列表 - 详细字段显示 */}
       <Card>
         <CardHeader>
-          <CardTitle>样本列表 ({samples.length})</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            样本列表 ({samples.length})
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {samples.map((sample) => (
-              <div key={sample.id} className="p-2 border rounded">
-                <span className="font-medium">ID: {sample.id}</span>
-                <span className="ml-2">{sample.text}</span>
-              </div>
-            ))}
-          </div>
+          <ScrollArea className="h-96">
+            <div className="space-y-3">
+              {samples.map((sample) => (
+                <Collapsible key={sample.id}>
+                  <CollapsibleTrigger asChild>
+                    <div 
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                      onClick={() => toggleSampleExpansion(sample.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        {expandedSamples.has(sample.id) ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                        <div>
+                          <div className="font-medium">ID: {sample.id}</div>
+                          <div className="text-sm text-gray-600">{sample.text}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {sample.audio_file && (
+                          <Badge variant="secondary" className="flex items-center gap-1">
+                            <FileAudio className="h-3 w-3" />
+                            有音频
+                          </Badge>
+                        )}
+                        {sample.status && (
+                          <Badge variant="outline">{sample.status}</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="mt-2 p-3 bg-gray-50 rounded-lg border">
+                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                         <div>
+                           <h4 className="font-semibold mb-2 flex items-center gap-1">
+                             <Info className="h-4 w-4" />
+                             基本信息
+                           </h4>
+                           <div className="space-y-1">
+                             <div><strong>ID:</strong> {sample.id}</div>
+                             <div><strong>文本:</strong> {sample.text}</div>
+                             <div><strong>状态:</strong> {formatFieldValue(sample.status)}</div>
+                             <div><strong>重复次数:</strong> {formatFieldValue(sample.repeats)}</div>
+                           </div>
+                         </div>
+                         <div>
+                           <h4 className="font-semibold mb-2 flex items-center gap-1">
+                             <FileAudio className="h-4 w-4" />
+                             音频信息
+                           </h4>
+                           <div className="space-y-1">
+                             <div><strong>音频文件:</strong> {formatFieldValue(sample.audio_file)}</div>
+                           </div>
+                         </div>
+                       </div>
+                       {showRawData && (
+                         <>
+                           <Separator className="my-3" />
+                           <div>
+                             <h4 className="font-semibold mb-2 flex items-center gap-1">
+                               <Database className="h-4 w-4" />
+                               数据库原始字段
+                             </h4>
+                             <div className="bg-white p-2 rounded border text-xs">
+                               <pre className="whitespace-pre-wrap">
+                                 {(() => {
+                                   const rawData = samplesRaw.find(raw => raw.id === sample.id);
+                                   return rawData ? JSON.stringify(rawData, null, 2) : '未找到原始数据';
+                                 })()}
+                               </pre>
+                             </div>
+                           </div>
+                         </>
+                       )}
+                      {sample.result && Object.keys(sample.result).length > 0 && (
+                        <>
+                          <Separator className="my-3" />
+                          <div>
+                            <h4 className="font-semibold mb-2">测试结果</h4>
+                            <div className="bg-white p-2 rounded border text-xs">
+                              <pre className="whitespace-pre-wrap">{JSON.stringify(sample.result, null, 2)}</pre>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
+            </div>
+          </ScrollArea>
         </CardContent>
       </Card>
 
-      {/* 唤醒词列表 */}
+      {/* 唤醒词列表 - 详细字段显示 */}
       <Card>
         <CardHeader>
-          <CardTitle>唤醒词列表 ({wakeWords.length})</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            唤醒词列表 ({wakeWords.length})
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {wakeWords.map((wakeWord) => (
-              <div key={wakeWord.id} className="p-2 border rounded">
-                <span className="font-medium">ID: {wakeWord.id}</span>
-                <span className="ml-2">{wakeWord.text}</span>
-              </div>
-            ))}
-          </div>
+          <ScrollArea className="h-96">
+            <div className="space-y-3">
+              {wakeWords.map((wakeWord) => (
+                <Collapsible key={wakeWord.id}>
+                  <CollapsibleTrigger asChild>
+                    <div 
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                      onClick={() => toggleWakeWordExpansion(wakeWord.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        {expandedWakeWords.has(wakeWord.id) ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                        <div>
+                          <div className="font-medium">ID: {wakeWord.id}</div>
+                          <div className="text-sm text-gray-600">{wakeWord.text}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {wakeWord.audio_file && (
+                          <Badge variant="secondary" className="flex items-center gap-1">
+                            <FileAudio className="h-3 w-3" />
+                            有音频
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="mt-2 p-3 bg-gray-50 rounded-lg border">
+                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                         <div>
+                           <h4 className="font-semibold mb-2 flex items-center gap-1">
+                             <Info className="h-4 w-4" />
+                             基本信息
+                           </h4>
+                           <div className="space-y-1">
+                             <div><strong>ID:</strong> {wakeWord.id}</div>
+                             <div><strong>文本:</strong> {wakeWord.text}</div>
+                           </div>
+                         </div>
+                         <div>
+                           <h4 className="font-semibold mb-2 flex items-center gap-1">
+                             <FileAudio className="h-4 w-4" />
+                             音频信息
+                           </h4>
+                           <div className="space-y-1">
+                             <div><strong>音频文件:</strong> {formatFieldValue(wakeWord.audio_file)}</div>
+                           </div>
+                         </div>
+                       </div>
+                       {showRawData && (
+                         <>
+                           <Separator className="my-3" />
+                           <div>
+                             <h4 className="font-semibold mb-2 flex items-center gap-1">
+                               <Database className="h-4 w-4" />
+                               数据库原始字段
+                             </h4>
+                             <div className="bg-white p-2 rounded border text-xs">
+                               <pre className="whitespace-pre-wrap">
+                                 {(() => {
+                                   const rawData = wakeWordsRaw.find(raw => raw.id === wakeWord.id);
+                                   return rawData ? JSON.stringify(rawData, null, 2) : '未找到原始数据';
+                                 })()}
+                               </pre>
+                             </div>
+                           </div>
+                         </>
+                       )}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
+            </div>
+          </ScrollArea>
         </CardContent>
       </Card>
     </div>

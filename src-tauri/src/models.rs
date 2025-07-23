@@ -28,7 +28,7 @@ pub struct Task {
     pub id: u32,
     pub name: String,
     pub test_samples_ids: Vec<u32>,
-    pub wake_word_id: u32,
+    pub wake_word_ids: Vec<u32>, // 修改为支持多个唤醒词
     pub machine_response: Option<HashMap<u32, MachineResponseData>>,
     pub test_result: Option<HashMap<u32, AnalysisResult>>,
     pub task_status: String,
@@ -118,7 +118,6 @@ pub struct TaskProgress {
 pub struct TaskRow {
     pub id: i64,
     pub name: String,
-    pub wake_word_id: i64,
     pub task_status: String,
     pub task_progress: Option<f64>,
     pub created_at: String,
@@ -142,7 +141,7 @@ pub struct TaskRow {
     pub completed_samples: Option<i64>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct TestSampleRow {
     pub id: i64,
     pub text: String,
@@ -152,7 +151,7 @@ pub struct TestSampleRow {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct WakeWordRow {
     pub id: i64,
     pub text: String,
@@ -164,6 +163,12 @@ pub struct WakeWordRow {
 pub struct TaskSampleRow {
     pub task_id: i64,
     pub sample_id: i64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct TaskWakeWordRow {
+    pub task_id: i64,
+    pub wake_word_id: i64,
 }
 
 #[derive(Debug, Clone, FromRow)]

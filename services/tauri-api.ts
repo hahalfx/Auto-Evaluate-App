@@ -18,12 +18,12 @@ export class TauriApiService {
   static async createTask(
     name: string,
     testSamplesIds: number[],
-    wakeWordId: number
+    wakeWordIds: number[]
   ): Promise<number> {
     return await invoke('create_task', {
       name,
       testSamplesIds,
-      wakeWordId,
+      wakeWordIds,
     });
   }
 
@@ -38,6 +38,10 @@ export class TauriApiService {
   // 样本相关
   static async getAllSamples(): Promise<TestSample[]> {
     return await invoke('get_all_samples');
+  }
+
+  static async getAllSamplesRaw(): Promise<any[]> {
+    return await invoke('get_all_samples_raw');
   }
 
   static async createSample(text: string, audioFile?: string | null): Promise<number> {
@@ -74,6 +78,10 @@ export class TauriApiService {
     return await invoke('get_all_wake_words');
   }
 
+  static async getAllWakeWordsRaw(): Promise<any[]> {
+    return await invoke('get_all_wake_words_raw');
+  }
+
   static async createWakeWord(text: string, audioFile?: string | null): Promise<number> {
     return await invoke('create_wake_word', { text, audioFile });
   }
@@ -91,10 +99,7 @@ export class TauriApiService {
     return await invoke('delete_wake_word_safe', { wakeWordId });
   }
 
-  // Precheck samples before import
-  static async precheckSamples(texts: string[]): Promise<{ new_texts: string[], duplicate_texts: string[] }> {
-    return await invoke('precheck_samples', { texts });
-  }
+
 
   // 测试相关
   static async startAutomatedTest(): Promise<void> {
@@ -131,5 +136,20 @@ export class TauriApiService {
   // 时间参数相关
   static async getTimingDataByTask(taskId: number): Promise<Record<number, TimingData>> {
     return await invoke('get_timing_data_by_task', { taskId });
+  }
+
+  // 任务包导入相关
+  static async importTaskPackage(
+    packagePath: string,
+    taskName: string
+  ): Promise<{ task_id: number; wake_words_created: number; samples_created: number; wake_words_ignored: number; samples_ignored: number }> {
+    // console.log("TauriApiService.importTaskPackage - 参数:", { packagePath, taskName });
+    // console.log("TauriApiService.importTaskPackage - packagePath类型:", typeof packagePath);
+    // console.log("TauriApiService.importTaskPackage - packagePath长度:", packagePath.length);
+    
+    return await invoke('import_task_package', {
+      packagePath,
+      taskName,
+    });
   }
 }

@@ -103,7 +103,7 @@ function transformTauriTaskToApiTask(
     id: tauriTask.id,
     name: tauriTask.name,
     test_samples_ids: tauriTask.test_samples_ids,
-    wake_word_id: tauriTask.wake_word_id,
+    wake_word_ids: tauriTask.wake_word_ids,
     machine_response: apiMachineResponse,
     test_result: apiTestResult,
     task_status: tauriTask.task_status,
@@ -217,7 +217,7 @@ export function useLLMAnalysis() {
       setError(null);
       setIsPlaying(true); 
 
-      const wakeWordIdToPlay = Task?.wake_word_id === payload.wake_word_id ? payload.wake_word_id : undefined;
+      const wakeWordIdToPlay = Task?.wake_word_ids.includes(payload.wake_word_id) ? payload.wake_word_id : undefined;
       let wakeWordTextToPlay: string | undefined = undefined;
 
       if (wakeWordIdToPlay) {

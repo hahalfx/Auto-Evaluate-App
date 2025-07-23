@@ -43,7 +43,12 @@ impl Task for audio_task {
                     let keyword = self.keyword.clone();
                     let audio_dir = self.url.clone();
                     let result = tokio::task::block_in_place(|| {
-                        crate::services::audio_controller::play_matching_sync(&keyword, audio_dir)
+                        if let Some(url) = audio_dir {
+                            crate::services::audio_controller::play(&url)
+                        } else {
+                            // 如果没有提供URL，使用关键字查找匹配的音频文件
+                            crate::services::audio_controller::play_matching_sync(&keyword, None)
+                        }
                     });
                     
                     // 记录语音指令结束时间

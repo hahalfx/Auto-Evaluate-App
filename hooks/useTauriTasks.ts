@@ -51,11 +51,11 @@ export function useTauriTasks() {
     }
   }, [toast]);
 
-  const createTask = useCallback(async (name: string, testSamplesIds: number[], wakeWordId: number) => {
+  const createTask = useCallback(async (name: string, testSamplesIds: number[], wakeWordIds: number[]) => {
     setIsLoading(true);
     setError(null);
     try {
-      const newTaskId = await TauriApiService.createTask(name, testSamplesIds, wakeWordId);
+      const newTaskId = await TauriApiService.createTask(name, testSamplesIds, wakeWordIds);
       await fetchAllTasks(); // Refresh the tasks list
       toast({
         title: "任务创建成功",

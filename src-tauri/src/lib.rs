@@ -20,6 +20,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_macos_permissions::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // 初始化应用状态
             let app_handle = app.handle().clone();
@@ -71,7 +72,9 @@ pub fn run() {
             commands::get_current_task,
             commands::set_current_task,
             commands::get_all_samples,
+            commands::get_all_samples_raw,
             commands::get_all_wake_words,
+            commands::get_all_wake_words_raw,
             commands::create_task,
             commands::get_analysis_results,
             commands::get_machine_responses,
@@ -88,7 +91,7 @@ pub fn run() {
             commands::update_task_samples,
             commands::play_match_audio,
             commands::play_match_audio_with_url,
-            commands::new_workflow,
+            commands::play_audio,
             commands::pause_workflow,
             commands::resume_workflow,
             commands::stop_workflow,
@@ -98,7 +101,6 @@ pub fn run() {
             commands::get_ocr_task_status,
             commands::new_meta_workflow,
             commands::delete_wake_word_safe,
-            commands::precheck_samples,
             commands::get_timing_data_by_task,
             commands::start_visual_wake_detection,
             commands::start_visual_wake_detection_with_data,
@@ -112,6 +114,7 @@ pub fn run() {
             commands::load_template_from_folder,
             commands::start_wake_detection_workflow,
             commands::delete_template_from_folder,
+            commands::import_task_package,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -102,25 +102,25 @@ impl DatabaseService {
         })?;
         log::info!("[DB_SERVICE] Successfully connected to pool.");
 
-        // 创建数据库表
-        log::info!("[DB_SERVICE] Attempting to create tables.");
-        Self::create_tables(&pool).await.map_err(|e| {
-            log::error!("[DB_SERVICE] create_tables failed: {}", e);
+        // 初始化数据库表结构和迁移
+        log::info!("[DB_SERVICE] Attempting to initialize database schema.");
+        Self::initialize_database(&pool).await.map_err(|e| {
+            log::error!("[DB_SERVICE] initialize_database failed: {}", e);
             e
         })?;
-        log::info!("[DB_SERVICE] Successfully created tables.");
+        log::info!("[DB_SERVICE] Successfully initialized database schema.");
 
         Ok(Self { pool })
     }
 
-    async fn create_tables(pool: &SqlitePool) -> Result<()> {
+    /// 创建所有数据库表
+    async fn initialize_database(pool: &SqlitePool) -> Result<()> {
         // 创建任务表
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
-                wake_word_id INTEGER NOT NULL,
                 task_status TEXT NOT NULL DEFAULT 'pending',
                 task_progress REAL DEFAULT 0.0,
                 created_at TEXT NOT NULL,
@@ -154,10 +154,11 @@ impl DatabaseService {
             CREATE TABLE IF NOT EXISTS test_samples (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 text TEXT NOT NULL,
-                audio_file TEXT, -- Added audio_file column
+                audio_file TEXT,
                 status TEXT DEFAULT 'pending',
                 repeats INTEGER DEFAULT 1,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                UNIQUE(text, audio_file)
             )
             "#,
         )
@@ -169,9 +170,10 @@ impl DatabaseService {
             r#"
             CREATE TABLE IF NOT EXISTS wake_words (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                text TEXT NOT NULL UNIQUE,
-                audio_file TEXT, -- Added audio_file column
-                created_at TEXT NOT NULL
+                text TEXT NOT NULL,
+                audio_file TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE(text, audio_file)
             )
             "#,
         )
@@ -187,6 +189,21 @@ impl DatabaseService {
                 PRIMARY KEY (task_id, sample_id),
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
                 FOREIGN KEY (sample_id) REFERENCES test_samples(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
+        // 创建任务-唤醒词关联表
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS task_wake_words (
+                task_id INTEGER NOT NULL,
+                wake_word_id INTEGER NOT NULL,
+                PRIMARY KEY (task_id, wake_word_id),
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                FOREIGN KEY (wake_word_id) REFERENCES wake_words(id) ON DELETE CASCADE
             )
             "#,
         )
@@ -282,17 +299,6 @@ impl DatabaseService {
         .execute(pool)
         .await?;
 
-        // Attempt to add audio_file column to test_samples if it doesn't exist
-        // This is a simple way to handle migration. A more robust solution would check PRAGMA table_info.
-        let _ = sqlx::query("ALTER TABLE test_samples ADD COLUMN audio_file TEXT")
-            .execute(pool)
-            .await; // We ignore the error if the column already exists.
-
-        // Attempt to add audio_file column to wake_words if it doesn't exist
-        let _ = sqlx::query("ALTER TABLE wake_words ADD COLUMN audio_file TEXT")
-            .execute(pool)
-            .await; // We ignore the error if the column already exists.
-
         Ok(())
     }
 
@@ -303,12 +309,11 @@ impl DatabaseService {
         // 插入任务
         let result = sqlx::query(
             r#"
-            INSERT INTO tasks (name, wake_word_id, task_status, created_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO tasks (name, task_status, created_at)
+            VALUES (?, ?, ?)
             "#,
         )
         .bind(&task.name)
-        .bind(task.wake_word_id as i64)
         .bind(&task.task_status)
         .bind(&task.created_at)
         .execute(&mut *tx)
@@ -316,11 +321,20 @@ impl DatabaseService {
 
         let task_id = result.last_insert_rowid();
 
-        // 插入任务-样本关联
+        // 插入任务-样本关联（使用INSERT OR IGNORE避免重复）
         for &sample_id in &task.test_samples_ids {
-            sqlx::query("INSERT INTO task_samples (task_id, sample_id) VALUES (?, ?)")
+            sqlx::query("INSERT OR IGNORE INTO task_samples (task_id, sample_id) VALUES (?, ?)")
                 .bind(task_id)
                 .bind(sample_id as i64)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        // 插入任务-唤醒词关联（使用INSERT OR IGNORE避免重复）
+        for &wake_word_id in &task.wake_word_ids {
+            sqlx::query("INSERT OR IGNORE INTO task_wake_words (task_id, wake_word_id) VALUES (?, ?)")
+                .bind(task_id)
+                .bind(wake_word_id as i64)
                 .execute(&mut *tx)
                 .await?;
         }
@@ -351,6 +365,17 @@ impl DatabaseService {
             .map(|row| row.get::<i64, _>("sample_id") as u32)
             .collect();
 
+        // 获取关联的唤醒词ID
+        let wake_word_rows = sqlx::query("SELECT wake_word_id FROM task_wake_words WHERE task_id = ?")
+            .bind(task_id)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let wake_word_ids: Vec<u32> = wake_word_rows
+            .into_iter()
+            .map(|row| row.get::<i64, _>("wake_word_id") as u32)
+            .collect();
+
         // 获取车机响应
         let machine_responses = self.get_machine_responses_by_task(task_id).await?;
 
@@ -361,7 +386,7 @@ impl DatabaseService {
             id: task_row.id as u32,
             name: task_row.name,
             test_samples_ids: sample_ids,
-            wake_word_id: task_row.wake_word_id as u32,
+            wake_word_ids: wake_word_ids,
             machine_response: if machine_responses.is_empty() {
                 None
             } else {
@@ -482,25 +507,63 @@ impl DatabaseService {
             .collect())
     }
 
-    pub async fn create_sample(&self, text: &str, audio_file: Option<&str>) -> Result<i64> {
-        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let result =
-            sqlx::query("INSERT INTO test_samples (text, created_at, audio_file) VALUES (?, ?, ?)")
-                .bind(text)
-                .bind(now)
-                .bind(audio_file)
-                .execute(&self.pool)
-                .await?;
+    pub async fn get_all_samples_raw(&self) -> Result<Vec<TestSampleRow>> {
+        log::info!("[DB_SERVICE] Getting all samples with raw data");
+        
+        let rows = sqlx::query_as::<_, TestSampleRow>(
+            "SELECT id, text, audio_file, status, repeats, created_at FROM test_samples ORDER BY id"
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-        Ok(result.last_insert_rowid())
+        log::info!("[DB_SERVICE] Retrieved {} samples with raw data", rows.len());
+        Ok(rows)
+    }
+
+    /// 创建或获取样本ID（避免重复检查逻辑）
+    async fn create_or_get_sample_internal(&self, text: &str, audio_file: Option<&str>) -> Result<i64> {
+        // 首先检查是否已存在
+        if let Some(existing_id) = self.check_sample_exists(text, audio_file).await? {
+            log::info!("[DB_SERVICE] Sample already exists: {} (ID: {})", text, existing_id);
+            return Ok(existing_id);
+        }
+
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        
+        // 使用 INSERT OR IGNORE 来处理唯一约束冲突
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO test_samples (text, created_at, audio_file) VALUES (?, ?, ?)"
+        )
+        .bind(text)
+        .bind(now)
+        .bind(audio_file)
+        .execute(&self.pool)
+        .await?;
+
+        let inserted_id = result.last_insert_rowid();
+        
+        if inserted_id == 0 {
+            // 如果没有插入成功，说明存在唯一约束冲突，重新获取现有ID
+            if let Some(existing_id) = self.check_sample_exists(text, audio_file).await? {
+                log::info!("[DB_SERVICE] Sample already exists (after INSERT OR IGNORE): {} (ID: {})", text, existing_id);
+                return Ok(existing_id);
+            } else {
+                return Err(anyhow::anyhow!("Failed to create sample and could not find existing one: {}", text));
+            }
+        }
+
+        log::info!("[DB_SERVICE] Created new sample: {} (ID: {})", text, inserted_id);
+        Ok(inserted_id)
+    }
+
+    pub async fn create_sample(&self, text: &str, audio_file: Option<&str>) -> Result<i64> {
+        self.create_or_get_sample_internal(text, audio_file).await
     }
 
     pub async fn create_samples_batch(
         &self,
         sample_texts_with_files: Vec<(String, Option<String>)>,
     ) -> Result<(Vec<i64>, usize)> { // -> (created_ids, ignored_count)
-        let mut tx = self.pool.begin().await?;
-        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let mut created_ids = Vec::new();
         let total_count = sample_texts_with_files.len();
 
@@ -508,46 +571,12 @@ impl DatabaseService {
             return Ok((Vec::new(), 0));
         }
 
-        // 1. 提取所有待插入的文本
-        let texts_to_check: Vec<String> = sample_texts_with_files
-            .iter()
-            .map(|(text, _)| text.clone())
-            .collect();
-
-        // 2. 一次性查询出数据库中已经存在的文本
-        const BATCH_SIZE: usize = 900;
-        let mut existing_texts = std::collections::HashSet::new();
-        for chunk in texts_to_check.chunks(BATCH_SIZE) {
-            if chunk.is_empty() {
-                continue;
-            }
-            let params = vec!["?"; chunk.len()].join(",");
-            let query_str = format!("SELECT text FROM test_samples WHERE text IN ({})", params);
-            
-            let mut query = sqlx::query_scalar::<_, String>(&query_str);
-            for text in chunk {
-                query = query.bind(text);
-            }
-            let found_texts: Vec<String> = query.fetch_all(&mut *tx).await?;
-            existing_texts.extend(found_texts);
-        }
-
-        // 3. 遍历并只插入新数据
+        // 使用内部函数处理每个样本，避免重复的检查逻辑
         for (text, audio_file) in sample_texts_with_files {
-            if !existing_texts.contains(&text) {
-                let result = sqlx::query(
-                    "INSERT INTO test_samples (text, created_at, audio_file) VALUES (?, ?, ?)",
-                )
-                .bind(text)
-                .bind(&now)
-                .bind(audio_file)
-                .execute(&mut *tx)
-                .await?;
-                created_ids.push(result.last_insert_rowid());
-            }
+            let sample_id = self.create_or_get_sample_internal(&text, audio_file.as_deref()).await?;
+            created_ids.push(sample_id);
         }
 
-        tx.commit().await?;
         let ignored_count = total_count - created_ids.len();
         Ok((created_ids, ignored_count))
     }
@@ -806,17 +835,57 @@ impl DatabaseService {
             .collect())
     }
 
-    pub async fn create_wake_word(&self, text: &str, audio_file: Option<&str>) -> Result<i64> {
-        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let result =
-            sqlx::query("INSERT INTO wake_words (text, created_at, audio_file) VALUES (?, ?, ?)")
-                .bind(text)
-                .bind(now)
-                .bind(audio_file)
-                .execute(&self.pool)
-                .await?;
+    pub async fn get_all_wake_words_raw(&self) -> Result<Vec<WakeWordRow>> {
+        log::info!("[DB_SERVICE] Getting all wake words with raw data");
+        
+        let rows = sqlx::query_as::<_, WakeWordRow>(
+            "SELECT id, text, audio_file, created_at FROM wake_words ORDER BY id"
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-        Ok(result.last_insert_rowid())
+        log::info!("[DB_SERVICE] Retrieved {} wake words with raw data", rows.len());
+        Ok(rows)
+    }
+
+    /// 创建或获取唤醒词ID（避免重复检查逻辑）
+    async fn create_or_get_wake_word_internal(&self, text: &str, audio_file: Option<&str>) -> Result<i64> {
+        // 首先检查是否已存在
+        if let Some(existing_id) = self.check_wake_word_exists(text, audio_file).await? {
+            log::info!("[DB_SERVICE] Wake word already exists: {} (ID: {})", text, existing_id);
+            return Ok(existing_id);
+        }
+
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        
+        // 使用 INSERT OR IGNORE 来处理唯一约束冲突
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO wake_words (text, created_at, audio_file) VALUES (?, ?, ?)"
+        )
+        .bind(text)
+        .bind(now)
+        .bind(audio_file)
+        .execute(&self.pool)
+        .await?;
+
+        let inserted_id = result.last_insert_rowid();
+        
+        if inserted_id == 0 {
+            // 如果没有插入成功，说明存在唯一约束冲突，重新获取现有ID
+            if let Some(existing_id) = self.check_wake_word_exists(text, audio_file).await? {
+                log::info!("[DB_SERVICE] Wake word already exists (after INSERT OR IGNORE): {} (ID: {})", text, existing_id);
+                return Ok(existing_id);
+            } else {
+                return Err(anyhow::anyhow!("Failed to create wake word and could not find existing one: {}", text));
+            }
+        }
+
+        log::info!("[DB_SERVICE] Created new wake word: {} (ID: {})", text, inserted_id);
+        Ok(inserted_id)
+    }
+
+    pub async fn create_wake_word(&self, text: &str, audio_file: Option<&str>) -> Result<i64> {
+        self.create_or_get_wake_word_internal(text, audio_file).await
     }
 
     pub async fn get_wake_word_by_id(&self, wake_word_id: u32) -> Result<Option<WakeWord>> {
@@ -837,20 +906,13 @@ impl DatabaseService {
         wakewords: Vec<(String, Option<String>)>,
     ) -> Result<Vec<i64>> {
         let mut created_ids = Vec::new();
-        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let mut tx = self.pool.begin().await?;
+        
+        // 使用内部函数处理每个唤醒词，避免重复的检查逻辑
         for (text, audio_file) in wakewords {
-            let result = sqlx::query(
-                "INSERT INTO wake_words (text, created_at, audio_file) VALUES (?, ?, ?)",
-            )
-            .bind(text)
-            .bind(&now)
-            .bind(audio_file)
-            .execute(&mut *tx)
-            .await?;
-            created_ids.push(result.last_insert_rowid());
+            let wake_word_id = self.create_or_get_wake_word_internal(&text, audio_file.as_deref()).await?;
+            created_ids.push(wake_word_id);
         }
-        tx.commit().await?;
+        
         Ok(created_ids)
     }
 
@@ -883,6 +945,111 @@ impl DatabaseService {
         self.delete_wake_word(wake_word_id).await
     }
 
+    // 新增：检查唤醒词是否已存在（基于文本和音频文件路径）
+    pub async fn check_wake_word_exists(&self, text: &str, audio_file: Option<&str>) -> Result<Option<i64>> {
+        let row = sqlx::query_scalar::<_, i64>(
+            "SELECT id FROM wake_words WHERE text = ? AND (audio_file = ? OR (audio_file IS NULL AND ? IS NULL))"
+        )
+        .bind(text)
+        .bind(audio_file)
+        .bind(audio_file)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    // 新增：检查测试语料是否已存在（基于文本和音频文件路径）
+    pub async fn check_sample_exists(&self, text: &str, audio_file: Option<&str>) -> Result<Option<i64>> {
+        let row = sqlx::query_scalar::<_, i64>(
+            "SELECT id FROM test_samples WHERE text = ? AND (audio_file = ? OR (audio_file IS NULL AND ? IS NULL))"
+        )
+        .bind(text)
+        .bind(audio_file)
+        .bind(audio_file)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    // 新增：获取所有唤醒词（包含文本和音频文件路径信息）
+    pub async fn get_all_wake_words_with_files(&self) -> Result<Vec<(String, Option<String>, i64)>> {
+        let rows = sqlx::query_as::<_, WakeWordRow>("SELECT * FROM wake_words ORDER BY id")
+            .fetch_all(&self.pool)
+            .await?;
+
+        let result = rows.into_iter()
+            .map(|row| (row.text, row.audio_file, row.id))
+            .collect();
+
+        Ok(result)
+    }
+
+    // 新增：获取所有测试语料（包含文本和音频文件路径信息）
+    pub async fn get_all_samples_with_files(&self) -> Result<Vec<(String, Option<String>, i64)>> {
+        let rows = sqlx::query_as::<_, TestSampleRow>("SELECT * FROM test_samples ORDER BY id")
+            .fetch_all(&self.pool)
+            .await?;
+
+        let result = rows.into_iter()
+            .map(|row| (row.text, row.audio_file, row.id))
+            .collect();
+
+        Ok(result)
+    }
+
+    // 新增：预检查唤醒词（基于文本和音频文件路径）
+    pub async fn precheck_wake_words(&self, wake_words_to_check: Vec<(String, Option<String>)>) -> Result<(Vec<(String, Option<String>)>, Vec<(String, Option<String>)>)> {
+        log::info!("[DB_SERVICE] Starting precheck_wake_words with {} items", wake_words_to_check.len());
+        
+        if wake_words_to_check.is_empty() {
+            log::info!("[DB_SERVICE] No wake words to check, returning empty result");
+            return Ok((Vec::new(), Vec::new()));
+        }
+
+        let mut new_wake_words = Vec::new();
+        let mut duplicate_wake_words = Vec::new();
+
+        for (text, audio_file) in wake_words_to_check {
+            let exists = self.check_wake_word_exists(&text, audio_file.as_deref()).await?;
+            if exists.is_some() {
+                duplicate_wake_words.push((text, audio_file));
+            } else {
+                new_wake_words.push((text, audio_file));
+            }
+        }
+
+        log::info!("[DB_SERVICE] Precheck completed: {} new wake words, {} duplicate wake words", 
+                   new_wake_words.len(), duplicate_wake_words.len());
+        Ok((new_wake_words, duplicate_wake_words))
+    }
+
+    // 新增：预检查测试语料（基于文本和音频文件路径）
+    pub async fn precheck_samples_with_files(&self, samples_to_check: Vec<(String, Option<String>)>) -> Result<(Vec<(String, Option<String>)>, Vec<(String, Option<String>)>)> {
+        log::info!("[DB_SERVICE] Starting precheck_samples_with_files with {} items", samples_to_check.len());
+        
+        if samples_to_check.is_empty() {
+            log::info!("[DB_SERVICE] No samples to check, returning empty result");
+            return Ok((Vec::new(), Vec::new()));
+        }
+
+        let mut new_samples = Vec::new();
+        let mut duplicate_samples = Vec::new();
+
+        for (text, audio_file) in samples_to_check {
+            let exists = self.check_sample_exists(&text, audio_file.as_deref()).await?;
+            if exists.is_some() {
+                duplicate_samples.push((text, audio_file));
+            } else {
+                new_samples.push((text, audio_file));
+            }
+        }
+
+        log::info!("[DB_SERVICE] Precheck completed: {} new samples, {} duplicate samples", 
+                   new_samples.len(), duplicate_samples.len());
+        Ok((new_samples, duplicate_samples))
+    }
 
     // 分析结果相关操作
     pub async fn save_analysis_result(
@@ -1290,4 +1457,6 @@ impl DatabaseService {
 
         Ok(())
     }
+
+
 }

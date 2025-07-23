@@ -29,6 +29,8 @@ import {
   MessageSquare,
   Timer,
   ClipboardCheck,
+  Volume2,
+  FileAudio,
 } from "lucide-react";
 import {
   Dialog,
@@ -38,6 +40,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useState, useEffect, useCallback } from "react"; // Added useCallback
 import { useTauriTasks } from "@/hooks/useTauriTasks"; // New hook
 import { useAppDispatch, useAppSelector } from "@/store/hooks"; // Keep for samplesSlice if still needed
@@ -63,6 +66,7 @@ import { useTauriSamples } from "@/hooks/useTauriSamples";
 import { useTauriWakewords } from "@/hooks/useTauriWakewords";
 import { useTimingData } from "@/hooks/useTimingData";
 import { TimingDataDisplay } from "@/components/timing-data-display";
+import { TauriAudioApiService } from "@/services/tauri-audio-api";
 
 // 定义排序类型
 type SortType =
@@ -465,9 +469,6 @@ export default function TaskManage() {
               ) : !Array.isArray(tasks) || !tasks || tasks.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-muted-foreground mb-4">暂无任务数据</p>
-                  <Link href="/taskmanage/create-task">
-                    <Button>创建第一个任务</Button>
-                  </Link>
                 </div>
               ) : (
                 <div>
@@ -651,31 +652,163 @@ export default function TaskManage() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-sm font-medium">唤醒词</p>
-                  {/* Ensure wakeWords and currentTask.wake_word_id are valid before accessing */}
-                  <Badge variant="outline">
-                    {wakewords.find((w) => w.id === currentTask.wake_word_id)
-                      ?.text || "N/A"}
-                  </Badge>
+                  <p className="text-sm font-medium">唤醒词列表</p>
+                  {currentTask.wake_word_ids.length > 0 ? (
+                    <div className="border rounded-lg p-4 bg-gray-50/50 dark:bg-gray-800/30">
+                      <ScrollArea className="w-full" style={{ height: '140px' }}>
+                        <div className="space-y-2 pr-4">
+                          {currentTask.wake_word_ids.map((wakeWordId) => {
+                            const wakeWord = wakewords.find((w) => w.id === wakeWordId);
+                            return (
+                              <div
+                                key={wakeWordId}
+                                className="flex items-center justify-between p-3 bg-white dark:bg-gray-700/50 rounded-lg border shadow-sm hover:shadow-md transition-all duration-200 min-h-[56px]"
+                              >
+                                <div className="flex items-center space-x-3 flex-1 min-w-0">
+                                  <div className="flex items-center justify-center w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-full flex-shrink-0">
+                                    <Volume2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                                      {wakeWord?.text || `唤醒词 #${wakeWordId}`}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      ID: {wakeWordId}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2 flex-shrink-0">
+                                  {wakeWord?.audio_file && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        // 这里可以添加播放唤醒词音频的功能
+                                        console.log("播放唤醒词音频:", wakeWord.audio_file);
+                                        if (wakeWord.audio_file) {
+                                          TauriAudioApiService.playAudio(wakeWord.audio_file);
+                                        }
+                                      }}
+                                    >
+                                      <Play className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  <Badge variant="secondary" className="text-xs">
+                                    {wakeWord?.audio_file ? "有音频" : "无音频"}
+                                  </Badge>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </ScrollArea>
+                      <div className="mt-3">
+                        <p className="text-xs text-muted-foreground">
+                          共 {currentTask.wake_word_ids.length} 个唤醒词
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center p-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50/50 dark:bg-gray-800/30">
+                      <div className="text-center">
+                        <FileAudio className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">暂无唤醒词</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* ================= Unified Test Details Card ================= */}
+                {/* ================= Test Samples Overview ================= */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">测试语料概览</p>
+                  <div className="border rounded-lg p-4 bg-gray-50/50 dark:bg-gray-800/30">
+                    <ScrollArea className="w-full" style={{ height: '350px' }}>
+                      <div className="space-y-2 pr-4">
+                        {currentTask.test_samples_ids.map((sampleId) => {
+                          const sample = samples.find((s) => s.id === sampleId);
+                          const result = currentTask.test_result?.[sampleId];
+                          
+                          if (!sample) return null;
+                          
+                          return (
+                            <div
+                              key={sampleId}
+                              className="flex items-center justify-between p-3 bg-white dark:bg-gray-700/50 rounded-lg border shadow-sm hover:shadow-md transition-all duration-200 min-h-[56px]"
+                            >
+                              <div className="flex items-center space-x-3 flex-1 min-w-0">
+                                <div className="flex items-center justify-center w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-full flex-shrink-0">
+                                  <MessageSquare className="h-4 w-4 text-green-600 dark:text-green-400" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                                    {sample.text}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    ID: {sampleId}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-2 flex-shrink-0">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (sample.audio_file) {
+                                      TauriAudioApiService.playAudio(sample.audio_file);
+                                    }
+                                  }}
+                                >
+                                  <Play className="h-4 w-4" />
+                                </Button>
+                                {result ? (
+                                  <Badge
+                                    variant={result.assessment.valid ? "default" : "destructive"}
+                                    className="text-xs"
+                                  >
+                                    {result.assessment.valid ? "通过" : "未通过"}
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="text-xs">
+                                    未测试
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                      <p className="text-xs text-muted-foreground">
+                        共 {currentTask.test_samples_ids.length} 个测试语料
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ================= Detailed Test Results ================= */}
                 <div className="space-y-2">
                   <p className="text-sm font-medium">详细测试结果</p>
-                  <div className="border rounded-lg p-4 space-y-4">
-                    {currentTask.test_samples_ids.map((sampleId) => {
-                      const sample = samples.find((s) => s.id === sampleId);
-                      const response = currentTask.machine_response?.[sampleId];
-                      const result = currentTask.test_result?.[sampleId];
-                      const timing = timingData?.[sampleId];
+                  <div className="border rounded-lg p-4 bg-gray-50/50 dark:bg-gray-800/30">
+                    <ScrollArea className="w-full" style={{ height: '700px' }}>
+                      <div className="space-y-4 pr-4">
+                        {currentTask.test_samples_ids.map((sampleId) => {
+                          const sample = samples.find((s) => s.id === sampleId);
+                          const response = currentTask.machine_response?.[sampleId];
+                          const result = currentTask.test_result?.[sampleId];
+                          const timing = timingData?.[sampleId];
 
-                      if (!sample) return null;
+                          if (!sample) return null;
 
-                      return (
-                        <div
-                          key={sampleId}
-                          className="border rounded-xl p-4 bg-white dark:bg-gray-800/50 shadow-sm transition-all hover:shadow-lg hover:border-primary/30"
-                        >
+                          return (
+                            <div
+                              key={sampleId}
+                              className="border rounded-xl p-4 bg-white dark:bg-gray-800/50 shadow-sm transition-all hover:shadow-lg hover:border-primary/30"
+                            >
                           {/* Header: Sample Text and Play Button */}
                           <div className="flex justify-between items-center border-b pb-3 mb-4">
                             <div className="flex items-baseline">
@@ -863,6 +996,8 @@ export default function TaskManage() {
                         </div>
                       );
                     })}
+                      </div>
+                    </ScrollArea>
                   </div>
                 </div>
                 {/* ================= End of Unified Card ================= */}

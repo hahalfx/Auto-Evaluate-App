@@ -87,7 +87,7 @@ export interface Task {
   id: number; // u32
   name: string;
   test_samples_ids: number[]; // Vec<u32>
-  wake_word_id: number; // u32
+  wake_word_ids: number[]; // Vec<u32> - 修改为支持多个唤醒词
   machine_response?: Record<string, MachineResponseData> | null; // Option<HashMap<u32, MachineResponseData>> (JS object keys are strings)
   test_result?: Record<string, AnalysisResult> | null;    // Option<HashMap<u32, AnalysisResult>>
   task_status: string;
