@@ -19,6 +19,9 @@ pub struct finish_task {
     pub audio_ocr_dependency_id: String,  // 新增：audio_ocr_task的ID
     pub ocr_dependency_id: String,        // 新增：ocr_task的ID
     pub audio_task_id: String,            // 新增：audio_task的ID
+    // 唤醒检测相关字段
+    pub active_task_id: Option<String>,   // 用于唤醒检测的active_task_id
+    pub wake_word_id: Option<u32>,        // 唤醒词ID
     // 任务持有所需的数据库服务
     pub db: Arc<DatabaseService>,
 }
@@ -45,6 +48,8 @@ impl finish_task {
             audio_ocr_dependency_id,
             ocr_dependency_id,
             audio_task_id,
+            active_task_id: None, // 初始化为None
+            wake_word_id: None,   // 初始化为None
             db, // 存储传入的数据库服务
         }
     }
@@ -70,6 +75,31 @@ impl finish_task {
             audio_ocr_dependency_id,
             ocr_dependency_id,
             audio_task_id,
+            active_task_id: None, // 初始化为None
+            wake_word_id: None,   // 初始化为None
+            db,
+        }
+    }
+
+    /// 专门用于唤醒检测的构造函数
+    pub fn new_for_wake_detection(
+        id: String,
+        task_id: i64,
+        active_task_id: String,
+        wake_word_id: u32,
+        db: Arc<DatabaseService>,
+    ) -> Self {
+        Self {
+            id,
+            task_id,
+            sample_id: 0, // 唤醒检测不使用sample_id
+            asr_dependency_id: String::new(),
+            analysis_dependency_id: String::new(),
+            audio_ocr_dependency_id: String::new(),
+            ocr_dependency_id: String::new(),
+            audio_task_id: String::new(),
+            active_task_id: Some(active_task_id),
+            wake_word_id: Some(wake_word_id),
             db,
         }
     }
@@ -86,6 +116,88 @@ impl finish_task {
             self.id,
             self.sample_id
         );
+
+        // 如果是唤醒检测任务，从上下文中获取active_task结果
+        if let Some(active_task_id) = &self.active_task_id {
+            if let Some(wake_word_id) = &self.wake_word_id {
+                log::info!("[{}] 从上下文中获取唤醒检测结果...", self.id);
+                
+                let context_reader = context.read().await;
+                
+                // 从active_task结果中获取数据
+                let active_task_result = if let Some(data) = context_reader.get(active_task_id) {
+                    if let Some(result) = data.downcast_ref::<serde_json::Value>() {
+                        log::info!("[{}] 获取到active_task结果: {:?}", self.id, result);
+                        result.clone()
+                    } else {
+                        return Err(format!("[{}] 无法将active_task数据转换为JSON", self.id).into());
+                    }
+                } else {
+                    return Err(format!(
+                        "[{}] 在context中找不到active_task '{}'",
+                        self.id, active_task_id
+                    ).into());
+                };
+
+                // 解析active_task结果
+                let success = active_task_result.get("status")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s == "completed")
+                    .unwrap_or(false);
+                
+                let confidence = active_task_result.get("confidence")
+                    .and_then(|c| c.as_f64());
+                
+                let timestamp = active_task_result.get("timestamp")
+                    .and_then(|t| t.as_i64())
+                    .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+                
+                let duration_ms = active_task_result.get("duration_ms")
+                    .and_then(|d| d.as_u64())
+                    .unwrap_or(0);
+
+                // 检查是否为超时状态
+                let is_timeout = active_task_result.get("status")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s == "timeout")
+                    .unwrap_or(false);
+
+                // 如果超时，则不算成功
+                let final_success = success && !is_timeout;
+
+                log::info!("[{}] 解析结果: success={}, is_timeout={}, final_success={}, confidence={:?}, duration_ms={}", 
+                    self.id, success, is_timeout, final_success, confidence, duration_ms);
+
+                // 保存到数据库
+                let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                self.db
+                    .save_wake_detection_result_direct(
+                        self.task_id,
+                        *wake_word_id as i64,
+                        final_success,
+                        confidence,
+                        timestamp,
+                        duration_ms as i64,
+                        now,
+                    )
+                    .await
+                    .map_err(|e| format!("[{}] 保存唤醒检测结果失败: {}", self.id, e))?;
+
+                log::info!("[{}] 唤醒检测结果保存完成", self.id);
+
+                // 发送完成事件到前端
+                let event_data = serde_json::json!({
+                    "task_id": self.task_id,
+                    "wake_word_id": wake_word_id,
+                    "success": final_success,
+                    "confidence": confidence,
+                    "duration_ms": duration_ms
+                });
+
+                app_handle.emit("wake_detection_result_saved", event_data)?;
+                return Ok(());
+            }
+        }
 
         let context_reader = context.read().await;
 

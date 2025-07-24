@@ -365,8 +365,8 @@ export default function CreateTask() {
               <div className="bg-gray-50 p-4 rounded-lg text-sm">
                 <p className="font-medium mb-2">任务包文件夹应包含以下内容：</p>
                 <ul className="space-y-1 text-gray-600">
-                  <li>• <code className="bg-gray-200 px-1 rounded">唤醒词语料列表.xlsx</code> - 唤醒词Excel文件（第一列：文件名，第二列：语料名）</li>
-                  <li>• <code className="bg-gray-200 px-1 rounded">测试语料列表.xlsx</code> - 测试语料Excel文件（第一列：文件名，第二列：语料名）</li>
+                  <li>• <code className="bg-gray-200 px-1 rounded">唤醒词语料列表.xlsx</code> - 唤醒词Excel文件（第一列：文件名，第二列：语料名）（注意第一行为标题行：文件名，语料名不会被识别）</li>
+                  <li>• <code className="bg-gray-200 px-1 rounded">测试语料列表.xlsx</code> - 测试语料Excel文件（第一列：文件名，第二列：语料名）（注意第一行为标题行：文件名，语料名不会被识别）</li>
                   <li>• <code className="bg-gray-200 px-1 rounded">audio/</code> 文件夹，包含：</li>
                   <li className="ml-4">  - <code className="bg-gray-200 px-1 rounded">wakeword/</code> - 唤醒词音频文件</li>
                   <li className="ml-4">  - <code className="bg-gray-200 px-1 rounded">samples/</code> - 测试语料音频文件</li>

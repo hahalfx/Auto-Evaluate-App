@@ -10,6 +10,7 @@ use crate::models::WakeWord;
 use crate::services::active_task::ActiveTask;
 use crate::services::active_task::VisualWakeConfig;
 use crate::services::audio_task::audio_task;
+use crate::services::finish_task::finish_task;
 use crate::services::middle_task::middle_task;
 use crate::services::workflow::ControlSignal;
 use crate::services::workflow::Task;
@@ -147,7 +148,7 @@ impl Task for wake_detection_meta_executor {
             // 创建任务ID
             let wake_task_id = format!("wake_task_{}_{}", wakeword.id, wake_word_index);
             let active_task_id = format!("active_task_{}_{}", wakeword.id, wake_word_index);
-            let middle_task_id = format!("middle_task_{}_{}", wakeword.id, wake_word_index);
+            let finish_task_id = format!("finish_task_{}_{}", wakeword.id, wake_word_index);
 
             // 添加任务，使用唤醒词的音频文件路径
             sub_workflow.add_task(audio_task {
@@ -161,13 +162,17 @@ impl Task for wake_detection_meta_executor {
                 self.visual_config.clone(),
             ));
 
-            sub_workflow.add_task(middle_task {
-                id: middle_task_id.clone(),
-            });
+            sub_workflow.add_task(finish_task::new_for_wake_detection(
+                finish_task_id.clone(),
+                self.task_id,
+                active_task_id.clone(),
+                wakeword.id,
+                self.state_snapshot.db.clone(),
+            ));
 
-            // 设置依赖关系 - middle_task 等待两个任务完成
-            sub_workflow.add_dependency(&middle_task_id, &wake_task_id);
-            sub_workflow.add_dependency(&middle_task_id, &active_task_id);
+            // 设置依赖关系 - finish_task 等待两个任务完成
+            sub_workflow.add_dependency(&finish_task_id, &wake_task_id);
+            sub_workflow.add_dependency(&finish_task_id, &active_task_id);
 
             // 执行子工作流
             let result = sub_workflow
@@ -205,7 +210,7 @@ impl Task for wake_detection_meta_executor {
             
             let wake_task_is_completed = workflow_succeeded;
 
-            // 记录结果
+            // 创建结果用于统计和前端显示（数据已由finish_task保存到数据库）
             let test_result = WakeDetectionResult {
                 test_index: total_tests + 1,
                 wake_word_id: wakeword.id,

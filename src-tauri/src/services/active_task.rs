@@ -53,10 +53,11 @@ impl Task for ActiveTask {
         let mut last_signal = ControlSignal::Stopped;
         let mut wake_detected = false; // 标记是否检测到唤醒事件
         let mut detection_start_time: Option<Instant> = None; // 检测开始时间
+        let mut detection_confidence: Option<f64> = None; // 检测置信度
         let max_detection_time = config.max_detection_time_secs
             .map(|secs| Duration::from_secs(secs))
             .unwrap_or(Duration::from_secs(30)); // 默认30秒超时
-        
+
         loop {
             let signal = control_rx.borrow().clone();
             if signal != last_signal {
@@ -93,7 +94,12 @@ impl Task for ActiveTask {
                         
                         // 写入超时状态到 context
                         let mut context_guard = context.write().await;
-                        context_guard.insert(self.id(), Box::new(serde_json::json!({ "status": "timeout" })));
+                        context_guard.insert(self.id(), Box::new(serde_json::json!({
+                            "status": "timeout",
+                            "confidence": null,
+                            "duration_ms": elapsed.as_millis() as u64,
+                            "timestamp": chrono::Utc::now().timestamp_millis()
+                        })));
                         drop(context_guard);
 
                         drop(detector_guard);
@@ -131,9 +137,29 @@ impl Task for ActiveTask {
                     wake_detected = true;
                     println!("ActiveTask: 检测器被禁用，检测到了唤醒事件，任务完成");
 
+                    // 计算检测持续时间
+                    let duration_ms = if let Some(start_time) = detection_start_time {
+                        start_time.elapsed().as_millis() as u64
+                    } else {
+                        0
+                    };
+
+                    // 尝试从检测器获取置信度（如果有的话）
+                    let confidence = if let Some(conf) = detection_confidence {
+                        Some(conf)
+                    } else {
+                        // 如果没有获取到置信度，使用默认值
+                        Some(1.0)
+                    };
+
                     // 写入成功状态到 context
                     let mut context_guard = context.write().await;
-                    context_guard.insert(self.id(), Box::new(serde_json::json!({ "status": "completed" })));
+                    context_guard.insert(self.id(), Box::new(serde_json::json!({
+                        "status": "completed",
+                        "confidence": confidence,
+                        "duration_ms": duration_ms,
+                        "timestamp": chrono::Utc::now().timestamp_millis()
+                    })));
                     drop(context_guard);
                     
                     app_handle.emit("active_task_info", "stopped").ok();

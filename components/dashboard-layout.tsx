@@ -17,6 +17,7 @@ import {
   Plus,
   MenuIcon,
   TestTube,
+  Fullscreen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils";
@@ -48,9 +49,14 @@ const navItems: NavItem[] = [
     icon: <ListTodo className="h-5 w-5" />,
   },
   {
-    title: "测试任务执行",
+    title: "唤醒+反馈+交互工作流",
     href: "/llm-analysis",
     icon: <PlaySquare className="h-5 w-5" />,
+  },
+  {
+    title: "唤醒检测工作流",
+    href: "/wake-detection-workflow",
+    icon: <Fullscreen className="h-5 w-5" />,
   },
   {
     title: "测试语料管理",
@@ -58,17 +64,12 @@ const navItems: NavItem[] = [
     icon: <ChartColumnBig className="h-5 w-5" />,
   },
   {
-    title: "视觉唤醒检测",
+    title: "视觉唤醒检测测试（Test）",
     href: "/wake-detection",
     icon: <TestTube className="h-5 w-5" />,
   },
   {
-    title: "唤醒检测工作流",
-    href: "/wake-detection-workflow",
-    icon: <TestTube className="h-5 w-5" />,
-  },
-  {
-    title: "Tauri后端测试",
+    title: "Tauri后端测试（Test）",
     href: "/tauri-test",
     icon: <TestTube className="h-5 w-5" />,
   },
@@ -143,10 +144,10 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             </div>
           )}
           <nav className="grid gap-1 py-2">
-                 
+
             <div className={cn(
               "text-xs font-semibold text-muted-foreground",
-              sidebarCollapsed ? "text-center" : "px-3" )}>
+              sidebarCollapsed ? "text-center" : "px-3")}>
               目录
             </div>
             {navItems.map((item) => (
@@ -263,55 +264,12 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                   </div>
                 </div>
               </PopoverTrigger>
-              <PopoverContent className="w-80" side="right">
-                <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <h4 className="font-medium leading-none">Dimensions</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Set the dimensions for the layer.
-                    </p>
-                  </div>
-                  <div className="grid gap-2">
-                    <div className="grid grid-cols-3 items-center gap-4">
-                      <Label htmlFor="width">Width</Label>
-                      <Input
-                        id="width"
-                        defaultValue="100%"
-                        className="col-span-2 h-8"
-                      />
-                    </div>
-                    <div className="grid grid-cols-3 items-center gap-4">
-                      <Label htmlFor="maxWidth">Max. width</Label>
-                      <Input
-                        id="maxWidth"
-                        defaultValue="300px"
-                        className="col-span-2 h-8"
-                      />
-                    </div>
-                    <div className="grid grid-cols-3 items-center gap-4">
-                      <Label htmlFor="height">Height</Label>
-                      <Input
-                        id="height"
-                        defaultValue="25px"
-                        className="col-span-2 h-8"
-                      />
-                    </div>
-                    <div className="grid grid-cols-3 items-center gap-4">
-                      <Label htmlFor="maxHeight">Max. height</Label>
-                      <Input
-                        id="maxHeight"
-                        defaultValue="none"
-                        className="col-span-2 h-8"
-                      />
-                    </div>
-                    <div className="grid grid-cols-3 items-center gap-4">
-                      <Label htmlFor="settings">设置</Label>
-                      <Link href={"/settings"}>
-                      <Settings size={20} className="rounded-md" />
-                    </Link>
-                    </div>
-                    
-                  </div>
+              <PopoverContent className="w-43" side="top">
+                <div className="grid grid-cols-3 items-center">
+                  <Label htmlFor="settings"><Settings size={15} className="rounded-md" /></Label>
+                  <Link href={"/settings"}>
+                    <span className="text-sm">应用设置</span>
+                  </Link>
                 </div>
               </PopoverContent>
             </Popover>

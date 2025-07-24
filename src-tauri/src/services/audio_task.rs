@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use tauri::Emitter;
 use tokio::sync::watch;
 use tokio::time;
 use std::error::Error;
@@ -68,6 +69,8 @@ impl Task for audio_task {
                                 format!("{}_timing", self.id),
                                 Box::new(timing)
                             );
+
+                            app_handle.emit("task_completed", "wake_task_completed").unwrap();
                             
                             return Ok(());
                         }

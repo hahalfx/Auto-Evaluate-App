@@ -254,6 +254,26 @@ impl DatabaseService {
         .execute(pool)
         .await?;
 
+        // 创建唤醒检测结果表
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS wake_detection_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                wake_word_id INTEGER NOT NULL,
+                success BOOLEAN NOT NULL,
+                confidence REAL,
+                timestamp INTEGER NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                FOREIGN KEY (wake_word_id) REFERENCES wake_words(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
         // 创建时间参数表
         sqlx::query(
             r#"
@@ -1178,6 +1198,103 @@ impl DatabaseService {
         }
 
         Ok(results)
+    }
+
+    // 唤醒检测结果相关操作
+    pub async fn save_wake_detection_result(
+        &self,
+        task_id: i64,
+        active_task_id: String,
+        wake_word_id: u32,
+    ) -> Result<()> {
+        // 这个方法现在需要从工作流上下文中获取数据
+        // 实际的实现将在finish_task中处理
+        Ok(())
+    }
+
+    pub async fn save_wake_detection_result_direct(
+        &self,
+        task_id: i64,
+        wake_word_id: i64,
+        success: bool,
+        confidence: Option<f64>,
+        timestamp: i64,
+        duration_ms: i64,
+        created_at: String,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO wake_detection_results (
+                task_id, wake_word_id, success, confidence, timestamp, duration_ms, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(task_id)
+        .bind(wake_word_id)
+        .bind(success)
+        .bind(confidence)
+        .bind(timestamp)
+        .bind(duration_ms)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_wake_detection_results_by_task(
+        &self,
+        task_id: i64,
+    ) -> Result<Vec<crate::services::wake_detection_meta_executor::WakeDetectionResult>> {
+        let rows = sqlx::query_as::<_, WakeDetectionResultRow>(
+            "SELECT * FROM wake_detection_results WHERE task_id = ? ORDER BY id",
+        )
+        .bind(task_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let results = rows
+            .into_iter()
+            .map(|row| crate::services::wake_detection_meta_executor::WakeDetectionResult {
+                test_index: 0, // 不再使用test_index
+                wake_word_id: row.wake_word_id as u32,
+                wake_word_text: String::new(), // 不再保存wake_word_text
+                wake_task_completed: false, // 不再保存wake_task_completed
+                active_task_completed: false, // 不再保存active_task_completed
+                success: row.success,
+                confidence: row.confidence,
+                timestamp: row.timestamp,
+                duration_ms: row.duration_ms as u64,
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    pub async fn check_wake_detection_results_exist(
+        &self,
+        task_id: i64,
+    ) -> Result<bool> {
+        let count = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM wake_detection_results WHERE task_id = ?",
+        )
+        .bind(task_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(count > 0)
+    }
+
+    pub async fn delete_wake_detection_results_by_task(
+        &self,
+        task_id: i64,
+    ) -> Result<()> {
+        sqlx::query("DELETE FROM wake_detection_results WHERE task_id = ?")
+            .bind(task_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
     }
 
     // 车机响应相关操作

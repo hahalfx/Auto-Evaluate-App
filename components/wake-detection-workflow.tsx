@@ -226,6 +226,10 @@ export function WakeDetectionWorkflowComponent() {
     const [workflowMessages, setWorkflowMessages] = useState<string[]>([]);
     const [currentTaskInfo, setCurrentTaskInfo] = useState<{ name: string; wake_word_count: number } | null>(null);
 
+    // 覆盖确认对话框状态
+    const [showOverwriteDialog, setShowOverwriteDialog] = useState(false);
+    const [overwriteAction, setOverwriteAction] = useState<'cancel' | 'overwrite' | 'append' | null>(null);
+
     const { toast } = useToast();
 
     // 初始化摄像头
@@ -457,6 +461,13 @@ export function WakeDetectionWorkflowComponent() {
                     setWorkflowStats(event.payload);
                     setIsWorkflowRunning(false);
                     setIsWorkflowPaused(false);
+                    setSubTaskStatus(prev => {
+                        const newStatus = { ...prev };
+                        newStatus.wake_task = TaskStatus.COMPLETED;
+                        newStatus.active_task = TaskStatus.COMPLETED;
+                        newStatus.middle_task = TaskStatus.COMPLETED;
+                        return newStatus;
+                    });
                     console.log('最终统计:', event.payload);
 
                     toast({
@@ -581,14 +592,22 @@ export function WakeDetectionWorkflowComponent() {
                             case "active_task_completed":
                                 newStatus.active_task = TaskStatus.COMPLETED;
                                 break;
+                            case "middle_task_completed":
+                                newStatus.middle_task = TaskStatus.COMPLETED;
+                                break;
                             default:
                                 break;
                         }
 
                         // 如果两个任务都完成，中间任务开始运行
-                        if (newStatus.wake_task === TaskStatus.COMPLETED &&
+                        if ((newStatus.wake_task === TaskStatus.COMPLETED || newStatus.wake_task === TaskStatus.FAILED) &&
                             newStatus.active_task === TaskStatus.COMPLETED) {
                             newStatus.middle_task = TaskStatus.RUNNING;
+                        }
+
+                        if(newStatus.middle_task === TaskStatus.COMPLETED){
+                            newStatus.active_task = TaskStatus.RUNNING;
+                            newStatus.active_task = TaskStatus.RUNNING;
                         }
 
                         return newStatus;
@@ -1046,6 +1065,64 @@ export function WakeDetectionWorkflowComponent() {
         }
 
         try {
+            // 检查当前任务是否已有唤醒检测结果
+            const currentTask = await invoke<{ id: number; name: string; wake_word_ids: number[] }>('get_current_task');
+            if (!currentTask) {
+                toast({
+                    title: "没有当前任务",
+                    description: "请先选择一个任务",
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            const hasExistingResults = await invoke<boolean>('check_wake_detection_results_exist', { 
+                taskId: currentTask.id 
+            });
+
+            if (hasExistingResults) {
+                // 显示覆盖确认对话框
+                setShowOverwriteDialog(true);
+                return;
+            }
+
+            // 没有现有结果，直接开始工作流
+            await startWorkflowInternal();
+        } catch (error) {
+            console.error("启动工作流失败:", error);
+            toast({
+                title: "启动工作流失败",
+                description: String(error),
+                variant: "destructive",
+            });
+        }
+    };
+
+    // 内部开始工作流方法
+    const startWorkflowInternal = async (shouldOverwrite: boolean = false) => {
+        try {
+            const currentTask = await invoke<{ id: number; name: string; wake_word_ids: number[] }>('get_current_task');
+            if (!currentTask) {
+                toast({
+                    title: "没有当前任务",
+                    description: "请先选择一个任务",
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            // 如果需要覆盖，先删除现有结果
+            if (shouldOverwrite) {
+                await invoke('delete_wake_detection_results_by_task', { 
+                    taskId: currentTask.id 
+                });
+                toast({
+                    title: "已删除现有结果",
+                    description: "将开始新的唤醒检测测试",
+                    variant: "default",
+                });
+            }
+
             // 重置状态
             setTestResults([]);
             setWorkflowStats(null);
@@ -1083,7 +1160,7 @@ export function WakeDetectionWorkflowComponent() {
 
             toast({
                 title: "工作流已启动",
-                description: "开始执行唤醒检测测试",
+                description: shouldOverwrite ? "开始新的唤醒检测测试" : "开始执行唤醒检测测试",
                 variant: "default",
             });
         } catch (error) {
@@ -1093,6 +1170,22 @@ export function WakeDetectionWorkflowComponent() {
                 description: String(error),
                 variant: "destructive",
             });
+        }
+    };
+
+    // 处理覆盖选择
+    const handleOverwriteChoice = async (choice: 'cancel' | 'overwrite' | 'append') => {
+        setShowOverwriteDialog(false);
+        setOverwriteAction(choice);
+
+        if (choice === 'cancel') {
+            return;
+        }
+
+        if (choice === 'overwrite') {
+            await startWorkflowInternal(true);
+        } else if (choice === 'append') {
+            await startWorkflowInternal(false);
         }
     };
 
@@ -1852,14 +1945,8 @@ export function WakeDetectionWorkflowComponent() {
                             )}
                         </div>
 
-                        <Separator className="my-5" />
-
-                        {/* 子任务状态 */}
-                        <div className="space-y-4">
-                            <h4 className="font-medium flex items-center gap-2">
-                                <BarChart3 className="h-5 w-5" />
-                                子任务状态
-                            </h4>
+                        {/* 子任务状态
+                        <div className="mt-4 space-y-4">
 
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
@@ -1895,18 +1982,16 @@ export function WakeDetectionWorkflowComponent() {
                                     </div>
                                 </div>
                             </div>
-                        </div>
-
-                        <Separator className="my-4" />
+                        </div> */}
 
                         {/* 工作流消息 */}
                         {workflowMessages.length > 0 && (
-                            <div className="space-y-4">
+                            <div className="mt-4 space-y-2">
                                 <h4 className="font-medium flex items-center gap-2">
                                     <AlertCircle className="h-5 w-5" />
                                     工作流消息
                                 </h4>
-                                <div className="space-y-1 max-h-32 overflow-y-auto">
+                                <div className="space-y-1 max-h-12 overflow-y-auto">
                                     {workflowMessages.map((message, index) => (
                                         <div
                                             key={index}
@@ -1919,10 +2004,8 @@ export function WakeDetectionWorkflowComponent() {
                             </div>
                         )}
 
-                        <Separator className="my-4" />
-
                         {/* 测试结果 */}
-                        <div className="space-y-4">
+                        <div className="mt-4 space-y-4">
                             <div className="flex items-center justify-between">
                                 <h4 className="font-medium flex items-center gap-2">
                                     <BarChart3 className="h-5 w-5" />
@@ -1965,10 +2048,15 @@ export function WakeDetectionWorkflowComponent() {
                                     {testResults.map((result, index) => (
                                         <div
                                             key={index}
-                                            className={`flex items-center justify-between p-2 rounded text-sm ${result.success
-                                                ? 'bg-green-50 text-green-700'
-                                                : 'bg-red-50 text-red-700'
-                                                }`}
+                                            className={`flex items-center justify-between p-2 rounded text-sm ${
+                                                result.success
+                                                    ? 'bg-green-50 text-green-700 border border-green-200'
+                                                    : 'bg-red-50 text-red-700 border border-red-200'
+                                            }`}
+                                            style={{
+                                                backgroundColor: result.success ? '#f0fdf4' : '#fef2f2',
+                                                color: result.success ? '#15803d' : '#dc2626'
+                                            }}
                                         >
                                             <div className="flex items-center gap-2">
                                                 {result.success ? (
@@ -2137,6 +2225,60 @@ export function WakeDetectionWorkflowComponent() {
                                 </Button>
                             </div>
                         </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* 覆盖确认对话框 */}
+            <Dialog open={showOverwriteDialog} onOpenChange={setShowOverwriteDialog}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <AlertCircle className="h-5 w-5 text-amber-500" />
+                            发现现有测试结果
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div className="text-sm text-gray-600">
+                            <p>当前任务已经执行过唤醒检测测试，数据库中已存在测试结果。</p>
+                            <p className="mt-2">请选择如何处理：</p>
+                        </div>
+                        
+                        <div className="space-y-3">
+                            <div className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+                                <h4 className="font-medium text-gray-900 mb-1">开始并覆盖以前的任务</h4>
+                                <p className="text-xs text-gray-600">
+                                    删除现有的测试结果，重新执行测试。这将完全替换之前的结果。
+                                </p>
+                            </div>
+                            
+                            <div className="p-3 border border-gray-200 rounded-lg bg-blue-50">
+                                <h4 className="font-medium text-blue-900 mb-1">开始但不覆盖以前的任务</h4>
+                                <p className="text-xs text-blue-600">
+                                    保留现有结果，添加新的测试结果。可能会产生重复的唤醒词测试记录。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter className="flex gap-2">
+                        <Button 
+                            variant="outline" 
+                            onClick={() => handleOverwriteChoice('cancel')}
+                        >
+                            取消
+                        </Button>
+                        <Button 
+                            variant="destructive" 
+                            onClick={() => handleOverwriteChoice('overwrite')}
+                        >
+                            覆盖现有结果
+                        </Button>
+                        <Button 
+                            variant="default" 
+                            onClick={() => handleOverwriteChoice('append')}
+                        >
+                            追加新结果
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

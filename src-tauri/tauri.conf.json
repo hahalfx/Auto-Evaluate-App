@@ -14,7 +14,7 @@
       {
         "title": "自动化验证工具",
         "resizable": true,
-        "fullscreen": true
+        "fullscreen": false
       }
     ],
     "security": {

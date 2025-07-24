@@ -197,6 +197,42 @@ pub async fn get_machine_responses(
 }
 
 #[tauri::command]
+pub async fn get_wake_detection_results(
+    state: State<'_, Arc<AppState>>,
+    task_id: u32,
+) -> Result<Vec<crate::services::wake_detection_meta_executor::WakeDetectionResult>, String> {
+    state
+        .db
+        .get_wake_detection_results_by_task(task_id as i64)
+        .await
+        .map_err(|e| format!("获取唤醒检测结果失败: {}", e))
+}
+
+#[tauri::command]
+pub async fn check_wake_detection_results_exist(
+    state: State<'_, Arc<AppState>>,
+    task_id: u32,
+) -> Result<bool, String> {
+    state
+        .db
+        .check_wake_detection_results_exist(task_id as i64)
+        .await
+        .map_err(|e| format!("检查唤醒检测结果失败: {}", e))
+}
+
+#[tauri::command]
+pub async fn delete_wake_detection_results_by_task(
+    state: State<'_, Arc<AppState>>,
+    task_id: u32,
+) -> Result<(), String> {
+    state
+        .db
+        .delete_wake_detection_results_by_task(task_id as i64)
+        .await
+        .map_err(|e| format!("删除唤醒检测结果失败: {}", e))
+}
+
+#[tauri::command]
 pub async fn create_sample(
     state: State<'_, Arc<AppState>>,
     text: String,

@@ -31,6 +31,7 @@ import {
   ClipboardCheck,
   Volume2,
   FileAudio,
+  XCircle,
 } from "lucide-react";
 import {
   Dialog,
@@ -67,6 +68,7 @@ import { useTauriWakewords } from "@/hooks/useTauriWakewords";
 import { useTimingData } from "@/hooks/useTimingData";
 import { TimingDataDisplay } from "@/components/timing-data-display";
 import { TauriAudioApiService } from "@/services/tauri-audio-api";
+import { useWakeDetectionResults } from "@/hooks/useWakeDetectionResults";
 
 // 定义排序类型
 type SortType =
@@ -131,6 +133,8 @@ export default function TaskManage() {
   const { wakewords } = useTauriWakewords();
   const { samples } = useTauriSamples();
   const { timingData } = useTimingData(currentTask?.id);
+  const { results: wakeDetectionResults, stats: wakeDetectionStats, isLoading: wakeDetectionLoading } = useWakeDetectionResults(currentTask?.id);
+
   const handleExportReport = () => {
     currentTask
       ? exportTaskHook() // Use renamed hook
@@ -715,6 +719,86 @@ export default function TaskManage() {
                       <div className="text-center">
                         <FileAudio className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                         <p className="text-sm text-muted-foreground">暂无唤醒词</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ================= Wake Detection Results ================= */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">唤醒检测结果</p>
+                  {wakeDetectionLoading ? (
+                    <div className="flex justify-center items-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      <span className="ml-2">加载唤醒检测结果中...</span>
+                    </div>
+                  ) : wakeDetectionResults.length > 0 ? (
+                    <div className="space-y-4">
+                      {/* 详细结果列表 */}
+                      <div className="border rounded-lg p-4 bg-gray-50/50 dark:bg-gray-800/30">
+                        <ScrollArea className="w-full" style={{ height: '300px' }}>
+                          <div className="space-y-2 pr-4">
+                            {wakeDetectionResults.map((result, index) => {
+                              const wakeWord = wakewords.find((w) => w.id === result.wake_word_id);
+                              return (
+                                <div
+                                  key={index}
+                                  className={`flex items-center justify-between p-4 rounded-lg border shadow-sm transition-all duration-200 ${
+                                    result.success
+                                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                                      : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                                  }`}
+                                >
+                                  <div className="flex items-center space-x-3 flex-1 min-w-0">
+                                    <div className={`flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0 ${
+                                      result.success
+                                        ? 'bg-green-100 dark:bg-green-900/30'
+                                        : 'bg-red-100 dark:bg-red-900/30'
+                                    }`}>
+                                      {result.success ? (
+                                        <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                      ) : (
+                                        <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                                      )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-gray-900 dark:text-gray-100">
+                                        {wakeWord?.text || `唤醒词 #${result.wake_word_id}`}
+                                      </p>
+                                      <div className="flex items-center space-x-4 text-xs text-muted-foreground mt-1">
+                                        <span>置信度: {result.confidence?.toFixed(3) || 'N/A'}</span>
+                                        <span>耗时: {result.duration_ms}ms</span>
+                                        <span>时间: {new Date(result.timestamp).toLocaleString()}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center space-x-2 flex-shrink-0">
+                                    <Badge
+                                      variant={result.success ? "default" : "destructive"}
+                                      className="text-xs"
+                                    >
+                                      {result.success ? "成功" : "失败"}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </ScrollArea>
+                        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                          <div className="flex justify-between items-center text-xs text-muted-foreground">
+                            <span>平均置信度: {wakeDetectionStats.avgConfidence.toFixed(3)}</span>
+                            <span>平均耗时: {wakeDetectionStats.avgDuration.toFixed(0)}ms</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center p-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50/50 dark:bg-gray-800/30">
+                      <div className="text-center">
+                        <Volume2 className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">暂无唤醒检测结果</p>
+                        <p className="text-xs text-gray-400">执行唤醒检测任务后将显示结果</p>
                       </div>
                     </div>
                   )}

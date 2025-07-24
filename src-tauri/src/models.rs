@@ -216,6 +216,18 @@ pub struct MachineResponseRow {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, FromRow)]
+pub struct WakeDetectionResultRow {
+    pub id: i64,
+    pub task_id: i64,
+    pub wake_word_id: i64,
+    pub success: bool,
+    pub confidence: Option<f64>,
+    pub timestamp: i64,
+    pub duration_ms: i64,
+    pub created_at: String,
+}
+
 // 事件结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayAudioEvent {
