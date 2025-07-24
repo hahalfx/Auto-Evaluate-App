@@ -273,6 +273,27 @@ export default function TaskManage() {
     });
   };
 
+  // 处理任务创建完成
+  const handleTaskCreated = async (taskId: number) => {
+    // 关闭创建任务对话框
+    setIsCreateDialogOpen(false);
+    
+    // 重置筛选条件为"全部"，确保新任务能够显示
+    setFilterType("all");
+    
+    // 刷新任务列表
+    await fetchAllTasks();
+    
+    // 添加小延迟确保数据刷新完成
+    setTimeout(() => {
+      // 显示成功提示
+      toast({
+        title: "任务创建成功",
+        description: `任务 #${taskId} 已创建并添加到任务列表中`,
+      });
+    }, 100);
+  };
+
   return (
     <div>
       <div className="h-full bg-background p-8">
@@ -1131,7 +1152,7 @@ export default function TaskManage() {
               <div className="text-3xl font-bold mb-3">新建测试任务</div>
             </DialogTitle>
             <div className="flex">
-              <CreateTask />
+              <CreateTask onTaskCreated={handleTaskCreated} isDialogOpen={isCreateDialogOpen} />
             </div>
           </DialogContent>
         </Dialog>

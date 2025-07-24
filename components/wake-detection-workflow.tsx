@@ -605,7 +605,7 @@ export function WakeDetectionWorkflowComponent() {
                             newStatus.middle_task = TaskStatus.RUNNING;
                         }
 
-                        if(newStatus.middle_task === TaskStatus.COMPLETED){
+                        if (newStatus.middle_task === TaskStatus.COMPLETED) {
                             newStatus.active_task = TaskStatus.RUNNING;
                             newStatus.active_task = TaskStatus.RUNNING;
                         }
@@ -623,7 +623,7 @@ export function WakeDetectionWorkflowComponent() {
         return () => {
             // 标记组件已卸载
             isComponentMounted = false;
-            
+
             // 直接清理事件监听器，模仿 visual-wake-detection 的方式
             if (unlistenMetaUpdate) {
                 unlistenMetaUpdate();
@@ -922,19 +922,19 @@ export function WakeDetectionWorkflowComponent() {
                     description: `已更新模板: ${filename}`,
                     variant: "default",
                 });
-                            } else {
-                    // 添加新模板
-                    setTemplateFiles(prev => {
-                        const newState = [...prev, newTemplate];
-                        console.log("模板文件状态更新 - loadSelectedTemplate:", newState.length);
-                        return newState;
-                    });
-                    toast({
-                        title: "模板加载成功",
-                        description: `已加载模板: ${filename}`,
-                        variant: "default",
-                    });
-                }
+            } else {
+                // 添加新模板
+                setTemplateFiles(prev => {
+                    const newState = [...prev, newTemplate];
+                    console.log("模板文件状态更新 - loadSelectedTemplate:", newState.length);
+                    return newState;
+                });
+                toast({
+                    title: "模板加载成功",
+                    description: `已加载模板: ${filename}`,
+                    variant: "default",
+                });
+            }
 
             // 自动关闭选择器
             closeTemplateSelector();
@@ -1076,8 +1076,8 @@ export function WakeDetectionWorkflowComponent() {
                 return;
             }
 
-            const hasExistingResults = await invoke<boolean>('check_wake_detection_results_exist', { 
-                taskId: currentTask.id 
+            const hasExistingResults = await invoke<boolean>('check_wake_detection_results_exist', {
+                taskId: currentTask.id
             });
 
             if (hasExistingResults) {
@@ -1113,8 +1113,8 @@ export function WakeDetectionWorkflowComponent() {
 
             // 如果需要覆盖，先删除现有结果
             if (shouldOverwrite) {
-                await invoke('delete_wake_detection_results_by_task', { 
-                    taskId: currentTask.id 
+                await invoke('delete_wake_detection_results_by_task', {
+                    taskId: currentTask.id
                 });
                 toast({
                     title: "已删除现有结果",
@@ -1753,8 +1753,13 @@ export function WakeDetectionWorkflowComponent() {
                 <Card className="w-2/5 flex flex-col h-full overflow-hidden max-h-full" style={{ width: '30%', height: '100%' }}>
                     <CardHeader className="flex-shrink-0">
                         <CardTitle className="flex items-center gap-2">
-                            <Settings className="h-5 w-5" />
-                            工作流控制与结果
+                            {currentTaskInfo ? (
+                                <>
+                                    {currentTaskInfo.name}
+                                </>
+                            ) : (
+                                <span className="text-gray-400">无任务信息</span>
+                            )}
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="flex-1 flex flex-col overflow-y-auto">
@@ -2048,11 +2053,10 @@ export function WakeDetectionWorkflowComponent() {
                                     {testResults.map((result, index) => (
                                         <div
                                             key={index}
-                                            className={`flex items-center justify-between p-2 rounded text-sm ${
-                                                result.success
+                                            className={`flex items-center justify-between p-2 rounded text-sm ${result.success
                                                     ? 'bg-green-50 text-green-700 border border-green-200'
                                                     : 'bg-red-50 text-red-700 border border-red-200'
-                                            }`}
+                                                }`}
                                             style={{
                                                 backgroundColor: result.success ? '#f0fdf4' : '#fef2f2',
                                                 color: result.success ? '#15803d' : '#dc2626'
@@ -2243,7 +2247,7 @@ export function WakeDetectionWorkflowComponent() {
                             <p>当前任务已经执行过唤醒检测测试，数据库中已存在测试结果。</p>
                             <p className="mt-2">请选择如何处理：</p>
                         </div>
-                        
+
                         <div className="space-y-3">
                             <div className="p-3 border border-gray-200 rounded-lg bg-gray-50">
                                 <h4 className="font-medium text-gray-900 mb-1">开始并覆盖以前的任务</h4>
@@ -2251,7 +2255,7 @@ export function WakeDetectionWorkflowComponent() {
                                     删除现有的测试结果，重新执行测试。这将完全替换之前的结果。
                                 </p>
                             </div>
-                            
+
                             <div className="p-3 border border-gray-200 rounded-lg bg-blue-50">
                                 <h4 className="font-medium text-blue-900 mb-1">开始但不覆盖以前的任务</h4>
                                 <p className="text-xs text-blue-600">
@@ -2261,20 +2265,20 @@ export function WakeDetectionWorkflowComponent() {
                         </div>
                     </div>
                     <DialogFooter className="flex gap-2">
-                        <Button 
-                            variant="outline" 
+                        <Button
+                            variant="outline"
                             onClick={() => handleOverwriteChoice('cancel')}
                         >
                             取消
                         </Button>
-                        <Button 
-                            variant="destructive" 
+                        <Button
+                            variant="destructive"
                             onClick={() => handleOverwriteChoice('overwrite')}
                         >
                             覆盖现有结果
                         </Button>
-                        <Button 
-                            variant="default" 
+                        <Button
+                            variant="default"
                             onClick={() => handleOverwriteChoice('append')}
                         >
                             追加新结果

@@ -34,7 +34,12 @@ import { open } from '@tauri-apps/plugin-dialog';
 
 // import { create } from "domain"; // Removed unused import
 
-export default function CreateTask() {
+interface CreateTaskProps {
+  onTaskCreated?: (taskId: number) => void;
+  isDialogOpen?: boolean; // 添加对话框状态属性
+}
+
+export default function CreateTask({ onTaskCreated, isDialogOpen }: CreateTaskProps) {
   const [selectedWakeWordIds, setSelectedWakeWordIds] = useState<number[]>([]);
   // const [isCreating, setIsCreating] = useState(false); // Replaced by isCreatingTask from hook
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +55,22 @@ export default function CreateTask() {
     samples: { created: number; ignored: number };
   } | null>(null);
 
+  // 重置所有状态的函数
+  const resetState = () => {
+    setSelectedWakeWordIds([]);
+    setError(null);
+    setSuccess(false);
+    setTaskName("");
+    setImportResult(null);
+    setImportMode('manual');
+  };
+
+  // 监听对话框状态变化，当对话框关闭时重置状态
+  useEffect(() => {
+    if (!isDialogOpen) {
+      resetState();
+    }
+  }, [isDialogOpen]);
 
   const dispatch = useAppDispatch(); // Still needed for setSelectedSamples
   const router = useRouter();
@@ -106,20 +127,11 @@ export default function CreateTask() {
 
       if (newTaskId) {
         setSuccess(true);
-        // Toast is handled by the hook
-        // toast({
-        //   title: "任务创建成功",
-        //   description: `已成功创建任务 #${newTaskId}`,
-        // });
         
-        dispatch(setSelectedSamples([])); // Clear selected samples
-        setTaskName(""); // Clear task name
-        setSelectedWakeWordIds([]); // Clear selected wake words
-        
-        // Optional: Add a small delay before redirecting to allow user to see success message
-        setTimeout(() => {
-          router.push("/taskmanage");
-        }, 1500);
+        // 调用回调函数通知父组件任务创建完成
+        if (onTaskCreated) {
+          onTaskCreated(newTaskId);
+        }
 
       } else {
         // Error toast is handled by the hook, but we can set local error if needed
@@ -244,13 +256,10 @@ export default function CreateTask() {
       // 刷新任务列表
       await fetchAllTasks();
       
-      // 清空表单
-      setTaskName("");
-      
-      // 延迟跳转
-      setTimeout(() => {
-        router.push("/taskmanage");
-      }, 3000); // 增加延迟时间，让用户看到导入结果
+      // 调用回调函数通知父组件任务创建完成
+      if (onTaskCreated) {
+        onTaskCreated(result.task_id);
+      }
 
     } catch (err: any) {
       console.error("导入任务包错误:", err);
