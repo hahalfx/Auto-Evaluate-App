@@ -377,6 +377,7 @@ export function WakeDetectionWorkflowComponent() {
             console.log("ROI数据:", roiRef.current);
             console.log("处理后的ROI:", roiRef.current ? roiRef.current.map(val => Math.round(val)) : undefined);
 
+            
             await invoke('start_visual_wake_detection_with_data', {
                 templateData,
                 roi: roiRef.current ? roiRef.current.map(val => Math.round(val)) : undefined
@@ -748,14 +749,19 @@ export function WakeDetectionWorkflowComponent() {
 
             // 根据是否有ROI来决定截取区域
             if (roi && roi[2] > 0 && roi[3] > 0) {
-                // 验证ROI边界
+                // 验证ROI边界 - 使用视频原始尺寸
                 const videoWidth = video.videoWidth;
                 const videoHeight = video.videoHeight;
+
+                console.log('视频原始尺寸:', videoWidth, 'x', videoHeight);
+                console.log('ROI原始坐标:', roi);
 
                 const clampedX = Math.max(0, Math.min(roi[0], videoWidth - 1));
                 const clampedY = Math.max(0, Math.min(roi[1], videoHeight - 1));
                 const clampedWidth = Math.min(roi[2], videoWidth - clampedX);
                 const clampedHeight = Math.min(roi[3], videoHeight - clampedY);
+
+                console.log('裁剪后ROI:', clampedX, clampedY, clampedWidth, clampedHeight);
 
                 if (clampedWidth > 0 && clampedHeight > 0) {
                     canvas.width = clampedWidth;
@@ -1342,11 +1348,16 @@ export function WakeDetectionWorkflowComponent() {
         });
     };
 
-    // 鼠标事件处理
+    // 鼠标事件处理 - 用于ROI坐标转换
     const getMousePos = useCallback((canvasElement: HTMLCanvasElement, event: React.MouseEvent<HTMLCanvasElement>) => {
         const rect = canvasElement.getBoundingClientRect();
-        const scaleX = canvasElement.width / rect.width;
-        const scaleY = canvasElement.height / rect.height;
+        const video = videoRef.current;
+        if (!video) return { x: 0, y: 0 };
+        
+        // 计算从显示坐标到视频原始坐标的转换
+        const scaleX = video.videoWidth / rect.width;
+        const scaleY = video.videoHeight / rect.height;
+        
         return {
             x: (event.clientX - rect.left) * scaleX,
             y: (event.clientY - rect.top) * scaleY,
@@ -1357,12 +1368,22 @@ export function WakeDetectionWorkflowComponent() {
         if (!isSelectingROI) return;
 
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        const video = videoRef.current;
+        if (!canvas || !video) return;
 
-        const pos = getMousePos(canvas, event);
+        // 获取容器尺寸并计算视频显示区域
+        const containerRect = canvas.parentElement?.getBoundingClientRect();
+        if (!containerRect) return;
+
+        const canvasRect = canvas.getBoundingClientRect();
+        const mouseX = event.clientX - canvasRect.left;
+        const mouseY = event.clientY - canvasRect.top;
+
+        // 直接使用鼠标坐标，后续在drawROI中处理坐标转换
+        const pos = { x: mouseX, y: mouseY };
         setRoiStartPoint(pos);
         setIsDrawing(pos);
-    }, [isSelectingROI, getMousePos]);
+    }, [isSelectingROI]);
 
     const handleMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
         if (!isSelectingROI || !roiStartPoint) return;
@@ -1370,25 +1391,71 @@ export function WakeDetectionWorkflowComponent() {
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        const pos = getMousePos(canvas, event);
+        const canvasRect = canvas.getBoundingClientRect();
+        const mouseX = event.clientX - canvasRect.left;
+        const mouseY = event.clientY - canvasRect.top;
+
+        const pos = { x: mouseX, y: mouseY };
         setIsDrawing(pos);
-    }, [isSelectingROI, roiStartPoint, getMousePos]);
+    }, [isSelectingROI, roiStartPoint]);
 
     const handleMouseUp = useCallback(() => {
         if (!isSelectingROI || !roiStartPoint || !isDrawing) return;
 
-        const x = Math.min(roiStartPoint.x, isDrawing.x);
-        const y = Math.min(roiStartPoint.y, isDrawing.y);
-        const width = Math.abs(isDrawing.x - roiStartPoint.x);
-        const height = Math.abs(isDrawing.y - roiStartPoint.y);
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas) return;
 
-        if (width > 10 && height > 10) {
-            setRoi([Math.round(x), Math.round(y), Math.round(width), Math.round(height)]);
-            toast({
-                title: "ROI设置成功",
-                description: `区域大小: ${Math.round(width)}x${Math.round(height)}`,
-                variant: "default",
-            });
+        // 获取容器尺寸
+        const containerRect = canvas.parentElement?.getBoundingClientRect();
+        if (!containerRect) return;
+
+        const canvasWidth = containerRect.width;
+        const canvasHeight = containerRect.height;
+
+        // 计算视频显示区域（考虑object-fit: contain）
+        const containerAspect = canvasWidth / canvasHeight;
+        const videoAspect = video.videoWidth / video.videoHeight;
+
+        let displayWidth, displayHeight, offsetX = 0, offsetY = 0;
+
+        if (containerAspect > videoAspect) {
+            displayHeight = canvasHeight;
+            displayWidth = (video.videoWidth / video.videoHeight) * displayHeight;
+            offsetX = (canvasWidth - displayWidth) / 2;
+        } else {
+            displayWidth = canvasWidth;
+            displayHeight = (video.videoHeight / video.videoWidth) * displayWidth;
+            offsetY = (canvasHeight - displayHeight) / 2;
+        }
+
+        const scaleX = video.videoWidth / displayWidth;
+        const scaleY = video.videoHeight / displayHeight;
+
+        // 计算ROI在视频原始坐标系中的位置
+        const roiX1 = Math.max(0, Math.min((Math.min(roiStartPoint.x, isDrawing.x) - offsetX) * scaleX, video.videoWidth));
+        const roiY1 = Math.max(0, Math.min((Math.min(roiStartPoint.y, isDrawing.y) - offsetY) * scaleY, video.videoHeight));
+        const roiX2 = Math.max(0, Math.min((Math.max(roiStartPoint.x, isDrawing.x) - offsetX) * scaleX, video.videoWidth));
+        const roiY2 = Math.max(0, Math.min((Math.max(roiStartPoint.y, isDrawing.y) - offsetY) * scaleY, video.videoHeight));
+
+        const roiWidth = roiX2 - roiX1;
+        const roiHeight = roiY2 - roiY1;
+
+        if (roiWidth > 10 && roiHeight > 10) {
+            // 确保ROI不超出视频边界
+            const clampedX = Math.max(0, Math.min(roiX1, video.videoWidth - 1));
+            const clampedY = Math.max(0, Math.min(roiY1, video.videoHeight - 1));
+            const clampedWidth = Math.min(roiWidth, video.videoWidth - clampedX);
+            const clampedHeight = Math.min(roiHeight, video.videoHeight - clampedY);
+
+            if (clampedWidth > 0 && clampedHeight > 0) {
+                setRoi([Math.round(clampedX), Math.round(clampedY), Math.round(clampedWidth), Math.round(clampedHeight)]);
+                toast({
+                    title: "ROI设置成功",
+                    description: `区域大小: ${Math.round(clampedWidth)}x${Math.round(clampedHeight)}`,
+                    variant: "default",
+                });
+            }
         }
 
         setIsSelectingROI(false);
@@ -1407,39 +1474,84 @@ export function WakeDetectionWorkflowComponent() {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        // 确保画布尺寸与视频匹配
-        if (canvas.width !== video.videoWidth) canvas.width = video.videoWidth;
-        if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
+        // 获取容器尺寸
+        const containerRect = canvas.parentElement?.getBoundingClientRect();
+        if (!containerRect) return;
+
+        // 确保canvas尺寸与显示尺寸匹配
+        canvas.width = containerRect.width;
+        canvas.height = containerRect.height;
 
         // 清除画布
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 绘制已确定的ROI
+        // 计算视频在容器中的实际显示尺寸（考虑object-fit: contain）
+        const containerAspect = canvas.width / canvas.height;
+        const videoAspect = video.videoWidth / video.videoHeight;
+
+        let displayWidth, displayHeight, offsetX = 0, offsetY = 0;
+
+        if (containerAspect > videoAspect) {
+            // 容器更宽，以高度为准
+            displayHeight = canvas.height;
+            displayWidth = (video.videoWidth / video.videoHeight) * displayHeight;
+            offsetX = (canvas.width - displayWidth) / 2;
+        } else {
+            // 容器更高，以宽度为准
+            displayWidth = canvas.width;
+            displayHeight = (video.videoHeight / video.videoWidth) * displayWidth;
+            offsetY = (canvas.height - displayHeight) / 2;
+        }
+
+        // 计算缩放比例
+        const scaleX = displayWidth / video.videoWidth;
+        const scaleY = displayHeight / video.videoHeight;
+
+        // 绘制已确定的ROI（缩放到显示尺寸）
         if (roi) {
+            const displayX = offsetX + (roi[0] * scaleX);
+            const displayY = offsetY + (roi[1] * scaleY);
+            const displayWidth = roi[2] * scaleX;
+            const displayHeight = roi[3] * scaleY;
+
             ctx.strokeStyle = "#00ff00";
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 2;
             ctx.setLineDash([]);
-            ctx.strokeRect(roi[0], roi[1], roi[2], roi[3]);
+            ctx.strokeRect(displayX, displayY, displayWidth, displayHeight);
 
             // 添加ROI标签
             ctx.fillStyle = "rgba(0, 255, 128, 0.8)";
-            ctx.font = "14px Arial";
-            ctx.fillText("ROI", roi[0] + 5, roi[1] + 20);
+            ctx.font = "12px Arial";
+            ctx.fillText("ROI", displayX + 5, displayY + 15);
         }
 
-        // 绘制正在选择的ROI
+        // 绘制正在选择的ROI（考虑视频实际显示区域）
         if (isSelectingROI && roiStartPoint && isDrawing) {
-            ctx.strokeStyle = "#ffff00";
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
+            // 将鼠标坐标转换到视频实际显示区域
+            const mouseToVideoX = (x: number) => Math.max(0, Math.min((x - offsetX) / scaleX, video.videoWidth));
+            const mouseToVideoY = (y: number) => Math.max(0, Math.min((y - offsetY) / scaleY, video.videoHeight));
 
-            const x = Math.min(roiStartPoint.x, isDrawing.x);
-            const y = Math.min(roiStartPoint.y, isDrawing.y);
-            const width = Math.abs(isDrawing.x - roiStartPoint.x);
-            const height = Math.abs(isDrawing.y - roiStartPoint.y);
+            // 计算ROI的原始坐标
+            const videoX1 = mouseToVideoX(Math.min(roiStartPoint.x, isDrawing.x));
+            const videoY1 = mouseToVideoY(Math.min(roiStartPoint.y, isDrawing.y));
+            const videoX2 = mouseToVideoX(Math.max(roiStartPoint.x, isDrawing.x));
+            const videoY2 = mouseToVideoY(Math.max(roiStartPoint.y, isDrawing.y));
 
-            ctx.strokeRect(x, y, width, height);
-            ctx.setLineDash([]);
+            const videoWidth = videoX2 - videoX1;
+            const videoHeight = videoY2 - videoY1;
+
+            if (videoWidth > 0 && videoHeight > 0) {
+                const displayX = offsetX + (videoX1 * scaleX);
+                const displayY = offsetY + (videoY1 * scaleY);
+                const displayWidth = videoWidth * scaleX;
+                const displayHeight = videoHeight * scaleY;
+
+                ctx.strokeStyle = "#ffff00";
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.strokeRect(displayX, displayY, displayWidth, displayHeight);
+                ctx.setLineDash([]);
+            }
         }
     }, [roi, isSelectingROI, roiStartPoint, isDrawing]);
 
@@ -1488,15 +1600,15 @@ export function WakeDetectionWorkflowComponent() {
                 canvas.width = videoRef.current.videoWidth;
                 canvas.height = videoRef.current.videoHeight;
 
-                // 应用ROI裁剪
+                // 应用ROI裁剪 - 使用视频原始坐标
                 if (roi && roi[2] > 0 && roi[3] > 0) {
-                    // 验证ROI边界
                     const videoWidth = videoRef.current.videoWidth;
                     const videoHeight = videoRef.current.videoHeight;
 
-                    console.log(`视频尺寸: ${videoWidth}x${videoHeight}, ROI: [${roi[0]}, ${roi[1]}, ${roi[2]}, ${roi[3]}]`);
+                    console.log('视频原始尺寸:', videoWidth, 'x', videoHeight);
+                    console.log('ROI原始坐标:', roi);
 
-                    // 确保ROI不超出视频边界
+                    // 直接使用ROI的原始坐标，不需要缩放转换
                     const clampedX = Math.max(0, Math.min(roi[0], videoWidth - 1));
                     const clampedY = Math.max(0, Math.min(roi[1], videoHeight - 1));
                     const clampedWidth = Math.min(roi[2], videoWidth - clampedX);
@@ -1505,17 +1617,24 @@ export function WakeDetectionWorkflowComponent() {
                     if (clampedWidth > 0 && clampedHeight > 0) {
                         canvas.width = clampedWidth;
                         canvas.height = clampedHeight;
+                        
+                        // 直接从视频原始坐标裁剪
                         ctx.drawImage(
                             videoRef.current,
                             clampedX, clampedY, clampedWidth, clampedHeight,
                             0, 0, clampedWidth, clampedHeight
                         );
-                        console.log(`成功裁剪ROI: [${clampedX}, ${clampedY}, ${clampedWidth}, ${clampedHeight}]`);
+                        console.log('成功裁剪ROI:', clampedX, clampedY, clampedWidth, clampedHeight);
                     } else {
                         console.warn("ROI区域无效，使用完整图像");
+                        canvas.width = videoWidth;
+                        canvas.height = videoHeight;
                         ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
                     }
                 } else {
+                    // 没有ROI，使用完整视频帧
+                    canvas.width = videoRef.current.videoWidth;
+                    canvas.height = videoRef.current.videoHeight;
                     ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
                 }
 
@@ -1700,7 +1819,7 @@ export function WakeDetectionWorkflowComponent() {
                             <canvas
                                 ref={canvasRef}
                                 className="absolute top-0 left-0 w-full h-full pointer-events-auto cursor-crosshair"
-                                style={{ width: '100%', height: '100%' }}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                                 onMouseDown={handleMouseDown}
                                 onMouseMove={handleMouseMove}
                                 onMouseUp={handleMouseUp}

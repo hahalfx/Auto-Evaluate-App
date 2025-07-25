@@ -17,7 +17,8 @@ import {
   TrendingUp,
   RefreshCw,
   BarChart3,
-  Activity
+  Activity,
+  Loader2
 } from "lucide-react";
 import { TauriApiService } from '@/services/tauri-api';
 import { useToast } from '@/components/ui/use-toast';
@@ -28,6 +29,7 @@ export default function DashBoard() {
   const [samples, setSamples] = useState<TestSample[]>([]);
   const [wakeWords, setWakeWords] = useState<WakeWord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false); // 添加mounted状态
   const [stats, setStats] = useState({
     totalTasks: 0,
     completedTasks: 0,
@@ -53,8 +55,13 @@ export default function DashBoard() {
   
   const { toast } = useToast();
 
-  // 检查是否在 Tauri 环境中
-  const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
+  // 在客户端mount后检查Tauri环境
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // 检查是否在 Tauri 环境中 - 只在客户端执行
+  const isTauri = mounted && typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
 
   const loadData = async () => {
     if (!isTauri) return;
@@ -174,6 +181,19 @@ export default function DashBoard() {
       loadData();
     }
   }, [isTauri]);
+
+  // 在组件mount之前，显示loading状态避免hydration错误
+  if (!mounted) {
+    return (
+      <div className="w-full min-h-screen bg-background p-6 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground animate-spin" />
+          <h2 className="text-xl font-semibold mb-2">正在加载...</h2>
+          <p className="text-muted-foreground">正在初始化仪表板</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isTauri) {
     return (
