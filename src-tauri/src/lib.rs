@@ -3,6 +3,8 @@ mod db;
 mod state;
 mod services;
 mod commands;
+mod config;
+mod config_manager;
 
 use state::AppState;
 use std::sync::Arc;
@@ -10,7 +12,10 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // 加载环境变量
+    // 初始化配置系统
+    config_manager::init_config_system();
+    
+    // 加载环境变量（向后兼容）
     if let Err(e) = dotenv::dotenv() {
         log::warn!("无法加载.env文件: {}", e);
     } else {
@@ -62,6 +67,8 @@ pub fn run() {
                     return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("数据库初始化失败: {}", e))));
                 }
             }
+
+
 
 
             
@@ -120,6 +127,17 @@ pub fn run() {
             commands::start_wake_detection_workflow,
             commands::delete_template_from_folder,
             commands::import_task_package,
+            // Configuration commands
+            config_manager::get_app_config,
+            config_manager::update_app_config,
+            config_manager::reset_app_config,
+            config_manager::get_config_directory,
+            config_manager::export_config,
+            config_manager::import_config,
+            config_manager::validate_config,
+            config_manager::get_config_value,
+            config_manager::set_config_value,
+            config_manager::migrate_from_env,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -8,7 +8,7 @@ use crate::state::AppState;
 use chrono::Utc;
 use std::sync::Arc;
 use tauri::ipc::Channel;
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 use tokio::time::{timeout, Duration};
 
 #[tauri::command]
@@ -949,22 +949,26 @@ pub async fn push_video_frame_visual(
     Ok(())
 }
 
-/// 保存模板图像到templates文件夹
+/// 保存模板图像到app_local_data_dir/template_images文件夹
 #[tauri::command]
 pub async fn save_template_image(
     filename: String,
     image_data: String, // Base64编码的图像数据
+    app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     use std::fs;
     use std::path::Path;
     use base64::prelude::*;
 
-    // 创建templates目录（如果不存在）
-    // 使用相对路径指向主目录的public/templates
-    let templates_dir = Path::new("../public/templates");
+    // 获取应用本地数据目录
+    let app_local_data_dir = app_handle.path().app_local_data_dir()
+        .map_err(|e| format!("无法获取应用本地数据目录: {}", e))?;
+    
+    // 创建template_images目录（如果不存在）
+    let templates_dir = app_local_data_dir.join("template_images");
     if !templates_dir.exists() {
-        fs::create_dir_all(templates_dir)
-            .map_err(|e| format!("创建templates目录失败: {}", e))?;
+        fs::create_dir_all(&templates_dir)
+            .map_err(|e| format!("创建template_images目录失败: {}", e))?;
     }
 
     // 构建完整的文件路径
@@ -983,14 +987,18 @@ pub async fn save_template_image(
     Ok(())
 }
 
-/// 获取templates文件夹中的所有模板文件
+/// 获取template_images文件夹中的所有模板文件
 #[tauri::command]
-pub async fn get_templates_from_folder() -> Result<Vec<String>, String> {
+pub async fn get_templates_from_folder(app_handle: tauri::AppHandle) -> Result<Vec<String>, String> {
     use std::fs;
     use std::path::Path;
 
-    // 使用相对路径指向主目录的public/templates
-    let templates_dir = Path::new("../public/templates");
+    // 获取应用本地数据目录
+    let app_local_data_dir = app_handle.path().app_local_data_dir()
+        .map_err(|e| format!("无法获取应用本地数据目录: {}", e))?;
+    
+    // 使用template_images目录
+    let templates_dir = app_local_data_dir.join("template_images");
     
     if !templates_dir.exists() {
         return Ok(Vec::new());
@@ -1018,7 +1026,7 @@ pub async fn get_templates_from_folder() -> Result<Vec<String>, String> {
             }
         }
         Err(e) => {
-            return Err(format!("读取templates目录失败: {}", e));
+            return Err(format!("读取template_images目录失败: {}", e));
         }
     }
 
@@ -1027,15 +1035,19 @@ pub async fn get_templates_from_folder() -> Result<Vec<String>, String> {
     Ok(template_files)
 }
 
-/// 从templates文件夹加载指定模板的Base64数据
+/// 从template_images文件夹加载指定模板的Base64数据
 #[tauri::command]
-pub async fn load_template_from_folder(filename: String) -> Result<String, String> {
+pub async fn load_template_from_folder(filename: String, app_handle: tauri::AppHandle) -> Result<String, String> {
     use std::fs;
     use std::path::Path;
     use base64::prelude::*;
 
-    // 使用相对路径指向主目录的public/templates
-    let templates_dir = Path::new("../public/templates");
+    // 获取应用本地数据目录
+    let app_local_data_dir = app_handle.path().app_local_data_dir()
+        .map_err(|e| format!("无法获取应用本地数据目录: {}", e))?;
+    
+    // 使用template_images目录
+    let templates_dir = app_local_data_dir.join("template_images");
     let file_path = templates_dir.join(&filename);
 
     if !file_path.exists() {
@@ -1053,11 +1065,15 @@ pub async fn load_template_from_folder(filename: String) -> Result<String, Strin
 }
 
 #[tauri::command]
-pub async fn delete_template_from_folder(filename: String) -> Result<(), String> {
+pub async fn delete_template_from_folder(filename: String, app_handle: tauri::AppHandle) -> Result<(), String> {
     use std::path::Path;
     
-    // 使用相对路径指向主目录的public/templates
-    let templates_dir = Path::new("../public/templates");
+    // 获取应用本地数据目录
+    let app_local_data_dir = app_handle.path().app_local_data_dir()
+        .map_err(|e| format!("无法获取应用本地数据目录: {}", e))?;
+    
+    // 使用template_images目录
+    let templates_dir = app_local_data_dir.join("template_images");
     let file_path = templates_dir.join(&filename);
 
     if file_path.exists() && file_path.is_file() {
@@ -1401,3 +1417,5 @@ fn read_excel_file(file_path: &Path) -> Result<Vec<(String, String)>, String> {
     
     Ok(data)
 }
+
+

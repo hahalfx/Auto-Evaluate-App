@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::Sha256;
 use std::cell::RefCell;
-use std::env;
 use std::error::Error;
 // Add necessary imports for threading
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -437,10 +436,11 @@ impl Task for AsrTask {
                         //控制ocr任务同步开始
                         // app_handle.emit("ocr_event", "start".to_string()).ok();
 
-                        dotenv::dotenv().ok();
-                        let appid = env::var("APPID").map_err(|e| e.to_string())?;
-                        let api_key = env::var("API_KEY").map_err(|e| e.to_string())?;
-                        let api_secret = env::var("API_SECRET").map_err(|e| e.to_string())?;
+                        let config = crate::config::AppConfig::load()
+                            .map_err(|e| anyhow::anyhow!("Failed to load configuration: {}", e))?;  
+                        let appid = config.xunfei.appid;
+                        let api_key = config.xunfei.api_key;
+                        let api_secret = config.xunfei.api_secret;
 
                         let (audio_sender, audio_receiver) = mpsc::channel::<Vec<f32>>(100);
 
@@ -477,9 +477,9 @@ impl Task for AsrTask {
                                 match msg {
                                     Ok(Message::Text(text)) => {
                                         let resp: ResponseFrame = serde_json::from_str(&text)?;
-                                        if resp.code != 0 { 
+                                        if resp.code != 0 {
                                             println!("ASR Server error {}: {}", resp.code, resp.message);
-                                            return Err(format!("Server error {}: {}", resp.code, resp.message).into()); 
+                                            return Err(format!("Server error {}: {}", resp.code, resp.message).into());
                                         }
                                         if let Some(data) = resp.data {
                                             if let Some(result) = data.result {

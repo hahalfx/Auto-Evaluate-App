@@ -1,4 +1,5 @@
 use crate::models::*; // Assuming your model definitions are here
+use crate::config::AppConfig;
 use crate::services::asr_task::AsrTaskOutput;
 use crate::services::workflow::{ControlSignal, Task, WorkflowContext};
 use anyhow::{anyhow, Result};
@@ -7,7 +8,6 @@ use chrono::Utc;
 use reqwest::{self, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::env;
 use std::error::Error;
 use std::sync::Arc;
 use tauri::Emitter;
@@ -68,9 +68,6 @@ pub struct analysis_task {
 
 impl analysis_task {
     pub fn new(id: String, dependency_id: String, http_client: Client) -> Self {
-        // It's a good practice to load environment variables once at startup,
-        // but loading them here is also fine for this specific task.
-        dotenv::dotenv().expect("Failed to load .env file");
         Self {
             id,
             dependency_id,
@@ -87,8 +84,13 @@ impl analysis_task {
     ) -> Result<EvaluationResult> {
         log::info!("Calling OpenRouter API for analysis...");
 
-        let api_key = env::var("OPENROUTER_API_KEY")
-            .map_err(|_| anyhow!("OPENROUTER_API_KEY not found in environment"))?;
+        let config = AppConfig::load()
+            .map_err(|e| anyhow!("Failed to load configuration: {}", e))?;
+        
+        let api_key = config.openrouter.api_key;
+        if api_key.is_empty() {
+            return Err(anyhow!("OpenRouter API key not configured"));
+        }
 
         // 1. Construct the detailed prompt
         let prompt_content = format!(

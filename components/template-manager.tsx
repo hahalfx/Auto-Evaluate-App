@@ -307,7 +307,7 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
         ? templateName.trim()
         : `${templateName.trim()}.png`;
 
-      // 保存文件到templates文件夹
+      // 保存文件到template_images文件夹
       await invoke('save_template_image', {
         filename,
         imageData: capturedImageData
