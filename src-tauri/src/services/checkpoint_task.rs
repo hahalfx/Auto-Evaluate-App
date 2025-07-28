@@ -3,14 +3,15 @@ use tokio::sync::watch;
 use std::error::Error;
 use crate::services::workflow::{ControlSignal, Task, WorkflowContext};
 
-pub struct middle_task {
+pub struct checkpoint_task {
     pub id: String,
+    pub active_task_id: Option<String>,
 }
 
 // 该任务的作用是作为中间空节点任务，用于等待两个任务的完成再继续下面任务的执行
 
 #[async_trait]
-impl Task for middle_task {
+impl Task for checkpoint_task {
     fn id(&self) -> String {
         self.id.clone()
     }
@@ -23,6 +24,9 @@ impl Task for middle_task {
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
 
         print!("前面两个任务完成开始执行中间任务");
+        //从context中获取唤醒识别任务结果
+        
+        
         
         // 主控制循环 - 持续检查控制信号
         loop {

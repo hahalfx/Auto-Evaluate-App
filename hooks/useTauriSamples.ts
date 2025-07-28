@@ -114,6 +114,81 @@ export function useTauriSamples() {
     }
   }, [fetchAllSamples, toast]);
 
+  const deleteSamplesBatch = useCallback(async (sampleIds: number[], safeDelete: boolean = false) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      let result;
+      if (safeDelete) {
+        result = await TauriApiService.deleteSamplesBatchSafe(sampleIds);
+      } else {
+        result = await TauriApiService.deleteSamplesBatch(sampleIds);
+      }
+      
+      await fetchAllSamples(); // Refresh
+      
+      // Update selected IDs - remove successfully deleted ones
+      const newSelectedIds = internalSelectedSampleIds.filter(id => !result.successfully_deleted_ids.includes(id));
+      setInternalSelectedSampleIds(newSelectedIds);
+      dispatch(setSelectedSamplesAction(newSelectedIds));
+      
+      // Show appropriate toast message
+      const { successfully_deleted_ids, failed_ids, skipped_ids } = result;
+      let message = `成功删除 ${successfully_deleted_ids.length} 个样本`;
+      
+      if (failed_ids.length > 0) {
+        message += `，${failed_ids.length} 个删除失败`;
+      }
+      
+      if (skipped_ids.length > 0) {
+        message += `，${skipped_ids.length} 个因被任务使用而跳过`;
+      }
+      
+      if (successfully_deleted_ids.length > 0) {
+        toast({
+          title: "批量删除完成",
+          description: message,
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "批量删除失败",
+          description: message,
+        });
+      }
+      
+      return result;
+    } catch (err: any) {
+      const errorMessage = typeof err === 'string' ? err : err.message || '批量删除样本时发生未知错误。';
+      setError(errorMessage);
+      toast({
+        variant: "destructive",
+        title: "批量删除失败",
+        description: errorMessage,
+      });
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchAllSamples, toast, internalSelectedSampleIds, dispatch]);
+
+  const precheckSamples = useCallback(async (texts: string[]): Promise<{ new_texts: string[]; duplicate_texts: string[] }> => {
+    setError(null);
+    try {
+      const result = await TauriApiService.precheckSamples(texts);
+      return result;
+    } catch (err: any) {
+      const errorMessage = typeof err === 'string' ? err : err.message || '预检查样本失败';
+      setError(errorMessage);
+      toast({
+        variant: "destructive",
+        title: "预检查失败",
+        description: errorMessage,
+      });
+      throw err;
+    }
+  }, [toast]);
+
   const importSamplesFromExcel = useCallback(async (file: File): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
@@ -257,8 +332,10 @@ export function useTauriSamples() {
     createSample,
     createSamplesBatch,
     deleteSample,
+    deleteSamplesBatch,
     setSelectedSampleIds: updateSelectedSampleIds, // Expose the new updater function
     importSamplesFromExcel,
+    precheckSamples,
     getSamplesByTaskId,
     updateTaskSampleAssociations,
 

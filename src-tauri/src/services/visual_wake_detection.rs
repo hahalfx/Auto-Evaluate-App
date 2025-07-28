@@ -27,7 +27,7 @@ impl VisualWakeDetector {
     pub fn new() -> Self {
         Self {
             templates: Vec::new(),
-            threshold: 0.5, // 降低阈值，更适合实际场景
+            threshold: 0.6, // 降低阈值，更适合实际场景
             roi: None,
             is_calibrated: false,
             last_process_time: std::time::Instant::now(),

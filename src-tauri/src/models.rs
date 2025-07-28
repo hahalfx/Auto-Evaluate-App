@@ -225,6 +225,7 @@ pub struct WakeDetectionResultRow {
     pub confidence: Option<f64>,
     pub timestamp: i64,
     pub duration_ms: i64,
+    pub asr_result: Option<String>,
     pub created_at: String,
 }
 

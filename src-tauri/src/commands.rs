@@ -451,6 +451,74 @@ pub async fn delete_sample_safe(
         .map_err(|e| format!("安全删除样本 {} 失败: {}", sample_id, e))
 }
 
+#[derive(serde::Serialize)]
+pub struct BatchDeleteResult {
+    successfully_deleted_ids: Vec<u32>,
+    failed_ids: Vec<u32>,
+    skipped_ids: Vec<u32>,
+}
+
+#[tauri::command]
+pub async fn delete_samples_batch(
+    state: State<'_, Arc<AppState>>,
+    sample_ids: Vec<u32>,
+) -> Result<BatchDeleteResult, String> {
+    let sample_ids_i64: Vec<i64> = sample_ids.into_iter().map(|id| id as i64).collect();
+    let (successful, failed) = state
+        .db
+        .delete_samples_batch(sample_ids_i64)
+        .await
+        .map_err(|e| format!("批量删除样本失败: {}", e))?;
+    
+    Ok(BatchDeleteResult {
+        successfully_deleted_ids: successful.into_iter().map(|id| id as u32).collect(),
+        failed_ids: failed.into_iter().map(|id| id as u32).collect(),
+        skipped_ids: Vec::new(),
+    })
+}
+
+#[tauri::command]
+pub async fn delete_samples_batch_safe(
+    state: State<'_, Arc<AppState>>,
+    sample_ids: Vec<u32>,
+) -> Result<BatchDeleteResult, String> {
+    let sample_ids_i64: Vec<i64> = sample_ids.into_iter().map(|id| id as i64).collect();
+    let (successful, failed, skipped) = state
+        .db
+        .delete_samples_batch_safe(sample_ids_i64)
+        .await
+        .map_err(|e| format!("安全批量删除样本失败: {}", e))?;
+    
+    Ok(BatchDeleteResult {
+        successfully_deleted_ids: successful.into_iter().map(|id| id as u32).collect(),
+        failed_ids: failed.into_iter().map(|id| id as u32).collect(),
+        skipped_ids: skipped.into_iter().map(|id| id as u32).collect(),
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct PrecheckResult {
+    new_texts: Vec<String>,
+    duplicate_texts: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn precheck_samples(
+    state: State<'_, Arc<AppState>>,
+    texts: Vec<String>,
+) -> Result<PrecheckResult, String> {
+    let (new_texts, duplicate_texts) = state
+        .db
+        .precheck_samples(texts)
+        .await
+        .map_err(|e| format!("预检查样本失败: {}", e))?;
+    
+    Ok(PrecheckResult {
+        new_texts,
+        duplicate_texts,
+    })
+}
+
 #[tauri::command]
 pub async fn get_samples_by_task_id(
     state: State<'_, Arc<AppState>>,
@@ -589,12 +657,16 @@ pub async fn stop_ocr_session(state: State<'_, Arc<AppState>>) -> Result<(), Str
 pub async fn new_meta_workflow(
     state: State<'_, Arc<AppState>>,
     app_handle: tauri::AppHandle,
+    wake_word_id: Option<u32>, // 可选的唤醒词ID，如果没有提供则使用任务的第一个
+    template_data: Option<Vec<(String, String)>>, // 可选的模板数据
+    frame_rate: Option<u32>, // 可选的帧率，默认10
+    threshold: Option<f64>, // 可选的阈值，默认0.5
+    max_detection_time_secs: Option<u64>, // 可选的最大检测时间，默认30秒
 ) -> Result<(), String> {
     // 1. 获取任务ID
     let task_id = state.current_task_id.read().await.ok_or("没有设置当前任务ID")?;
 
     // 2. 从数据库一次性获取所有需要的数据
-    // [FIX] Converted anyhow::Error to String
     let task_samples = state.db.get_samples_by_task_id(task_id)
         .await
         .map_err(|e| e.to_string())?;
@@ -603,46 +675,61 @@ pub async fn new_meta_workflow(
         return Err("任务样本列表为空".to_string());
     }
 
-    // [FIX] Converted anyhow::Error to String
     let task = state.db.get_task_by_id(task_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or("任务不存在")?;
     
-    // [FIX] Converted anyhow::Error to String
-    let wakeword = if let Some(first_wake_word_id) = task.wake_word_ids.first() {
-        state.db.get_wake_word_by_id(*first_wake_word_id)
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or("唤醒词不存在")?
+    // 3. 选择唤醒词
+    let selected_wake_word_id = if let Some(wid) = wake_word_id {
+        // 验证提供的唤醒词ID是否属于当前任务
+        if !task.wake_word_ids.contains(&wid) {
+            return Err("指定的唤醒词不属于当前任务".to_string());
+        }
+        wid
+    } else if let Some(first_wake_word_id) = task.wake_word_ids.first() {
+        *first_wake_word_id
     } else {
         return Err("任务没有关联的唤醒词".to_string());
     };
 
-    // 3. 创建主工作流
+    let wakeword = state.db.get_wake_word_by_id(selected_wake_word_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("唤醒词不存在")?;
+
+    // 4. 创建视觉配置
+    let visual_config = VisualWakeConfig {
+        template_data: template_data.unwrap_or_else(|| vec![]), // 如果没有提供模板，使用空列表
+        frame_rate: frame_rate.unwrap_or(10),
+        threshold: threshold.unwrap_or(0.5),
+        max_detection_time_secs: Some(max_detection_time_secs.unwrap_or(5)), // 提供默认值5秒
+    };
+
+    // 5. 创建主工作流
     let (mut main_workflow, _) = Workflow::new();
 
-    // 4. 创建元任务，将所有数据和依赖注入
+    // 6. 创建元任务，传入视觉配置
     let multi_sample_executor = meta_task_executor::new(
         &format!("multi_sample_task_{}", task_id),
         task_id,
         task_samples,
         wakeword,
-        state.inner().clone(), // 传入 Arc<AppState> 的克隆
+        visual_config, // 传入视觉配置
+        state.inner().clone(),
     );
 
-    // 5. 将元任务作为唯一任务添加到主工作流
+    // 7. 将元任务作为唯一任务添加到主工作流
     main_workflow.add_task(multi_sample_executor);
 
-    // 6. 运行主工作流，获取总控制句柄
+    // 8. 运行主工作流，获取总控制句柄
     let handle = main_workflow.run(app_handle).await;
 
-    // 7. 将总控制句柄存入全局状态
+    // 9. 将总控制句柄存入全局状态
     let mut workflow_handle_guard = state.workflow_handle.lock().await;
     *workflow_handle_guard = Some(handle);
 
     Ok(())
-
 }
 
 #[tauri::command]
@@ -744,7 +831,6 @@ pub async fn start_visual_wake_detection(
 #[tauri::command]
 pub async fn start_visual_wake_detection_with_data(
     template_data: Vec<(String, String)>, // (文件名, Base64数据)
-    roi: Option<[i32; 4]>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     println!("🚀 start_visual_wake_detection_with_data 被调用");
@@ -763,14 +849,6 @@ pub async fn start_visual_wake_detection_with_data(
             println!("❌ 模板加载失败: {}", e);
             return Err(e);
         }
-    }
-    
-    // 注意：ROI处理已经在前端完成，这里只是记录ROI信息用于调试
-    if let Some(roi_data) = roi {
-        println!("🎯 ROI信息（前端已处理）: {:?}", roi_data);
-        // detector_guard.set_roi(roi_data); // 注释掉，因为前端已经裁剪了
-    } else {
-        println!("🎯 未设置ROI");
     }
     
     // 手动启用检测器
@@ -975,7 +1053,7 @@ pub async fn load_template_from_folder(filename: String) -> Result<String, Strin
 }
 
 #[tauri::command]
-pub fn delete_template_from_folder(_app_handle: tauri::AppHandle, filename: String) -> Result<(), String> {
+pub async fn delete_template_from_folder(filename: String) -> Result<(), String> {
     use std::path::Path;
     
     // 使用相对路径指向主目录的public/templates
@@ -984,9 +1062,10 @@ pub fn delete_template_from_folder(_app_handle: tauri::AppHandle, filename: Stri
 
     if file_path.exists() && file_path.is_file() {
         std::fs::remove_file(file_path).map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err(format!("模板文件不存在: {}", filename))
     }
-
-    Ok(())
 }
 
 // ==================== 任务包导入相关命令 ====================

@@ -7,6 +7,7 @@ export interface WakeDetectionResult {
   wake_word_text: string;
   wake_task_completed: boolean;
   active_task_completed: boolean;
+  asr_result?: string;
   success: boolean;
   confidence?: number;
   timestamp: number;

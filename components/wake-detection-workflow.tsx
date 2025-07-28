@@ -34,6 +34,7 @@ import {
     Clock,
     BarChart3
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 interface WakeWord {
     id: number;
@@ -47,6 +48,7 @@ interface WakeDetectionResult {
     wake_word_text: string;
     wake_task_completed: boolean;
     active_task_completed: boolean;
+    asr_result?: string;
     success: boolean;
     confidence?: number;
     timestamp: number;
@@ -377,7 +379,7 @@ export function WakeDetectionWorkflowComponent() {
             console.log("ROI数据:", roiRef.current);
             console.log("处理后的ROI:", roiRef.current ? roiRef.current.map(val => Math.round(val)) : undefined);
 
-            
+
             await invoke('start_visual_wake_detection_with_data', {
                 templateData,
                 roi: roiRef.current ? roiRef.current.map(val => Math.round(val)) : undefined
@@ -753,15 +755,15 @@ export function WakeDetectionWorkflowComponent() {
                 const videoWidth = video.videoWidth;
                 const videoHeight = video.videoHeight;
 
-                console.log('视频原始尺寸:', videoWidth, 'x', videoHeight);
-                console.log('ROI原始坐标:', roi);
+                // console.log('视频原始尺寸:', videoWidth, 'x', videoHeight);
+                // console.log('ROI原始坐标:', roi);
 
                 const clampedX = Math.max(0, Math.min(roi[0], videoWidth - 1));
                 const clampedY = Math.max(0, Math.min(roi[1], videoHeight - 1));
                 const clampedWidth = Math.min(roi[2], videoWidth - clampedX);
                 const clampedHeight = Math.min(roi[3], videoHeight - clampedY);
 
-                console.log('裁剪后ROI:', clampedX, clampedY, clampedWidth, clampedHeight);
+                //console.log('裁剪后ROI:', clampedX, clampedY, clampedWidth, clampedHeight);
 
                 if (clampedWidth > 0 && clampedHeight > 0) {
                     canvas.width = clampedWidth;
@@ -1353,11 +1355,11 @@ export function WakeDetectionWorkflowComponent() {
         const rect = canvasElement.getBoundingClientRect();
         const video = videoRef.current;
         if (!video) return { x: 0, y: 0 };
-        
+
         // 计算从显示坐标到视频原始坐标的转换
         const scaleX = video.videoWidth / rect.width;
         const scaleY = video.videoHeight / rect.height;
-        
+
         return {
             x: (event.clientX - rect.left) * scaleX,
             y: (event.clientY - rect.top) * scaleY,
@@ -1605,8 +1607,8 @@ export function WakeDetectionWorkflowComponent() {
                     const videoWidth = videoRef.current.videoWidth;
                     const videoHeight = videoRef.current.videoHeight;
 
-                    console.log('视频原始尺寸:', videoWidth, 'x', videoHeight);
-                    console.log('ROI原始坐标:', roi);
+                    //console.log('视频原始尺寸:', videoWidth, 'x', videoHeight);
+                    //console.log('ROI原始坐标:', roi);
 
                     // 直接使用ROI的原始坐标，不需要缩放转换
                     const clampedX = Math.max(0, Math.min(roi[0], videoWidth - 1));
@@ -1617,14 +1619,14 @@ export function WakeDetectionWorkflowComponent() {
                     if (clampedWidth > 0 && clampedHeight > 0) {
                         canvas.width = clampedWidth;
                         canvas.height = clampedHeight;
-                        
+
                         // 直接从视频原始坐标裁剪
                         ctx.drawImage(
                             videoRef.current,
                             clampedX, clampedY, clampedWidth, clampedHeight,
                             0, 0, clampedWidth, clampedHeight
                         );
-                        console.log('成功裁剪ROI:', clampedX, clampedY, clampedWidth, clampedHeight);
+                        //console.log('成功裁剪ROI:', clampedX, clampedY, clampedWidth, clampedHeight);
                     } else {
                         console.warn("ROI区域无效，使用完整图像");
                         canvas.width = videoWidth;
@@ -1750,6 +1752,25 @@ export function WakeDetectionWorkflowComponent() {
                                 {isCalibrating ? "校准中..." : "校准阈值"}
                             </Button>
 
+                            <Tooltip>
+                                <TooltipTrigger asChild><Button
+                                    onClick={captureTemplate}
+                                    disabled={isCapturingTemplate || isInitializing || !videoRef.current || isWorkflowRunning}
+                                    variant="outline"
+                                    size="sm"
+                                >
+                                    {isCapturingTemplate ? (
+                                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                    ) : (
+                                        <ImagePlus className="h-4 w-4 mr-1" />
+                                    )}
+                                    截取模版
+                                </Button></TooltipTrigger>
+                                <TooltipContent>
+                                    <p>截取当前画面为模版并保存到templates文件夹中</p>
+                                </TooltipContent>
+                            </Tooltip>
+
                             {/* 摄像头选择器 */}
                             <div>
                                 <Select
@@ -1818,7 +1839,7 @@ export function WakeDetectionWorkflowComponent() {
                             />
                             <canvas
                                 ref={canvasRef}
-                                className="absolute top-0 left-0 w-full h-full pointer-events-auto cursor-crosshair"
+                                className="absolute top-0 left-0 w-full h-full pointer-events-auto cursor-red-cross"
                                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                                 onMouseDown={handleMouseDown}
                                 onMouseMove={handleMouseMove}
@@ -2173,8 +2194,8 @@ export function WakeDetectionWorkflowComponent() {
                                         <div
                                             key={index}
                                             className={`flex items-center justify-between p-2 rounded text-sm ${result.success
-                                                    ? 'bg-green-50 text-green-700 border border-green-200'
-                                                    : 'bg-red-50 text-red-700 border border-red-200'
+                                                ? 'bg-green-50 text-green-700 border border-green-200'
+                                                : 'bg-red-50 text-red-700 border border-red-200'
                                                 }`}
                                             style={{
                                                 backgroundColor: result.success ? '#f0fdf4' : '#fef2f2',
@@ -2195,6 +2216,23 @@ export function WakeDetectionWorkflowComponent() {
                                                     <span>({result.confidence.toFixed(3)})</span>
                                                 )}
                                             </div>
+                                            {/* 显示识别成功的判定依据 */}
+                                            {result.success && (
+                                                <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                                    {result.asr_result && result.active_task_completed ? (
+                                                        <div className="space-y-1">
+                                                            <div>ASR: "{result.asr_result}"</div>
+                                                            <div>视觉检测成功</div>
+                                                        </div>
+                                                    ) : result.asr_result ? (
+                                                        <span>ASR: "{result.asr_result}"</span>
+                                                    ) : result.active_task_completed ? (
+                                                        <span>视觉检测成功</span>
+                                                    ) : (
+                                                        <span>未知成功原因</span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>

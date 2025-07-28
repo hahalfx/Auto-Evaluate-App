@@ -9,9 +9,9 @@ use crate::models::TaskProgress;
 use crate::models::WakeWord;
 use crate::services::active_task::ActiveTask;
 use crate::services::active_task::VisualWakeConfig;
+use crate::services::asr_task::AsrTask;
 use crate::services::audio_task::audio_task;
 use crate::services::finish_task::finish_task;
-use crate::services::middle_task::middle_task;
 use crate::services::workflow::ControlSignal;
 use crate::services::workflow::Task;
 use crate::services::workflow::Workflow;
@@ -30,6 +30,7 @@ pub struct WakeDetectionResult {
     pub confidence: Option<f64>,
     pub timestamp: i64,
     pub duration_ms: u64,
+    pub asr_result: Option<String>,
 }
 
 /// 唤醒检测元任务 - 执行多个唤醒词的测试
@@ -72,9 +73,12 @@ impl Task for wake_detection_meta_executor {
             "[WakeDetectionMetaTask '{}'] Starting wake detection tests for task {}",
             self.id, self.task_id
         );
-        
+
         // 从数据库获取任务信息
-        let task = self.state_snapshot.db.get_task_by_id(self.task_id)
+        let task = self
+            .state_snapshot
+            .db
+            .get_task_by_id(self.task_id)
             .await
             .map_err(|e| format!("获取任务失败: {}", e))?
             .ok_or("任务不存在")?;
@@ -82,7 +86,10 @@ impl Task for wake_detection_meta_executor {
         // 获取所有唤醒词信息
         let mut wakewords = Vec::new();
         for &wake_word_id in &task.wake_word_ids {
-            let wakeword = self.state_snapshot.db.get_wake_word_by_id(wake_word_id)
+            let wakeword = self
+                .state_snapshot
+                .db
+                .get_wake_word_by_id(wake_word_id)
                 .await
                 .map_err(|e| format!("获取唤醒词 {} 失败: {}", wake_word_id, e))?
                 .ok_or(format!("唤醒词 {} 不存在", wake_word_id))?;
@@ -107,13 +114,21 @@ impl Task for wake_detection_meta_executor {
         for (wake_word_index, wakeword) in wakewords.iter().enumerate() {
             println!(
                 "[WakeDetectionMetaTask '{}'] Starting tests for wake word {}/{}: '{}'",
-                self.id, wake_word_index + 1, wakewords.len(), wakeword.text
+                self.id,
+                wake_word_index + 1,
+                wakewords.len(),
+                wakeword.text
             );
-            
+
             app_handle
                 .emit(
                     "wake_detection_meta_update",
-                    format!("开始测试唤醒词 {}/{}: {}", wake_word_index + 1, wakewords.len(), wakeword.text),
+                    format!(
+                        "开始测试唤醒词 {}/{}: {}",
+                        wake_word_index + 1,
+                        wakewords.len(),
+                        wakeword.text
+                    ),
                 )
                 .ok();
 
@@ -148,6 +163,7 @@ impl Task for wake_detection_meta_executor {
             // 创建任务ID
             let wake_task_id = format!("wake_task_{}_{}", wakeword.id, wake_word_index);
             let active_task_id = format!("active_task_{}_{}", wakeword.id, wake_word_index);
+            let asr_task_id = format!("asr_task_{}_{}", wakeword.id, wake_word_index);
             let finish_task_id = format!("finish_task_{}_{}", wakeword.id, wake_word_index);
 
             // 添加任务，使用唤醒词的音频文件路径
@@ -162,6 +178,8 @@ impl Task for wake_detection_meta_executor {
                 self.visual_config.clone(),
             ));
 
+            sub_workflow.add_task(AsrTask::new(asr_task_id.clone(), wakeword.text.clone()));
+
             sub_workflow.add_task(finish_task::new_for_wake_detection(
                 finish_task_id.clone(),
                 self.task_id,
@@ -171,7 +189,8 @@ impl Task for wake_detection_meta_executor {
             ));
 
             // 设置依赖关系 - finish_task 等待两个任务完成
-            sub_workflow.add_dependency(&finish_task_id, &wake_task_id);
+            sub_workflow.add_dependency(&asr_task_id, &wake_task_id);
+            sub_workflow.add_dependency(&finish_task_id, &asr_task_id);
             sub_workflow.add_dependency(&finish_task_id, &active_task_id);
 
             // 执行子工作流
@@ -188,26 +207,54 @@ impl Task for wake_detection_meta_executor {
             };
 
             let mut active_task_is_completed = false;
+            let mut asr_result: Option<String> = None;
             let mut test_is_successful = workflow_succeeded;
 
             if let Some(context) = &maybe_context {
                 let context_guard = context.read().await;
+                
+                // 检查 Active 任务结果
                 if let Some(active_task_result_any) = context_guard.get(&active_task_id) {
-                    if let Some(active_task_result) = active_task_result_any.downcast_ref::<serde_json::Value>() {
-                        if let Some(status) = active_task_result.get("status").and_then(|s| s.as_str()) {
+                    if let Some(active_task_result) =
+                        active_task_result_any.downcast_ref::<serde_json::Value>()
+                    {
+                        if let Some(status) =
+                            active_task_result.get("status").and_then(|s| s.as_str())
+                        {
                             if status == "completed" {
                                 active_task_is_completed = true;
                             } else if status == "timeout" {
-                                test_is_successful = false;
+                                active_task_is_completed = false; // 明确设置为false
                                 println!("[WakeDetectionMetaTask] Active task timed out for wake word '{}'.", wakeword.text);
                             }
                         }
                     }
                 }
+                
+                // 检查 ASR 任务结果
+                if let Some(asr_task_result_any) = context_guard.get(&asr_task_id) {
+                    if let Some(asr_task_output) = asr_task_result_any.downcast_ref::<crate::services::asr_task::AsrTaskOutput>() {
+                        // 检查ASR结果是否为空字符串或只包含空白字符
+                        let response = asr_task_output.response.trim();
+                        if !response.is_empty() {
+                            asr_result = Some(asr_task_output.response.clone());
+                            println!("[WakeDetectionMetaTask] ASR task completed successfully for wake word '{}' with response: '{}'", wakeword.text, asr_task_output.response);
+                        } else {
+                            println!("[WakeDetectionMetaTask] ASR task completed but response is empty for wake word '{}'", wakeword.text);
+                        }
+                    }
+                }
+                
+                // 只要有一个任务成功就认为测试成功
+                if active_task_is_completed || asr_result.is_some() {
+                    test_is_successful = true;
+                } else {
+                    test_is_successful = false;
+                }
             } else {
                 test_is_successful = false;
             }
-            
+
             let wake_task_is_completed = workflow_succeeded;
 
             // 创建结果用于统计和前端显示（数据已由finish_task保存到数据库）
@@ -217,6 +264,7 @@ impl Task for wake_detection_meta_executor {
                 wake_word_text: wakeword.text.clone(),
                 wake_task_completed: wake_task_is_completed,
                 active_task_completed: active_task_is_completed,
+                asr_result: asr_result,
                 success: test_is_successful,
                 confidence: None, // 可以从视觉检测结果中获取
                 timestamp: test_end_time,
@@ -234,7 +282,12 @@ impl Task for wake_detection_meta_executor {
                     TaskProgress {
                         value: progress_value,
                         current_sample: (wake_word_index + 1) as u32,
-                        current_stage: Some(format!("唤醒词 {}/{}: {}", wake_word_index + 1, wakewords.len(), wakeword.text)),
+                        current_stage: Some(format!(
+                            "唤醒词 {}/{}: {}",
+                            wake_word_index + 1,
+                            wakewords.len(),
+                            wakeword.text
+                        )),
                         total: wakewords.len() as u32,
                     },
                 )
@@ -248,11 +301,17 @@ impl Task for wake_detection_meta_executor {
             if let Some(context) = maybe_context {
                 // 在这里，你可以安全地访问 context
                 let context_guard = context.read().await;
-                println!("[WakeDetectionMetaTask] Sub-workflow context keys for wake word '{}': {:?}", wakeword.text, context_guard.keys());
+                println!(
+                    "[WakeDetectionMetaTask] Sub-workflow context keys for wake word '{}': {:?}",
+                    wakeword.text,
+                    context_guard.keys()
+                );
             } else {
                 let error_message = format!("唤醒词 '{}' 测试失败. 终止所有测试。", wakeword.text);
                 eprintln!("[WakeDetectionMetaTask] {}", error_message);
-                app_handle.emit("wake_detection_meta_error", &error_message).ok();
+                app_handle
+                    .emit("wake_detection_meta_error", &error_message)
+                    .ok();
                 return Err(error_message.into());
             }
 
@@ -295,14 +354,17 @@ impl Task for wake_detection_meta_executor {
             "[WakeDetectionMetaTask '{}'] All {} wake word tests completed. Success rate: {}/{}",
             self.id, total_tests, success_count, total_tests
         );
-        
+
         app_handle
             .emit(
                 "wake_detection_meta_update",
-                format!("所有唤醒词测试完成！成功率: {}/{}", success_count, total_tests),
+                format!(
+                    "所有唤醒词测试完成！成功率: {}/{}",
+                    success_count, total_tests
+                ),
             )
             .ok();
 
         Ok(())
     }
-} 
+}

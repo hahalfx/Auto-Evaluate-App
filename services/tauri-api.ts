@@ -65,6 +65,18 @@ export class TauriApiService {
     return await invoke('delete_sample_safe', { sampleId });
   }
 
+  static async deleteSamplesBatch(sampleIds: number[]): Promise<{ successfully_deleted_ids: number[]; failed_ids: number[]; skipped_ids: number[] }> {
+    return await invoke('delete_samples_batch', { sampleIds });
+  }
+
+  static async deleteSamplesBatchSafe(sampleIds: number[]): Promise<{ successfully_deleted_ids: number[]; failed_ids: number[]; skipped_ids: number[] }> {
+    return await invoke('delete_samples_batch_safe', { sampleIds });
+  }
+
+  static async precheckSamples(texts: string[]): Promise<{ new_texts: string[]; duplicate_texts: string[] }> {
+    return await invoke('precheck_samples', { texts });
+  }
+
   static async getSamplesByTaskId(taskId: number): Promise<TestSample[]> {
     return await invoke('get_samples_by_task_id', { taskId });
   }

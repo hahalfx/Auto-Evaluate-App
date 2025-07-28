@@ -66,6 +66,7 @@ export function TestSamples({
     fetchAllSamples,
     createSample,
     deleteSample: deleteSampleHook,
+    deleteSamplesBatch,
     setSelectedSampleIds: setSelectedSampleIdsHook,
     importSamplesFromExcel,
     precheckSamples,
@@ -83,6 +84,8 @@ export function TestSamples({
   const [sampleForDetail, setSampleForDetail] = useState<TestSample | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [sampleToDelete, setSampleToDelete] = useState<TestSample | null>(null);
+  const [isBatchDeleteConfirmOpen, setIsBatchDeleteConfirmOpen] = useState(false);
+  const [isSafeDelete, setIsSafeDelete] = useState(true);
 
   const handleAddCustomSample = async () => {
     if (!newSampleText.trim()) return;
@@ -355,10 +358,22 @@ export function TestSamples({
       <CardHeader className="rounded-lg bg-background p-3 flex flex-col space-y-2 border-b">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground">测试语料</h3>
-          <Button onClick={() => setIsDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
-            添加自定义指令
-          </Button>
+          <div className="flex items-center gap-2">
+            {selectedSampleIds.length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setIsBatchDeleteConfirmOpen(true)}
+                disabled={isLoading}
+              >
+                删除选中 ({selectedSampleIds.length})
+              </Button>
+            )}
+            <Button onClick={() => setIsDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              添加自定义指令
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex-1 p-4 overflow-auto min-h-0 max-h-full">
@@ -536,6 +551,44 @@ export function TestSamples({
                 if (sampleToDelete) {
                   await deleteSampleHook(sampleToDelete.id, true);
                 }
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={isBatchDeleteConfirmOpen}
+        onOpenChange={setIsBatchDeleteConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认批量删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              您确定要删除选中的 <strong>{selectedSampleIds.length}</strong> 个测试语料吗？
+              此操作无法撤销。
+            </AlertDialogDescription>
+            <div className="mt-2">
+              <label className="flex items-center space-x-2">
+                <Checkbox
+                  checked={isSafeDelete}
+                  onCheckedChange={(checked) => setIsSafeDelete(!!checked)}
+                />
+                <span className="text-sm">安全删除（跳过被任务使用的语料）</span>
+              </label>
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsBatchDeleteConfirmOpen(false)}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                await deleteSamplesBatch(selectedSampleIds, isSafeDelete);
+                setIsBatchDeleteConfirmOpen(false);
               }}
               className="bg-red-600 hover:bg-red-700"
             >

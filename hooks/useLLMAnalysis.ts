@@ -346,9 +346,15 @@ export function useLLMAnalysis() {
     dispatch(deleteSample(id));
   };
 
-  const handleStartAutomatedTest_local = async () => {
+  const handleStartAutomatedTest_local = async (
+    wakeWordId?: number,
+    templateData?: Array<[string, string]>,
+    frameRate?: number,
+    threshold?: number,
+    maxDetectionTimeSecs?: number
+  ) => {
     if (selectedSampleIdsFromTask.length === 0) {
-      toast({ title: "无测试样本", description: "当前任务没有选择测试样本。", variant: "destructive" });
+      toast({ title: "无测试样本", description: "当前任务没有包含测试样本，请在任务管理中为任务添加样本。", variant: "destructive" });
       return;
     }
     if (loading || isPlaying) { 
@@ -365,7 +371,7 @@ export function useLLMAnalysis() {
     setCurrentPlayingSampleId(null); 
 
     try {
-      await tauriStartAutomatedTest();
+      await tauriStartAutomatedTest(wakeWordId, templateData, frameRate, threshold, maxDetectionTimeSecs);
     } catch (e: any) {
       console.error("Failed to start automated test:", e);
       setError(e.message || "启动测试失败 (Tauri).");

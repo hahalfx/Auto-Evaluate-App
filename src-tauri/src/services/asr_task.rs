@@ -404,7 +404,22 @@ impl Task for AsrTask {
         app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         println!("开始ASR任务: [{}].", self.id);
-        
+
+        // 检查active_task的结果，如果超时则直接返回
+        let context_reader = context.read().await;
+        for (task_id, result) in context_reader.iter() {
+            if task_id.contains("active_task") {
+                if let Some(result_any) = result.downcast_ref::<serde_json::Value>() {
+                    if let Some(status) = result_any.get("status").and_then(|s| s.as_str()) {
+                        if status == "timeout" {
+                            println!("[{}] Active task timed out, skipping ASR task", self.id);
+                            return Ok(()); // 直接成功退出，让工作流继续
+                        }
+                    }
+                }
+            }
+        }
+        drop(context_reader);
 
         INIT_CRYPTO.call_once(|| {
             if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
@@ -462,7 +477,10 @@ impl Task for AsrTask {
                                 match msg {
                                     Ok(Message::Text(text)) => {
                                         let resp: ResponseFrame = serde_json::from_str(&text)?;
-                                        if resp.code != 0 { return Err(format!("Server error {}: {}", resp.code, resp.message).into()); }
+                                        if resp.code != 0 { 
+                                            println!("ASR Server error {}: {}", resp.code, resp.message);
+                                            return Err(format!("Server error {}: {}", resp.code, resp.message).into()); 
+                                        }
                                         if let Some(data) = resp.data {
                                             if let Some(result) = data.result {
                                                 session.decoder.decode(&result);

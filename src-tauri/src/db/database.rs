@@ -265,6 +265,7 @@ impl DatabaseService {
                 confidence REAL,
                 timestamp INTEGER NOT NULL,
                 duration_ms INTEGER NOT NULL,
+                asr_result TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
                 FOREIGN KEY (wake_word_id) REFERENCES wake_words(id) ON DELETE CASCADE
@@ -791,6 +792,72 @@ impl DatabaseService {
         self.delete_sample(sample_id).await
     }
 
+    pub async fn delete_samples_batch(&self, sample_ids: Vec<i64>) -> Result<(Vec<i64>, Vec<i64>)> {
+        // Returns (successfully_deleted_ids, failed_ids)
+        log::info!("[DB_SERVICE] Attempting to batch delete {} samples", sample_ids.len());
+        
+        let mut successfully_deleted = Vec::new();
+        let mut failed_ids = Vec::new();
+
+        for &sample_id in &sample_ids {
+            match self.delete_sample(sample_id).await {
+                Ok(_) => {
+                    log::info!("[DB_SERVICE] Successfully deleted sample_id: {}", sample_id);
+                    successfully_deleted.push(sample_id);
+                }
+                Err(e) => {
+                    log::error!("[DB_SERVICE] Failed to delete sample_id {}: {}", sample_id, e);
+                    failed_ids.push(sample_id);
+                }
+            }
+        }
+
+        log::info!(
+            "[DB_SERVICE] Batch delete completed: {} successful, {} failed",
+            successfully_deleted.len(),
+            failed_ids.len()
+        );
+
+        Ok((successfully_deleted, failed_ids))
+    }
+
+    pub async fn delete_samples_batch_safe(&self, sample_ids: Vec<i64>) -> Result<(Vec<i64>, Vec<i64>, Vec<i64>)> {
+        // Returns (successfully_deleted_ids, failed_ids, skipped_ids)
+        log::info!("[DB_SERVICE] Attempting to safe batch delete {} samples", sample_ids.len());
+        
+        let mut successfully_deleted = Vec::new();
+        let mut failed_ids = Vec::new();
+        let mut skipped_ids = Vec::new();
+
+        for &sample_id in &sample_ids {
+            match self.delete_sample_safe(sample_id).await {
+                Ok(_) => {
+                    log::info!("[DB_SERVICE] Successfully safe deleted sample_id: {}", sample_id);
+                    successfully_deleted.push(sample_id);
+                }
+                Err(e) => {
+                    let error_msg = e.to_string();
+                    if error_msg.contains("正在被") && error_msg.contains("个任务使用") {
+                        log::warn!("[DB_SERVICE] Skipped sample_id {} due to active task association", sample_id);
+                        skipped_ids.push(sample_id);
+                    } else {
+                        log::error!("[DB_SERVICE] Failed to safe delete sample_id {}: {}", sample_id, e);
+                        failed_ids.push(sample_id);
+                    }
+                }
+            }
+        }
+
+        log::info!(
+            "[DB_SERVICE] Safe batch delete completed: {} successful, {} failed, {} skipped",
+            successfully_deleted.len(),
+            failed_ids.len(),
+            skipped_ids.len()
+        );
+
+        Ok((successfully_deleted, failed_ids, skipped_ids))
+    }
+
     pub async fn get_samples_by_task_id(&self, task_id: i64) -> Result<Vec<TestSample>> {
         let rows = sqlx::query_as::<_, TestSampleRow>(
             r#"
@@ -1220,13 +1287,14 @@ impl DatabaseService {
         confidence: Option<f64>,
         timestamp: i64,
         duration_ms: i64,
+        asr_result: Option<String>,
         created_at: String,
     ) -> Result<()> {
         sqlx::query(
             r#"
             INSERT INTO wake_detection_results (
-                task_id, wake_word_id, success, confidence, timestamp, duration_ms, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                task_id, wake_word_id, success, confidence, timestamp, duration_ms, asr_result, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(task_id)
@@ -1235,6 +1303,7 @@ impl DatabaseService {
         .bind(confidence)
         .bind(timestamp)
         .bind(duration_ms)
+        .bind(asr_result)
         .bind(created_at)
         .execute(&self.pool)
         .await?;
@@ -1265,6 +1334,7 @@ impl DatabaseService {
                 confidence: row.confidence,
                 timestamp: row.timestamp,
                 duration_ms: row.duration_ms as u64,
+                asr_result: row.asr_result,
             })
             .collect();
 

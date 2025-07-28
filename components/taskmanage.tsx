@@ -791,6 +791,25 @@ export default function TaskManage() {
                                         <span>耗时: {result.duration_ms}ms</span>
                                         <span>时间: {new Date(result.timestamp).toLocaleString()}</span>
                                       </div>
+                                      {/* 显示识别成功的判定依据 */}
+                                      {result.success && (
+                                        <div className="mt-2 text-xs">
+                                          <span className="text-blue-600 dark:text-blue-400 font-medium">判定依据: </span>
+                                          {result.asr_result ? (
+                                            <span className="text-green-600 dark:text-green-400">
+                                              ASR识别成功 - "{result.asr_result}"
+                                            </span>
+                                          ) : result.active_task_completed ? (
+                                            <span className="text-blue-600 dark:text-blue-400">
+                                              视觉检测成功
+                                            </span>
+                                          ) : (
+                                            <span className="text-gray-600 dark:text-gray-400">
+                                              未知成功原因
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex items-center space-x-2 flex-shrink-0">

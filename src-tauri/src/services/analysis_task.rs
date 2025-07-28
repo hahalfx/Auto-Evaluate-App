@@ -186,6 +186,22 @@ impl Task for analysis_task {
             self.id
         );
 
+        // 检查active_task的结果，如果超时则直接返回
+        let context_reader = context.read().await;
+        for (task_id, result) in context_reader.iter() {
+            if task_id.contains("active_task") {
+                if let Some(result_any) = result.downcast_ref::<serde_json::Value>() {
+                    if let Some(status) = result_any.get("status").and_then(|s| s.as_str()) {
+                        if status == "timeout" {
+                            println!("[{}] Active task timed out, skipping analysis task", self.id);
+                            return Ok(()); // 直接成功退出，让工作流继续
+                        }
+                    }
+                }
+            }
+        }
+        drop(context_reader);
+
         loop {
             let signal = control_rx.borrow().clone();
 

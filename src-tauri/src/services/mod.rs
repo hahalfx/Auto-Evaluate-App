@@ -8,7 +8,7 @@ pub mod ocr_engine;
 pub mod ocr_task;
 pub mod meta_task_executor;
 pub mod ocr_session;
-pub mod middle_task;
+pub mod checkpoint_task;
 pub mod visual_wake_detection;
 pub mod active_task;
 pub mod wake_detection_meta_executor;

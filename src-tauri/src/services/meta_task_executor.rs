@@ -8,11 +8,12 @@ use tokio::sync::watch;
 use crate::models::TaskProgress;
 use crate::models::TestSample;
 use crate::models::WakeWord;
+use crate::services::active_task::{ActiveTask, VisualWakeConfig};
 use crate::services::analysis_task::analysis_task;
 use crate::services::asr_task::AsrTask;
 use crate::services::audio_task::audio_task;
 use crate::services::finish_task::finish_task;
-use crate::services::middle_task::middle_task;
+use crate::services::checkpoint_task::checkpoint_task;
 use crate::services::ocr_task::ocr_task;
 use crate::services::workflow::ControlSignal;
 use crate::services::workflow::Task;
@@ -20,13 +21,14 @@ use crate::services::workflow::Workflow;
 use crate::services::workflow::WorkflowContext;
 use crate::state::AppState;
 
-/// 这个任务是所有样本测试的“总指挥”
+/// 这个任务是所有样本测试的"总指挥"，现在支持视觉唤醒检测
 pub struct meta_task_executor {
     id: String,
     task_id: i64,
     samples: Vec<TestSample>,
     wakeword: WakeWord,
-    state_snapshot: Arc<AppState>, // 持有 AppState 的快照
+    visual_config: VisualWakeConfig, // 添加视觉配置
+    state_snapshot: Arc<AppState>,
 }
 
 impl meta_task_executor {
@@ -35,13 +37,15 @@ impl meta_task_executor {
         task_id: i64,
         samples: Vec<TestSample>,
         wakeword: WakeWord,
-        state: Arc<AppState>, // 直接接收 Arc<AppState>
+        visual_config: VisualWakeConfig, // 添加视觉配置参数
+        state: Arc<AppState>,
     ) -> Self {
         Self {
             id: id.to_string(),
             task_id,
             samples,
             wakeword,
+            visual_config,
             state_snapshot: state,
         }
     }
@@ -121,48 +125,65 @@ impl Task for meta_task_executor {
             // 2. 添加所有子任务，确保ID唯一
             let wakeword_task_id = format!("wakeword_task_{}", sample_id);
             let audio_task_id = format!("audio_task_{}", sample_id);
-            let audio_ocr_task_id = format!("audio_ocr_task_{}", sample_id); //车机对语音指令识别的ocr
+            let active_task_id = format!("active_task_{}", sample_id); //视觉检测任务，替换audio_ocr_task
             let middle_task_id = format!("middle_task_{}", sample_id);
             let ocr_task_id = format!("ocr_task_{}", sample_id);
             let asr_task_id = format!("asr_task_{}", sample_id);
             let analysis_task_id = format!("analysis_task_{}", sample_id);
             let finish_task_id = format!("finish_task_{}", sample_id);
 
+            // 添加唤醒词播放任务
             sub_workflow.add_task(audio_task {
                 id: wakeword_task_id.clone(),
                 keyword: self.wakeword.text.clone(),
-                url: Some("/Volumes/应用/LLM Analysis Interface/public/audio/wakeword".to_string()), // 请确保此路径有效
+                url: self.wakeword.audio_file.clone(), // 使用选定唤醒词的音频文件
             });
+            
+            // 添加语音指令播放任务
             sub_workflow.add_task(audio_task {
                 id: audio_task_id.clone(),
                 keyword: keyword.clone(),
                 url: None,
             });
-            sub_workflow.add_task(ocr_task {
-                id: audio_ocr_task_id.clone(),
-            });
+            
+            // 添加视觉检测任务（替换audio_ocr_task）
+            sub_workflow.add_task(ActiveTask::new(
+                active_task_id.clone(),
+                self.visual_config.clone(),
+            ));
 
-            sub_workflow.add_task(middle_task {
+            // 添加中间任务（等待唤醒和语音指令完成）
+            sub_workflow.add_task(checkpoint_task {
                 id: middle_task_id.clone(),
+                active_task_id: Some(active_task_id.clone()),
             });
 
+            // 添加OCR任务
             sub_workflow.add_task(ocr_task {
                 id: ocr_task_id.clone(),
             });
 
-            sub_workflow.add_task(AsrTask::new(asr_task_id.clone(), keyword));
+            // 添加ASR任务
+            sub_workflow.add_task(AsrTask::new(
+                asr_task_id.clone(),
+                keyword,
+            ));
+            
+            // 添加分析任务
             sub_workflow.add_task(analysis_task {
                 id: analysis_task_id.clone(),
                 dependency_id: asr_task_id.clone(),
                 http_client: self.state_snapshot.http_client.clone(),
             });
-            sub_workflow.add_task(finish_task::new(
+            
+            // 添加完成任务
+            sub_workflow.add_task(finish_task::new_with_active_task(
                 finish_task_id.clone(),
                 self.task_id,
                 sample_id,
                 asr_task_id.clone(),
                 analysis_task_id.clone(),
-                audio_ocr_task_id.clone(),
+                active_task_id.clone(), // 传递active_task_id用于超时检查
                 ocr_task_id.clone(),
                 audio_task_id.clone(),
                 self.state_snapshot.db.clone(),
@@ -170,9 +191,9 @@ impl Task for meta_task_executor {
 
             // 3. 设置依赖关系
             sub_workflow.add_dependency(&audio_task_id, &wakeword_task_id);
-            sub_workflow.add_dependency(&audio_ocr_task_id, &wakeword_task_id);
+            sub_workflow.add_dependency(&active_task_id, &wakeword_task_id); // active_task在唤醒词播放后开始
             sub_workflow.add_dependency(&middle_task_id, &audio_task_id);
-            sub_workflow.add_dependency(&middle_task_id, &audio_ocr_task_id);
+            sub_workflow.add_dependency(&middle_task_id, &active_task_id); // 等待active_task完成
             sub_workflow.add_dependency(&asr_task_id, &middle_task_id);
             sub_workflow.add_dependency(&ocr_task_id, &middle_task_id);
             sub_workflow.add_dependency(&analysis_task_id, &ocr_task_id);
@@ -221,3 +242,5 @@ impl Task for meta_task_executor {
         Ok(())
     }
 }
+
+

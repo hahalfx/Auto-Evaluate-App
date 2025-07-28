@@ -5,9 +5,26 @@ import type { AnalysisResult as TauriAnalysisResult, TaskProgress as TauriTaskPr
 
 /**
  * Starts the automated test process for the current task via Tauri.
+ * @param wakeWordId 可选的唤醒词ID，如果没有提供则使用任务的第一个
+ * @param templateData 可选的模板数据，用于视觉检测
+ * @param frameRate 可选的帧率，默认10
+ * @param threshold 可选的阈值，默认0.5
+ * @param maxDetectionTimeSecs 可选的最大检测时间，默认30秒
  */
-export async function tauriStartAutomatedTest(): Promise<void> {
-  await invoke('new_meta_workflow');
+export async function tauriStartAutomatedTest(
+  wakeWordId?: number,
+  templateData?: Array<[string, string]>,
+  frameRate?: number,
+  threshold?: number,
+  maxDetectionTimeSecs?: number
+): Promise<void> {
+  await invoke('new_meta_workflow', {
+    wakeWordId,
+    templateData,
+    frameRate,
+    threshold,
+    maxDetectionTimeSecs
+  });
 }
 
 /**

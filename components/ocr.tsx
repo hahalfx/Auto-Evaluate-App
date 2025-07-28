@@ -20,6 +20,8 @@ import {
   Scan,
   Settings,
   SquareDashedMousePointer,
+  Target,
+  Eye,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import {
@@ -28,11 +30,27 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { TemplateManager } from "./template-manager";
+
 
 // 2. 定义与 Rust 后端匹配的类型
 interface RustOcrResultItem {
   text: string;
   combined_bbox: [number, number, number, number]; // [x, y, width, height]
+}
+
+// 视觉检测配置接口
+export interface VisualWakeConfig {
+  frameRate: number;
+  threshold: number;
+  maxDetectionTime: number;
+  templateData: Array<[string, string]>; // [name, base64_data]
+}
+
+// OCR配置接口
+interface OcrConfig {
+  interval: number;
+  roi: [number, number, number, number] | null;
 }
 
 // 定义从 Channel 接收的事件类型
@@ -49,7 +67,16 @@ interface OcrEvent {
   error?: string;
 }
 
-export function OCRVideoComponent() {
+// 任务状态枚举
+enum TaskStatus {
+  PENDING = "pending",
+  RUNNING = "running",
+  COMPLETED = "completed",
+  FAILED = "failed"
+}
+
+
+export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig: (config: VisualWakeConfig) => void }) {
   // --- Refs (基本不变) ---
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -72,12 +99,17 @@ export function OCRVideoComponent() {
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [ocrResults, setOcrResults] = useState<RustOcrResultItem[]>([]);
   const [lastInferenceTime, setLastInferenceTime] = useState<number>(0);
-  const [isSelectingROI, setIsSelectingROI] = useState<boolean>(false);
-  const [roi, setRoi] = useState<[number, number, number, number] | null>(null);
+  
+  // 修改ROI相关状态 - 为OCR和视觉检测分别创建独立的ROI
+  const [isSelectingOcrROI, setIsSelectingOcrROI] = useState<boolean>(false);
+  const [isSelectingVisualROI, setIsSelectingVisualROI] = useState<boolean>(false);
+  const [ocrRoi, setOcrRoi] = useState<[number, number, number, number] | null>(null);
+  const [visualRoi, setVisualRoi] = useState<[number, number, number, number] | null>(null);
   const [roiStartPoint, setRoiStartPoint] = useState<{
     x: number;
     y: number;
   } | null>(null);
+  
   const [ocrInterval, setOcrInterval] = useState<number>(0.02); // 识别间隔 (秒)
   const { toast } = useToast();
   const [isInitializing, setIsInitializing] = useState(false);
@@ -90,21 +122,72 @@ export function OCRVideoComponent() {
     null
   );
 
+  const [activeTaskResult, setActiveTaskResult] = useState<TaskStatus>(TaskStatus.PENDING);
+
+  // 添加视觉检测相关状态
+  const [isVisualDetectionActive, setIsVisualDetectionActive] = useState<boolean>(false);
+
+  // 添加调试信息状态
+  const [debugInfo, setDebugInfo] = useState<{
+    videoOriginalSize: { width: number; height: number };
+    videoDisplaySize: { width: number; height: number };
+    scaleFactors: { x: number; y: number };
+  } | null>(null);
+
+  // 添加视频尺寸稳定状态
+  const [videoSizeStable, setVideoSizeStable] = useState<boolean>(false);
+
+  // 视觉检测配置状态
+  const [visualConfig, setVisualConfig] = useState<VisualWakeConfig>({
+    frameRate: 10,
+    threshold: 0.5,
+    maxDetectionTime: 30,
+    templateData: [],
+  });
+
+  // OCR配置状态
+  const [ocrConfig, setOcrConfig] = useState<OcrConfig>({
+    interval: 0.02,
+    roi: null,
+  });
+
+  // 更新视觉检测配置
+  const updateVisualConfig = (updates: Partial<VisualWakeConfig>) => {
+    setVisualConfig(prev => ({ ...prev, ...updates }));
+  };
+
+  // 更新OCR配置
+  const updateOcrConfig = (updates: Partial<OcrConfig>) => {
+    setOcrConfig(prev => ({ ...prev, ...updates }));
+  };
+
   // --- Refs for Callbacks (保持不变) ---
-  const roiRef = useRef(roi);
+  const ocrRoiRef = useRef(ocrRoi);
+  const visualRoiRef = useRef(visualRoi);
   const ocrIntervalRef = useRef(ocrInterval);
   const isCapturingRef = useRef(isCapturing);
+  const isVisualDetectionActiveRef = useRef(isVisualDetectionActive);
 
   // 使用 useEffect 来同步 state 到 ref
   useEffect(() => {
-    roiRef.current = roi;
-  }, [roi]);
+    ocrRoiRef.current = ocrRoi;
+  }, [ocrRoi]);
+  useEffect(() => {
+    visualRoiRef.current = visualRoi;
+  }, [visualRoi]);
   useEffect(() => {
     ocrIntervalRef.current = ocrInterval;
   }, [ocrInterval]);
   useEffect(() => {
     isCapturingRef.current = isCapturing;
   }, [isCapturing]);
+  useEffect(() => {
+    isVisualDetectionActiveRef.current = isVisualDetectionActive;
+  }, [isVisualDetectionActive]);
+  // 将视觉检测配置传递给父组件
+  useEffect(() => {
+    setVisualWakeConfig(visualConfig);
+  }, [visualConfig]);
 
   useEffect(() => {
     // 使用一个变量来防止在组件卸载后继续执行异步代码
@@ -214,6 +297,8 @@ export function OCRVideoComponent() {
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
     let unlistenTaskEvent: UnlistenFn | undefined;
+    let unlistenActiveTask: UnlistenFn | undefined;
+    let unlistenTaskCompleted: UnlistenFn | undefined;
 
     const setupListeners = async () => {
       try {
@@ -295,6 +380,32 @@ export function OCRVideoComponent() {
             setOcrTaskEvent(String(event.payload));
           }
         });
+
+        // 监听active_task信息（用于视觉唤醒检测）
+        unlistenActiveTask = await listen('active_task_info', (event) => {
+          console.log("React Component 收到 active_task_info:", event.payload);
+          const status = event.payload;
+          
+          if (status === 'started') {
+            console.log("收到 active_task_info started 事件，启动视觉检测帧推送");
+            setIsVisualDetectionActive(true);
+          } else if (status === 'stopped' || status === 'timeout') {
+            console.log("收到 active_task_info 停止事件，停止视觉检测帧推送");
+            setIsVisualDetectionActive(false);
+          }
+        });
+
+        unlistenTaskCompleted = await listen('task_completed', (event) => {
+          console.log("React Component 收到 task_completed:", event.payload);
+          const taskType = event.payload;
+          console.log('任务完成:', taskType);
+          if (taskType === 'active_task_completed') {
+            setActiveTaskResult(TaskStatus.COMPLETED);
+          } else if (taskType === 'active_task_timeout') {
+            setActiveTaskResult(TaskStatus.FAILED);
+          }
+        });
+
       } catch (error) {
         console.error("监听OCR事件失败:", error);
       }
@@ -319,8 +430,18 @@ export function OCRVideoComponent() {
           console.error("取消监听 ocr_task_event 失败:", error);
         }
       }
+      if (unlistenActiveTask) {
+        try {
+          unlistenActiveTask();
+          console.log("已取消监听 active_task_info");
+        } catch (error) {
+          console.error("取消监听 active_task_info 失败:", error);
+        }
+      }
     };
   }, [toast]);
+
+  
 
   //任务状态更新
   useEffect(() => {
@@ -370,8 +491,11 @@ export function OCRVideoComponent() {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0 || video.paused) return;
 
-    // 实时检查是否应该停止
-    if (!isCapturingRef.current) {
+    // 检查是否需要推送帧（OCR或视觉检测）
+    const shouldSendForOCR = isCapturing;
+    const shouldSendForVisual = isVisualDetectionActive;
+    
+    if (!shouldSendForOCR && !shouldSendForVisual) {
       return;
     }
 
@@ -379,22 +503,71 @@ export function OCRVideoComponent() {
     const context = canvas.getContext("2d");
     if (!context) return;
 
-    const currentRoi = roiRef.current;
-    if (currentRoi && currentRoi[2] > 0 && currentRoi[3] > 0) {
-      canvas.width = currentRoi[2];
-      canvas.height = currentRoi[3];
+    // 根据任务类型选择对应的ROI
+    const currentOcrRoi = ocrRoiRef.current;
+    const currentVisualRoi = visualRoiRef.current;
+    
+    // 为OCR任务处理ROI
+    if (shouldSendForOCR && currentOcrRoi && currentOcrRoi[2] > 0 && currentOcrRoi[3] > 0) {
+      // 获取视频的实际显示尺寸
+      const videoRect = video.getBoundingClientRect();
+      const videoDisplayWidth = videoRect.width;
+      const videoDisplayHeight = videoRect.height;
+      
+      // 计算缩放比例
+      const scaleX = video.videoWidth / videoDisplayWidth;
+      const scaleY = video.videoHeight / videoDisplayHeight;
+      
+      // 将ROI坐标从显示坐标转换为视频原始坐标
+      const [displayX, displayY, displayW, displayH] = currentOcrRoi;
+      const videoX = Math.round(displayX * scaleX);
+      const videoY = Math.round(displayY * scaleY);
+      const videoW = Math.round(displayW * scaleX);
+      const videoH = Math.round(displayH * scaleY);
+      
+      canvas.width = videoW;
+      canvas.height = videoH;
       context.drawImage(
         video,
-        currentRoi[0],
-        currentRoi[1],
-        currentRoi[2],
-        currentRoi[3],
+        videoX,
+        videoY,
+        videoW,
+        videoH,
         0,
         0,
-        currentRoi[2],
-        currentRoi[3]
+        videoW,
+        videoH
+      );
+    } else if (shouldSendForVisual && currentVisualRoi && currentVisualRoi[2] > 0 && currentVisualRoi[3] > 0) {
+      // 为视觉检测任务处理ROI
+      const videoRect = video.getBoundingClientRect();
+      const videoDisplayWidth = videoRect.width;
+      const videoDisplayHeight = videoRect.height;
+      
+      const scaleX = video.videoWidth / videoDisplayWidth;
+      const scaleY = video.videoHeight / videoDisplayHeight;
+      
+      const [displayX, displayY, displayW, displayH] = currentVisualRoi;
+      const videoX = Math.round(displayX * scaleX);
+      const videoY = Math.round(displayY * scaleY);
+      const videoW = Math.round(displayW * scaleX);
+      const videoH = Math.round(displayH * scaleY);
+      
+      canvas.width = videoW;
+      canvas.height = videoH;
+      context.drawImage(
+        video,
+        videoX,
+        videoY,
+        videoW,
+        videoH,
+        0,
+        0,
+        videoW,
+        videoH
       );
     } else {
+      // 没有ROI或ROI无效，使用完整画面
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -411,30 +584,58 @@ export function OCRVideoComponent() {
 
       // C. 创建 Uint8Array 视图。Tauri 会对此进行优化传输。
       const encodedImageBytes = new Uint8Array(arrayBuffer);
-      // 实时检查是否应该停止
-      if (!isCapturingRef.current) {
-        return;
-      }
+      
       const timestamp = Date.now();
 
-      await invoke("push_video_frame", {
-        imageData: encodedImageBytes,
-        timestamp: timestamp,
-        width: canvas.width,
-        height: canvas.height,
-      });
+      // 根据需要推送到不同的端点
+      const promises: Promise<any>[] = [];
+
+      // 如果正在捕获，推送给OCR
+      if (isCapturing) {
+        promises.push(
+          invoke("push_video_frame", {
+            imageData: encodedImageBytes,
+            timestamp: timestamp,
+            width: canvas.width,
+            height: canvas.height,
+          })
+        );
+      }
+
+      // 如果视觉检测活跃，推送给视觉检测
+      if (isVisualDetectionActive) {
+        promises.push(
+          invoke("push_video_frame_visual", {
+            imageData: Array.from(encodedImageBytes),
+            timestamp: timestamp,
+            width: canvas.width,
+            height: canvas.height,
+          })
+        );
+      }
+
+      // 等待所有推送完成
+      await Promise.all(promises);
 
       const endTime = performance.now();
       setLastInferenceTime((endTime - startTime) / 1000);
     } catch (error) {
-      console.error("OCR 命令调用失败:", error);
-      toast({
-        title: "OCR 执行失败",
-        description: String(error),
-        variant: "destructive",
-      });
-      if (String(error).includes("not initialized")) {
+      console.error("视频帧推送失败:", error);
+      
+      // 如果是OCR相关的错误
+      if (String(error).includes("not initialized") && shouldSendForOCR) {
+        toast({
+          title: "OCR 执行失败",
+          description: String(error),
+          variant: "destructive",
+        });
         setIsCapturing(false);
+      }
+      
+      // 如果是视觉检测相关的错误
+      if ((String(error).includes("视觉检测未启动") || String(error).includes("视觉检测失败")) && shouldSendForVisual) {
+        console.log("视觉检测已停止，停止推送视频帧");
+        setIsVisualDetectionActive(false);
       }
     }
   }, [toast]);
@@ -539,8 +740,8 @@ export function OCRVideoComponent() {
     toast({ title: "OCR 识别已启动", description: "实时文字识别进行中。" });
   }, [toast, stopCapturing]);
 
-  // --- ROI 和间隔设置函数 (保持不变) ---
-  const clearRoi = useCallback(() => {
+  // --- ROI 和间隔设置函数 (修改为支持两种ROI) ---
+  const clearOcrRoi = useCallback(() => {
     if (isCapturing) {
       toast({
         title: "操作无效",
@@ -549,11 +750,24 @@ export function OCRVideoComponent() {
       });
       return;
     }
-    setRoi(null);
-    toast({ title: "ROI区域已清除", description: "现在将识别整个画面。" });
+    setOcrRoi(null);
+    toast({ title: "OCR ROI区域已清除", description: "现在将识别整个画面。" });
   }, [isCapturing, toast]);
 
-  const startSelectingROI = useCallback(() => {
+  const clearVisualRoi = useCallback(() => {
+    if (isVisualDetectionActive) {
+      toast({
+        title: "操作无效",
+        description: "请先停止视觉检测再清除ROI。",
+        variant: "destructive",
+      });
+      return;
+    }
+    setVisualRoi(null);
+    toast({ title: "视觉检测ROI区域已清除", description: "现在将检测整个画面。" });
+  }, [isVisualDetectionActive, toast]);
+
+  const startSelectingOcrROI = useCallback(() => {
     if (isCapturing) {
       toast({
         title: "操作无效",
@@ -562,8 +776,22 @@ export function OCRVideoComponent() {
       });
       return;
     }
-    setIsSelectingROI(true);
+    setIsSelectingOcrROI(true);
+    setIsSelectingVisualROI(false); // 确保只选择一个ROI
   }, [isCapturing, toast]);
+
+  const startSelectingVisualROI = useCallback(() => {
+    if (isVisualDetectionActive) {
+      toast({
+        title: "操作无效",
+        description: "请先停止视觉检测再修改ROI。",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsSelectingVisualROI(true);
+    setIsSelectingOcrROI(false); // 确保只选择一个ROI
+  }, [isVisualDetectionActive, toast]);
 
   const updateOcrInterval = useCallback((value: string) => {
     setOcrInterval(parseFloat(value));
@@ -572,21 +800,38 @@ export function OCRVideoComponent() {
   useEffect(() => {
     let animationFrameId: number;
     const loop = () => {
-      if (isCapturingRef.current) {
-        const now = performance.now();
-        if (
-          now - frameRateRef.current.lastSendTime >=
-          ocrIntervalRef.current * 1000
-        ) {
-          frameRateRef.current.lastSendTime = now;
-          captureAndSend();
-        }
+      if (!videoRef.current || !canvasRef.current) return;
+
+      const now = performance.now();
+      const timeSinceLastSend = now - frameRateRef.current.lastSendTime;
+
+      // 检查是否需要继续循环
+      const shouldContinueForOCR = isCapturing;
+      const shouldContinueForVisual = isVisualDetectionActive;
+      
+      if (!shouldContinueForOCR && !shouldContinueForVisual) {
+        return;
       }
-      animationFrameId = requestAnimationFrame(loop);
+
+      // 根据配置决定发送间隔
+      let minInterval = 0;
+      if (shouldContinueForOCR) {
+        minInterval = Math.max(minInterval, ocrConfig.interval * 1000);
+      }
+      if (shouldContinueForVisual) {
+        minInterval = Math.max(minInterval, 1000 / visualConfig.frameRate);
+      }
+
+      if (timeSinceLastSend >= minInterval) {
+        captureAndSend();
+        frameRateRef.current.lastSendTime = now;
+      }
+
+      requestAnimationFrame(loop);
     };
 
-    // 只在开始捕获时启动循环
-    if (isCapturing) {
+    // 只要OCR捕获或视觉检测任一激活就启动循环
+    if (isCapturing || isVisualDetectionActive) {
       animationFrameId = requestAnimationFrame(loop);
     }
 
@@ -595,7 +840,7 @@ export function OCRVideoComponent() {
         cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [captureAndSend, isCapturing]);
+  }, [captureAndSend, isCapturing, isVisualDetectionActive, ocrConfig.interval, visualConfig.frameRate]);
 
   const drawVisuals = useCallback(() => {
     const video = videoRef.current;
@@ -612,66 +857,140 @@ export function OCRVideoComponent() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    if (canvas.width !== video.videoWidth) canvas.width = video.videoWidth;
-    if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
+    // 获取视频的实际显示尺寸（CSS尺寸）
+    const videoRect = video.getBoundingClientRect();
+    const videoDisplayWidth = videoRect.width;
+    const videoDisplayHeight = videoRect.height;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 只有当视频有实际显示尺寸时才设置Canvas尺寸
+    if (videoDisplayWidth > 0 && videoDisplayHeight > 0) {
+      // 设置Canvas的实际像素尺寸为视频的原始尺寸
+      if (canvas.width !== video.videoWidth) canvas.width = video.videoWidth;
+      if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
 
-    if (roi) {
-      ctx.strokeStyle = "lime";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(...roi);
-    }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (isSelectingROI && roiStartPoint && isDrawingRef.current) {
-      ctx.strokeStyle = "yellow";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 5]);
-      ctx.strokeRect(
-        roiStartPoint.x,
-        roiStartPoint.y,
-        isDrawingRef.current.x - roiStartPoint.x,
-        isDrawingRef.current.y - roiStartPoint.y
-      );
-      ctx.setLineDash([]);
-    }
+      // 计算缩放比例
+      const scaleX = video.videoWidth / videoDisplayWidth;
+      const scaleY = video.videoHeight / videoDisplayHeight;
 
-    if (ocrResults?.length || 0) {
-      ocrResults.forEach((result) => {
-        const { combined_bbox, text } = result;
-        const [x, y, w, h] = combined_bbox;
-
-        ctx.strokeStyle = "red";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x, y, w, h);
-
-        const displayText = `${text}`;
-        ctx.font = "bold 16px Arial";
-        const textMetrics = ctx.measureText(displayText);
-
-        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-        ctx.fillRect(x, y - 22, textMetrics.width + 10, 20);
-        ctx.fillStyle = "white";
-        ctx.fillText(displayText, x + 5, y - 7);
+      // 更新调试信息
+      setDebugInfo({
+        videoOriginalSize: { width: video.videoWidth, height: video.videoHeight },
+        videoDisplaySize: { width: videoDisplayWidth, height: videoDisplayHeight },
+        scaleFactors: { x: scaleX, y: scaleY }
       });
-    }
 
-    if (isCapturing) {
-      ctx.fillStyle = "lime";
-      ctx.font = "16px Arial";
-      ctx.fillText(
-        `Rust 推理: ${lastInferenceTime.toFixed(4)}s`,
-        10,
-        canvas.height - 10
-      );
+      // 设置视频尺寸稳定状态
+      if (!videoSizeStable) {
+        setVideoSizeStable(true);
+      }
+
+      // 只有在视频尺寸稳定后才进行绘制
+      if (videoSizeStable) {
+        // 绘制OCR ROI
+        if (ocrRoi) {
+          ctx.strokeStyle = "lime";
+          ctx.lineWidth = 3;
+          // 将ROI坐标从显示坐标转换为Canvas坐标
+          const [x, y, w, h] = ocrRoi;
+          ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
+          
+          // 添加OCR ROI标签
+          ctx.fillStyle = "rgba(0, 255, 0, 0.8)";
+          ctx.font = "bold 14px Arial";
+          ctx.fillText("OCR", x * scaleX + 5, y * scaleY + 20);
+        }
+
+        // 绘制视觉检测 ROI
+        if (visualRoi) {
+          ctx.strokeStyle = "cyan";
+          ctx.lineWidth = 3;
+          // 将ROI坐标从显示坐标转换为Canvas坐标
+          const [x, y, w, h] = visualRoi;
+          ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
+          
+          // 添加视觉检测 ROI标签
+          ctx.fillStyle = "rgba(0, 255, 255, 0.8)";
+          ctx.font = "bold 14px Arial";
+          ctx.fillText("视觉检测", x * scaleX + 5, y * scaleY + 20);
+        }
+
+        // 绘制正在选择的ROI
+        if ((isSelectingOcrROI || isSelectingVisualROI) && roiStartPoint && isDrawingRef.current) {
+          ctx.strokeStyle = "yellow";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 5]);
+          // 将显示坐标转换为Canvas像素坐标
+          const startX = roiStartPoint.x * scaleX;
+          const startY = roiStartPoint.y * scaleY;
+          const endX = isDrawingRef.current.x * scaleX;
+          const endY = isDrawingRef.current.y * scaleY;
+          
+          // 调试信息
+          console.log("ROI drawing coordinates:", {
+            display: {
+              start: { x: roiStartPoint.x, y: roiStartPoint.y },
+              end: { x: isDrawingRef.current.x, y: isDrawingRef.current.y }
+            },
+            canvas: {
+              start: { x: startX, y: startY },
+              end: { x: endX, y: endY }
+            },
+            scale: { x: scaleX, y: scaleY }
+          });
+          
+          ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+          ctx.setLineDash([]);
+        }
+
+        if (ocrResults?.length || 0) {
+          ocrResults.forEach((result) => {
+            const { combined_bbox, text } = result;
+            const [x, y, w, h] = combined_bbox;
+
+            // 将OCR结果坐标从视频原始坐标转换为Canvas显示坐标
+            const displayX = x / scaleX;
+            const displayY = y / scaleY;
+            const displayW = w / scaleX;
+            const displayH = h / scaleY;
+
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(displayX, displayY, displayW, displayH);
+
+            const displayText = `${text}`;
+            ctx.font = "bold 16px Arial";
+            const textMetrics = ctx.measureText(displayText);
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+            ctx.fillRect(displayX, displayY - 22, textMetrics.width + 10, 20);
+            ctx.fillStyle = "white";
+            ctx.fillText(displayText, displayX + 5, displayY - 7);
+          });
+        }
+
+        if (isCapturing) {
+          ctx.fillStyle = "lime";
+          ctx.font = "16px Arial";
+          ctx.fillText(
+            `Rust 推理: ${lastInferenceTime.toFixed(4)}s`,
+            10,
+            canvas.height - 10
+          );
+        }
+      }
     }
   }, [
-    roi,
-    isSelectingROI,
+    ocrRoi,
+    visualRoi,
+    isSelectingOcrROI,
+    isSelectingVisualROI,
     roiStartPoint,
     ocrResults,
     lastInferenceTime,
     isCapturing,
+    videoSizeStable,
   ]);
 
   useEffect(() => {
@@ -684,18 +1003,44 @@ export function OCRVideoComponent() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [drawVisuals]);
 
-  // --- 鼠标事件处理 (基本不变, 移除了WebSocket相关部分) ---
+  // --- 鼠标事件处理 (修改为支持两种ROI选择) ---
   const getMousePos = useCallback(
     (
       canvasElement: HTMLCanvasElement,
       event: React.MouseEvent<HTMLCanvasElement>
     ) => {
-      const rect = canvasElement.getBoundingClientRect();
-      const scaleX = canvasElement.width / rect.width;
-      const scaleY = canvasElement.height / rect.height;
+      const video = videoRef.current;
+      if (!video) return { x: 0, y: 0 };
+
+      // 获取视频的实际显示尺寸和位置
+      const videoRect = video.getBoundingClientRect();
+      
+      // 计算鼠标相对于视频的位置
+      const mouseX = event.clientX - videoRect.left;
+      const mouseY = event.clientY - videoRect.top;
+      
+      // 确保鼠标位置在视频显示范围内
+      const clampedX = Math.max(0, Math.min(mouseX, videoRect.width));
+      const clampedY = Math.max(0, Math.min(mouseY, videoRect.height));
+      
+      // 调试信息
+      console.log("Mouse position calculation:", {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        videoLeft: videoRect.left,
+        videoTop: videoRect.top,
+        videoWidth: videoRect.width,
+        videoHeight: videoRect.height,
+        mouseX,
+        mouseY,
+        clampedX,
+        clampedY
+      });
+      
+      // 返回相对于视频显示区域的坐标
       return {
-        x: (event.clientX - rect.left) * scaleX,
-        y: (event.clientY - rect.top) * scaleY,
+        x: clampedX,
+        y: clampedY,
       };
     },
     []
@@ -703,38 +1048,43 @@ export function OCRVideoComponent() {
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (isCapturing || !isSelectingROI || !canvasRef.current) return;
+      console.log("Mouse down event:", { isCapturing, isSelectingOcrROI, isSelectingVisualROI, hasCanvas: !!canvasRef.current });
+      if (isCapturing || (!isSelectingOcrROI && !isSelectingVisualROI) || !canvasRef.current) return;
       const pos = getMousePos(canvasRef.current, e);
+      console.log("Mouse down position:", pos);
       setRoiStartPoint(pos);
       isDrawingRef.current = pos;
     },
-    [isCapturing, isSelectingROI, getMousePos]
+    [isCapturing, isSelectingOcrROI, isSelectingVisualROI, getMousePos]
   );
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (
         isCapturing ||
-        !isSelectingROI ||
-        !roiStartPoint ||
-        !canvasRef.current
-      )
-        return;
-      isDrawingRef.current = getMousePos(canvasRef.current, e);
-    },
-    [isCapturing, isSelectingROI, roiStartPoint, getMousePos]
-  );
-
-  const handleMouseUp = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (
-        isCapturing ||
-        !isSelectingROI ||
+        (!isSelectingOcrROI && !isSelectingVisualROI) ||
         !roiStartPoint ||
         !canvasRef.current
       )
         return;
       const pos = getMousePos(canvasRef.current, e);
+      isDrawingRef.current = pos;
+    },
+    [isCapturing, isSelectingOcrROI, isSelectingVisualROI, roiStartPoint, getMousePos]
+  );
+
+  const handleMouseUp = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      console.log("Mouse up event:", { isCapturing, isSelectingOcrROI, isSelectingVisualROI, hasStartPoint: !!roiStartPoint, hasCanvas: !!canvasRef.current });
+      if (
+        isCapturing ||
+        (!isSelectingOcrROI && !isSelectingVisualROI) ||
+        !roiStartPoint ||
+        !canvasRef.current
+      )
+        return;
+      const pos = getMousePos(canvasRef.current, e);
+      console.log("Mouse up position:", pos, "Start point:", roiStartPoint);
       const x1 = Math.min(roiStartPoint.x, pos.x);
       const y1 = Math.min(roiStartPoint.y, pos.y);
       const w = Math.abs(pos.x - roiStartPoint.x);
@@ -743,23 +1093,38 @@ export function OCRVideoComponent() {
       if (w < 10 || h < 10) {
         console.log("ROI 区域太小");
       } else {
+        // 保存显示坐标（相对于视频显示区域）
         const newRoi: [number, number, number, number] = [
           Math.round(x1),
           Math.round(y1),
           Math.round(w),
           Math.round(h),
         ];
-        setRoi(newRoi);
-        toast({
-          title: "ROI区域已设置",
-          description: `区域大小: ${newRoi[2]}x${newRoi[3]}`,
-        });
+        console.log("Setting new ROI:", newRoi);
+        
+        // 根据当前选择模式设置对应的ROI
+        if (isSelectingOcrROI) {
+          setOcrRoi(newRoi);
+          toast({
+            title: "OCR ROI区域已设置",
+            description: `区域大小: ${newRoi[2]}x${newRoi[3]} (显示坐标)`,
+          });
+        } else if (isSelectingVisualROI) {
+          setVisualRoi(newRoi);
+          toast({
+            title: "视觉检测ROI区域已设置",
+            description: `区域大小: ${newRoi[2]}x${newRoi[3]} (显示坐标)`,
+          });
+        }
       }
-      setIsSelectingROI(false);
+      
+      // 清除选择状态
+      setIsSelectingOcrROI(false);
+      setIsSelectingVisualROI(false);
       setRoiStartPoint(null);
       isDrawingRef.current = null;
     },
-    [isCapturing, isSelectingROI, roiStartPoint, toast, getMousePos]
+    [isCapturing, isSelectingOcrROI, isSelectingVisualROI, roiStartPoint, toast, getMousePos]
   );
 
   const formatTimeWithMs = (date: Date | null) => {
@@ -779,18 +1144,52 @@ export function OCRVideoComponent() {
     return `${diff}ms`;
   };
 
+  // 监听视频尺寸变化，确保尺寸稳定
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleResize = () => {
+      // 当视频尺寸发生变化时，重置稳定状态
+      setVideoSizeStable(false);
+    };
+
+    const handleLoadedMetadata = () => {
+      // 视频元数据加载完成后，强制刷新Canvas尺寸
+      setTimeout(() => {
+        setVideoSizeStable(false);
+      }, 100);
+    };
+
+    // 监听视频的loadedmetadata事件
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('resize', handleResize);
+    
+    // 监听窗口大小变化
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
   return (
-    <div className="flex flex-col px-4 py-2 rounded-lg border bg-white space-y-2 h-full overflow-hidden max-h-full">
-      <div className="flex items-center flex-wrap gap-2">
+    <div className="flex flex-col px-3 py-2 rounded-lg border bg-white space-y-1 h-full overflow-hidden">
+      {/* 控制面板 - 进一步减少高度 */}
+      <div className="flex items-center flex-wrap gap-1 flex-shrink-0 h-12">
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant={"ghost"} size="icon">
+            <Button variant={"ghost"} size="icon" className="h-8 w-8">
               <Settings className="h-4 w-4" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-80" align="start">
+          <PopoverContent className="w-[500px]" align="start">
             <div className="grid gap-4">
-              <h4 className="font-medium leading-none">OCR设置</h4>
+              <h4 className="font-medium leading-none">视频配置</h4>
+              
+              {/* 摄像头选择 */}
               <div className="flex items-center gap-2 text-sm">
                 <span className="flex-shrink-0">选择摄像头：</span>
                 <Select
@@ -810,57 +1209,179 @@ export function OCRVideoComponent() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span>OCR 间隔 (秒):</span>
-                <Select
-                  value={ocrInterval.toString()}
-                  onValueChange={updateOcrInterval}
-                  disabled={isCapturing}
-                >
-                  <SelectTrigger className="w-32">
-                    <SelectValue placeholder="选择间隔" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0.02">0 (30 FPS)</SelectItem>
-                    <SelectItem value="0.1">0.1 (10 FPS)</SelectItem>
-                    <SelectItem value="0.2">0.2 (5 FPS)</SelectItem>
-                    <SelectItem value="0.5">0.5 (2 FPS)</SelectItem>
-                    <SelectItem value="1.0">1.0 (1 FPS)</SelectItem>
-                  </SelectContent>
-                </Select>
+
+              {/* OCR配置 */}
+              <div className="space-y-2 border-t pt-2">
+                <h5 className="text-sm font-medium">OCR配置</h5>
+                <div className="flex items-center gap-2 text-sm">
+                  <span>OCR 间隔 (秒):</span>
+                  <Select
+                    value={ocrConfig.interval.toString()}
+                    onValueChange={(value) => updateOcrConfig({ interval: Number(value) })}
+                    disabled={isCapturing}
+                  >
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="选择间隔" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0.02">0.02 (50 FPS)</SelectItem>
+                      <SelectItem value="0.1">0.1 (10 FPS)</SelectItem>
+                      <SelectItem value="0.2">0.2 (5 FPS)</SelectItem>
+                      <SelectItem value="0.5">0.5 (2 FPS)</SelectItem>
+                      <SelectItem value="1.0">1.0 (1 FPS)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+              </div>
+
+              {/* 视觉检测配置 */}
+              <div className="space-y-2 border-t pt-2">
+                <h5 className="text-sm font-medium">视觉检测配置</h5>
+                <div className="flex items-center gap-2 text-sm">
+                  <span>帧率 (FPS):</span>
+                  <Select
+                    value={visualConfig.frameRate.toString()}
+                    onValueChange={(value) => updateVisualConfig({ frameRate: Number(value) })}
+                  >
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 FPS</SelectItem>
+                      <SelectItem value="5">5 FPS</SelectItem>
+                      <SelectItem value="10">10 FPS</SelectItem>
+                      <SelectItem value="15">15 FPS</SelectItem>
+                      <SelectItem value="30">30 FPS</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span>阈值:</span>
+                  <Select
+                    value={visualConfig.threshold.toString()}
+                    onValueChange={(value) => updateVisualConfig({ threshold: Number(value) })}
+                  >
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0.3">0.3</SelectItem>
+                      <SelectItem value="0.5">0.5</SelectItem>
+                      <SelectItem value="0.7">0.7</SelectItem>
+                      <SelectItem value="0.8">0.8</SelectItem>
+                      <SelectItem value="0.9">0.9</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span>最大检测时间 (秒):</span>
+                  <Select
+                    value={visualConfig.maxDetectionTime.toString()}
+                    onValueChange={(value) => updateVisualConfig({ maxDetectionTime: Number(value) })}
+                  >
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5秒</SelectItem>
+                      <SelectItem value="10">10秒</SelectItem>
+                      <SelectItem value="30">30秒</SelectItem>
+                      <SelectItem value="60">60秒</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+
+                {/* 模板管理 */}
+                <div className="space-y-2 border-t pt-2">
+                  <h6 className="text-xs font-medium">模板管理</h6>
+                  <TemplateManager
+                    templateFiles={visualConfig.templateData.map(([name, data]) => ({ name, data }))}
+                    onTemplateFilesChange={(templates) => {
+                      const templateData = templates.map(t => [t.name, t.data] as [string, string]);
+                      updateVisualConfig({ templateData });
+                    }}
+                    disabled={isCapturing}
+                    roi={visualRoi}
+                    videoRef={videoRef}
+                    className="text-xs"
+                  />
+                </div>
               </div>
             </div>
           </PopoverContent>
         </Popover>
 
+        {/* OCR ROI选择按钮 */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant={"ghost"}
+              variant={isSelectingOcrROI ? "destructive" : "ghost"}
               size="icon"
-              onClick={startSelectingROI}
+              onClick={startSelectingOcrROI}
               disabled={isCapturing}
+              className="h-8 w-8"
             >
               <SquareDashedMousePointer className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>选择 ROI 区域</p>
+            <p>选择 OCR ROI 区域</p>
           </TooltipContent>
         </Tooltip>
+
+        {/* OCR ROI清除按钮 */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant={"ghost"}
               size="icon"
-              onClick={clearRoi}
-              disabled={!roi || isCapturing}
+              onClick={clearOcrRoi}
+              disabled={!ocrRoi || isCapturing}
+              className="h-8 w-8"
             >
               <Eraser className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>清除 ROI 区域</p>
+            <p>清除 OCR ROI 区域</p>
+          </TooltipContent>
+        </Tooltip>
+
+        {/* 视觉检测ROI选择按钮 */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={isSelectingVisualROI ? "destructive" : "ghost"}
+              size="icon"
+              onClick={startSelectingVisualROI}
+              disabled={isVisualDetectionActive}
+              className="h-8 w-8"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>选择视觉检测 ROI 区域</p>
+          </TooltipContent>
+        </Tooltip>
+
+        {/* 视觉检测ROI清除按钮 */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={"ghost"}
+              size="icon"
+              onClick={clearVisualRoi}
+              disabled={!visualRoi || isVisualDetectionActive}
+              className="h-8 w-8"
+            >
+              <Target className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>清除视觉检测 ROI 区域</p>
           </TooltipContent>
         </Tooltip>
 
@@ -877,64 +1398,114 @@ export function OCRVideoComponent() {
         </div>
       </div>
 
-      <div className="flex-1 relative flex justify-center items-center bg-gray-900/50 rounded-lg overflow-hidden min-h-0 max-h-full">
-        <video
-          ref={videoRef}
-          className="max-w-full max-h-full"
-          playsInline
-          autoPlay
-          muted
-        />
-        <canvas
-          ref={canvasRef}
-          className="absolute top-0 left-0"
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-        />
-        {isSelectingROI && (
+      {/* 视频显示区域 - 最大化高度 */}
+      <div className="flex-1 relative flex justify-center items-center bg-gray-900/50 rounded-lg overflow-hidden min-h-[650px]">
+        <div className="relative flex justify-center items-center">
+          <video
+            ref={videoRef}
+            className="max-w-full max-h-full"
+            playsInline
+            autoPlay
+            muted
+            style={{ 
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain',
+              objectPosition: 'center'
+            }}
+          />
+          <canvas
+            ref={canvasRef}
+            className="absolute top-0 left-0 w-full h-full"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+          />
+        </div>
+        {(isSelectingOcrROI || isSelectingVisualROI) && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 p-2 bg-black/70 rounded-md text-yellow-400 text-sm z-10">
-            点击并拖动鼠标，选择要识别的区域
+            {isSelectingOcrROI ? "点击并拖动鼠标，选择OCR识别区域" : "点击并拖动鼠标，选择视觉检测区域"}
           </div>
         )}
       </div>
 
-      <div className="overflow-y-auto text-sm pr-2" style={{ height: '5%', maxHeight: '5%' }}>
+      {/* OCR结果显示区域 - 自适应高度，默认1行 */}
+      <div className="flex-shrink-0">
         {ocrResults?.length || 0 ? (
-          ocrResults.map((result, index) => (
-            <div
-              key={index}
-              className="flex justify-between items-center p-1.5 rounded hover:bg-gray-100"
-            >
-              <span className="text-gray-800">{result.text}</span>
-            </div>
-          ))
+          <div className="space-y-1">
+            {ocrResults.map((result, index) => (
+              <div
+                key={index}
+                className="text-sm p-2 rounded bg-gray-50 border hover:bg-gray-100 transition-colors"
+              >
+                <span className="text-gray-800 break-words line-clamp-1">{result.text}</span>
+              </div>
+            ))}
+          </div>
         ) : (
-          <div className="text-gray-400 italic pt-2">
+          <div className="text-sm text-gray-400 italic p-2 text-center">
             {isCapturing
               ? "正在识别或未检测到文字..."
               : "点击开始OCR识别以检测文字"}
           </div>
         )}
       </div>
-      <div className="flex flex-row text-sm pr-2 flex-shrink-0" style={{ height: '40px' }}>
+
+      {/* 时间信息 - 最小高度 */}
+      <div className="flex flex-row text-xs pr-2 flex-shrink-0" style={{ height: '24px' }}>
         <div className="flex-1">
-          首次检测到文本时间:
-          {firstTextDetectedTime && (
-            <span className="text-gray-800">
-              {formatTimeWithMs(firstTextDetectedTime)}
-            </span>
-          )}
+          首次检测: {firstTextDetectedTime ? formatTimeWithMs(firstTextDetectedTime) : '未记录'}
         </div>
         <div className="flex-1">
-          文本稳定时间:
-          {textStabilizedTime && (
-            <span className="text-gray-800">
-              {formatTimeWithMs(textStabilizedTime)}
-            </span>
-          )}
+          文本稳定: {textStabilizedTime ? formatTimeWithMs(textStabilizedTime) : '未记录'}
         </div>
       </div>
+
+      {/* 调试信息 - 可折叠 */}
+      {debugInfo && (
+        <details className="text-xs text-gray-500 border-t pt-1 flex-shrink-0">
+          <summary className="cursor-pointer hover:text-gray-700">调试信息</summary>
+          <div className="mt-1 space-y-1">
+            <div>视频原始尺寸: {debugInfo.videoOriginalSize.width} x {debugInfo.videoOriginalSize.height}</div>
+            <div>视频显示尺寸: {debugInfo.videoDisplaySize.width.toFixed(0)} x {debugInfo.videoDisplaySize.height.toFixed(0)}</div>
+            <div>缩放比例: X={debugInfo.scaleFactors.x.toFixed(2)}, Y={debugInfo.scaleFactors.y.toFixed(2)}</div>
+            <div>视频尺寸稳定: {videoSizeStable ? '是' : '否'}</div>
+            {canvasRef.current && (
+              <div>Canvas显示尺寸: {canvasRef.current.getBoundingClientRect().width.toFixed(0)} x {canvasRef.current.getBoundingClientRect().height.toFixed(0)}</div>
+            )}
+            {canvasRef.current && (
+              <div>Canvas样式尺寸: {canvasRef.current.style.width} x {canvasRef.current.style.height}</div>
+            )}
+            {canvasRef.current && (
+              <div>Canvas像素尺寸: {canvasRef.current.width} x {canvasRef.current.height}</div>
+            )}
+            {videoRef.current && canvasRef.current && (
+              <div>
+                视频位置: ({videoRef.current.getBoundingClientRect().left.toFixed(0)}, {videoRef.current.getBoundingClientRect().top.toFixed(0)})
+                Canvas位置: ({canvasRef.current.getBoundingClientRect().left.toFixed(0)}, {canvasRef.current.getBoundingClientRect().top.toFixed(0)})
+              </div>
+            )}
+            {videoRef.current && canvasRef.current && (
+              <div>
+                视频尺寸: {videoRef.current.getBoundingClientRect().width.toFixed(0)} x {videoRef.current.getBoundingClientRect().height.toFixed(0)}
+                Canvas尺寸: {canvasRef.current.getBoundingClientRect().width.toFixed(0)} x {canvasRef.current.getBoundingClientRect().height.toFixed(0)}
+              </div>
+            )}
+            {videoRef.current && (
+              <div>视频宽高比: {(videoRef.current.videoWidth / videoRef.current.videoHeight).toFixed(3)}</div>
+            )}
+            {videoRef.current && (
+              <div>显示宽高比: {(videoRef.current.getBoundingClientRect().width / videoRef.current.getBoundingClientRect().height).toFixed(3)}</div>
+            )}
+            {ocrRoi && (
+              <div>OCR ROI显示坐标: [{ocrRoi[0]}, {ocrRoi[1]}, {ocrRoi[2]}, {ocrRoi[3]}]</div>
+            )}
+            {visualRoi && (
+              <div>视觉检测ROI显示坐标: [{visualRoi[0]}, {visualRoi[1]}, {visualRoi[2]}, {visualRoi[3]}]</div>
+            )}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

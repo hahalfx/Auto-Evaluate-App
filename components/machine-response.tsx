@@ -7,19 +7,14 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Mic, Send, Loader2, AlertCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   Card,
   CardHeader,
   CardContent,
-  CardFooter,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
-import { useVoiceRecognition } from "@/hooks/useVoiceRecognition";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
 interface MachineResponseProps {
@@ -126,69 +121,48 @@ export const MachineResponse = forwardRef<
     <>
       <Card className="shadow-sm rounded-lg h-full flex flex-col max-h-full overflow-hidden">
         <CardHeader className="rounded-lg bg-white p-3 flex-col space-y-2 border-b flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <h3 className="font-semibold text-foreground">被测车机响应</h3>
-            <div className="flex items-center">
-              <Badge variant="outline" className="bg-muted">
-                当前测试指令
-              </Badge>
-              <span className="ml-2 text-sm font-medium">
-                {currentSampleText}
-              </span>
+          <div className="flex items-center gap-2 justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-foreground">车机响应</h3>
+              {/* 小的录音状态图标 */}
+              {asrEvent === "started" && (
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                  <span className="text-xs text-muted-foreground">录音中</span>
+                </div>
+              )}
             </div>
+            <Badge variant="outline" className="text-xs">
+              {currentSampleText || "等待测试指令..."}
+            </Badge>
           </div>
         </CardHeader>
         <CardContent className="p-5 flex-1 flex flex-col min-h-0 max-h-full">
-          <div className="flex flex-1 min-h-0">
-            <div className="flex-shrink-0 mr-5 self-start mt-1">
-              <Button
-                variant="outline"
-                size="icon"
-                className={cn(
-                  "w-16 h-16 rounded-full flex items-center justify-center",
-                  asrEvent == "started" && "bg-primary/10 border-primary"
-                  //error && "border-destructive"
-                )}
-              // onClick={handleVoiceRecognition}
-              >
-                {asrEvent == "started" ? (
-                  <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                ) : (
-                  <Mic className="h-8 w-8 text-primary" />
-                )}
-              </Button>
-            </div>
-            <div className="flex-1 flex flex-col min-h-0">
-              <Textarea
-                placeholder="输入车机响应内容或点击麦克风按钮进行语音识别..."
-                className="flex-1 resize-none min-h-0"
-                value={backendMessage}
-                onChange={(e) => onChange(e.target.value)}
-              />
-
-              {/* {error && (
-              <div className="mt-2 text-sm text-destructive flex items-center gap-1">
-                <AlertCircle className="h-4 w-4" />
-                <span>语音识别错误: {error}</span>
-              </div>
-            )} */}
+          <div className="flex-1 min-h-0">
+            {/* 显示识别结果 */}
+            <div className="w-full h-full">
+              {backendMessage ? (
+                <div className="p-4 bg-gray-50 rounded-md border">
+                  <p className="text-sm text-gray-600 mb-1">识别结果：</p>
+                  <p className="text-base font-medium">{backendMessage}</p>
+                </div>
+              ) : asrEvent === "started" ? (
+                <div className="p-4 bg-blue-50 rounded-md border border-blue-200">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
+                    <p className="text-sm text-blue-600">正在识别语音...</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-gray-50 rounded-md border border-dashed">
+                  <p className="text-sm text-gray-500 text-center">
+                    等待车机响应识别结果...
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
-        {/* <CardFooter className="flex justify-end pb-5 flex-shrink-0">
-          <Button
-            onClick={() => onSubmit()}
-            disabled={!value.trim() || isAnalyzing}
-            className="gap-2"
-          >
-            {asrEvent == "started" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-            测评
-          </Button>
-        </CardFooter> */}
       </Card>
     </>
   );

@@ -1,29 +1,47 @@
-import {
-  Card,
-  CardHeader,
-  CardContent,
-  CardFooter,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-
-import { Progress } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
-import { Play, Loader2, ChevronLeft, ChevronRight, Pause } from "lucide-react";
 import { useAppSelector } from "@/store/hooks";
 import { selectCurrentTask } from "@/store/taskSlice";
+import { selectWakeWords, selectAllSamples } from "@/store/samplesSlice";
 import { use, useEffect, useState } from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import {
   tauriPauseWorkflow,
   tauriResumeWorkflow,
+  tauriStopWorkflow,
 } from "@/services/tauri-analysis-api";
-import { TaskProgress } from "@/types/api";
+import { TaskProgress, AnalysisResult } from "@/types/api";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { ChevronDown, Loader2, Play, Pause, ChevronLeft, ChevronRight, CheckCircle, XCircle, AlertTriangle, FileUp } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { invoke } from "@tauri-apps/api/core";
+import type { WakeWord } from "@/types/api";
+import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScoreDisplay } from "./score-display";
+import {
+  Dialog,
+  DialogHeader,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
+import { useExportCurrentTask } from "@/hooks/useExportCurrentTask";
+import { VisualWakeConfig } from "./ocr";
 
 interface ProgressBarProps {
   progressname: string;
   samplelength: number;
-  onStartAutomatedTest: () => void;
+  onStartAutomatedTest: (
+    wakeWordId?: number,
+    templateData?: Array<[string, string]>,
+    frameRate?: number,
+    threshold?: number,
+    maxDetectionTimeSecs?: number
+  ) => void;
+  visualWakeConfig: VisualWakeConfig;
   isPlaying: boolean;
   isRecording: boolean;
   isAnalyzing: boolean;
@@ -32,12 +50,19 @@ interface ProgressBarProps {
   hasPreviousResult: () => boolean;
   goToNextResult: () => void;
   hasNextResult: () => boolean;
+  // 添加MachineResponse相关的props
+  machineResponseValue: string;
+  onMachineResponseChange: (value: string) => void;
+  onMachineResponseSubmit: (overrideResponse?: string) => void;
+  currentSampleText?: string;
+  error?: string | null;
 }
 
 export function ProgressBar({
   progressname,
   samplelength,
   onStartAutomatedTest,
+  visualWakeConfig,
   isPlaying,
   isRecording,
   isAnalyzing,
@@ -46,19 +71,136 @@ export function ProgressBar({
   hasPreviousResult,
   goToNextResult,
   hasNextResult,
+  // MachineResponse相关参数
+  machineResponseValue,
+  onMachineResponseChange,
+  onMachineResponseSubmit,
+  currentSampleText,
+  error,
 }: ProgressBarProps) {
   const currentTask = useAppSelector(selectCurrentTask);
+  const wakeWords = useAppSelector(selectWakeWords);
+  const samples = useAppSelector(selectAllSamples);
+  const { exportCurrentTask } = useExportCurrentTask();
   const [testStatus, setTestStatus] = useState<
     "idle" | "running" | "paused" | "finished"
   >("idle");
 
+  // 本地唤醒词状态 - 直接从Tauri获取
+  const [localWakeWords, setLocalWakeWords] = useState<WakeWord[]>([]);
+  const [isLoadingWakeWords, setIsLoadingWakeWords] = useState(false);
+
+  // 唤醒词选择状态
+  const [selectedWakeWordId, setSelectedWakeWordId] = useState<number | undefined>(undefined);
+
+  // Analysis Results 相关状态
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const { toast } = useToast();
+
+  // 加载唤醒词 - 直接从Tauri获取
+  useEffect(() => {
+    const loadWakeWords = async () => {
+      try {
+        setIsLoadingWakeWords(true);
+        const fetchedWakeWords = await invoke<WakeWord[]>('get_all_wake_words');
+        setLocalWakeWords(fetchedWakeWords);
+        console.log('从Tauri获取的唤醒词:', fetchedWakeWords);
+      } catch (err) {
+        console.error("Failed to fetch wake words:", err);
+        toast({
+          variant: "destructive",
+          title: "获取唤醒词失败",
+          description: "无法从后端加载唤醒词列表。",
+        });
+      } finally {
+        setIsLoadingWakeWords(false);
+      }
+    };
+    loadWakeWords();
+  }, [toast]);
+
+  // 获取当前任务的唤醒词
+  const taskWakeWords = localWakeWords.filter(ww => 
+    currentTask?.wake_word_ids?.includes(ww.id)
+  );
+
+  // 调试信息
+  console.log('当前任务:', currentTask);
+  console.log('从Tauri获取的唤醒词:', localWakeWords);
+  console.log('当前任务的唤醒词ID列表:', currentTask?.wake_word_ids);
+  console.log('过滤后的任务唤醒词:', taskWakeWords);
+
+  // 当任务变化时，自动选择第一个唤醒词
+  useEffect(() => {
+    if (taskWakeWords.length > 0 && !selectedWakeWordId) {
+      setSelectedWakeWordId(taskWakeWords[0].id);
+    }
+  }, [taskWakeWords, selectedWakeWordId]);
+
+  // ===== MachineResponse 相关状态和逻辑 =====
   const [backendMessage, setBackendMessage] = useState("");
+  const [asrEvent, setAsrEvent] = useState("");
+  
+  // 进度相关状态
   const [detailedProgress, setDetailedProgress] = useState<TaskProgress>({
     value: 0,
     current_sample: 0,
     total: 0,
   });
 
+  // ASR事件监听
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    let unlistenevent: UnlistenFn | undefined;
+    
+    const setupASRListeners = async () => {
+      try {
+        unlisten = await listen("asr_intermediate_result", (event) => {
+          console.log("React Component 收到 asr_intermediate_result", event.payload);
+          const text = event.payload as string;
+          setBackendMessage(text);
+          onMachineResponseChange(text); // 同步到外部状态
+        });
+        
+        unlistenevent = await listen("asr_event", (event) => {
+          console.log("React Component 收到 asr_event:", event.payload);
+          setAsrEvent(
+            typeof event.payload === "string"
+              ? event.payload
+              : JSON.stringify(event.payload)
+          );
+        });
+      } catch (error) {
+        console.error("监听ASR事件失败:", error);
+      }
+    };
+
+    setupASRListeners();
+
+    return () => {
+      if (unlisten) {
+        try {
+          unlisten();
+          console.log("已取消监听 asr_intermediate_result");
+        } catch (error) {
+          console.error("取消监听失败:", error);
+        }
+      }
+      if (unlistenevent) {
+        try {
+          unlistenevent();
+          console.log("已取消监听 asr_event");
+        } catch (error) {
+          console.error("取消监听失败:", error);
+        }
+      }
+    };
+  }, [onMachineResponseChange]);
+
+  // 原来的进度和工作流事件监听
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
     let unlistenprogress: UnlistenFn | undefined;
@@ -66,11 +208,7 @@ export function ProgressBar({
       try {
         unlisten = await listen("workflow_event", (event) => {
           console.log("React Component 收到 workflow_event:", event.payload);
-          setBackendMessage(
-            typeof event.payload === "string"
-              ? event.payload
-              : JSON.stringify(event.payload)
-          );
+          // setBackendMessage 已经移到ASR事件中处理
         });
       } catch (error) {
         console.error("监听 workflow_event 失败:", error);
@@ -96,7 +234,6 @@ export function ProgressBar({
         if (unlisten) {
           try {
             unlisten();
-            console.log("已取消监听");
           } catch (error) {
             console.error("取消监听失败:", error);
           }
@@ -104,7 +241,6 @@ export function ProgressBar({
         if (unlistenprogress) {
           try {
             unlistenprogress();
-            console.log("已取消监听");
           } catch (error) {
             console.error("取消监听失败:", error);
           }
@@ -115,48 +251,563 @@ export function ProgressBar({
     setupListeners();
   }, []);
 
+  // Analysis Results 事件监听
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    let unlistenevent: UnlistenFn | undefined;
+    const setupListeners = async () => {
+      try {
+        unlisten = await listen<AnalysisResult>("llm_analysis_result", (event) => {
+          console.log("React Component 收到 llm_analysis_result:", event.payload);
+          setResult(event.payload);
+          setLoading(false);
+        });
+      } catch (error) {
+        console.error("监听 llm_analysis_result 失败:", error);
+      }
+
+      try {
+        unlistenevent = await listen("llm_analysis_event", (event) => {
+          console.log("React Component 收到 llm_analysis_event:", event.payload);
+          event.payload === "start" && setLoading(true);
+        });
+      } catch (error) {
+        console.error("监听 llm_analysis_event 失败:", error);
+      }
+
+      return () => {
+        if (unlisten) {
+          try {
+            unlisten();
+            console.log("已取消监听");
+          } catch (error) {
+            console.error("取消监听失败:", error);
+          }
+        }
+        if (unlistenevent) {
+          try {
+            unlistenevent();
+            console.log("已取消监听");
+          } catch (error) {
+            console.error("取消监听失败:", error);
+          }
+        }
+      };
+    };
+    
+    setupListeners();
+  }, []);
+
   useEffect(() => {
     if (backendMessage == "workflow finished") {
       setTestStatus("finished");
     }
   }, [backendMessage]);
 
+  function handleStop() {
+    // 停止任务
+    tauriStopWorkflow();
+    setTestStatus("finished");
+  }
+
   function handlePause() {
     // 暂停任务
     tauriPauseWorkflow();
+    setTestStatus("paused");
   }
 
   function handleResume() {
     // 恢复任务
     tauriResumeWorkflow();
+    setTestStatus("running");
   }
+
+  // 包装的启动测试函数
+  const handleStartTestWithConfig = () => {
+    // 获取OCR组件中的视觉检测模板数据
+    // 这里我们需要从OCR组件获取模板数据
+    // 由于OCR组件在同一个页面，我们可以通过window或某种状态管理获取
+    onStartAutomatedTest(selectedWakeWordId, visualWakeConfig.templateData, visualWakeConfig.frameRate, visualWakeConfig.threshold, visualWakeConfig.maxDetectionTime);
+  };
+
+  const handleExportReport = () => {
+    if (currentTask) {
+      exportCurrentTask();
+    }
+  };
+
+  // 将评估项目名称转换为可读标签
+  const getAssessmentLabel = (key: string): string => {
+    const labels: Record<string, string> = {
+      semantic_correctness: "语义正确性",
+      state_change_confirmation: "状态变更确认",
+      unambiguous_expression: "表达无歧义性",
+      overall_score: "总体评分",
+    };
+    return labels[key] || key;
+  };
 
   return (
     <Card className="shadow-sm rounded-lg h-full flex flex-col max-h-full overflow-hidden">
       <CardHeader className="bg-white p-4 rounded-t-lg flex justify-between space-y-0 border-b flex-shrink-0">
-        <CardTitle className="text-2xl  font-semibold text-gray-800 dark:text-gray-100">
+        <CardTitle className="text-2xl font-semibold text-gray-800 dark:text-gray-100">
           {currentTask?.name
             ? currentTask?.name
             : "请在任务列表中选择一个测试任务"}
         </CardTitle>
-        <CardDescription className="text-gray-500  dark:text-gray-400 pt-1">
+        <CardDescription className="text-gray-500 dark:text-gray-400 pt-1">
           {currentTask?.name ? currentTask?.name : "当前没有被选中的测试任务"}
         </CardDescription>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="ghost" className="flex-none">
+              <FileUp className="mr-2 h-4 w-4" />
+              导出结果
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-[800px] h-auto max-h-[700px] flex flex-col">
+            <DialogHeader className="grid grid-cols-9">
+              <DialogTitle>导出结果</DialogTitle>
+              <div className="col-start-8 space-x-2 !mt-0">
+                <Button
+                  onClick={handleExportReport}
+                  disabled={!currentTask}
+                  className="bg-blue-700 hover:bg-blue-600"
+                >
+                  <FileUp className="mr-2 h-4 w-4" />
+                  导出结果报告
+                </Button>
+              </div>
+            </DialogHeader>
+            <div className="w-full overflow-auto">
+              {!currentTask && (
+                <div className="flex flex-col items-center justify-center h-full">
+                  <AlertTriangle className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-muted-foreground text-sm">
+                    请先选择一个任务
+                  </p>
+                </div>
+              )}
+              {currentTask && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">任务名</p>
+                      <p className="text-lg">{currentTask.name}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">任务ID</p>
+                      <p className="text-lg">{currentTask.id}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">状态</p>
+                      <div
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${
+                          currentTask.task_status === "completed"
+                            ? "bg-green-100 text-green-800"
+                            : currentTask.task_status === "in_progress"
+                            ? "bg-blue-100 text-blue-800"
+                            : currentTask.task_status === "failed"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {currentTask.task_status === "completed"
+                          ? "已完成"
+                          : currentTask.task_status === "in_progress"
+                          ? "进行中"
+                          : currentTask.task_status === "failed"
+                          ? "失败"
+                          : "待处理"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">唤醒词ID</p>
+                    <Badge variant="outline">#{currentTask.wake_word_ids?.join(', ')}</Badge>
+                  </div>
+
+                  {/* 测试语料 */}
+                  {samples.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">测试语料</p>
+                      <div className="border rounded-lg p-4 space-y-3">
+                        {currentTask.test_samples_ids.map((sampleId) => {
+                          const sample = samples.find((s) => s.id === sampleId);
+                          return sample ? (
+                            <div
+                              key={sampleId}
+                              className="flex justify-between items-center border-b pb-2 last:border-0 last:pb-0"
+                            >
+                              <div>
+                                <p className="font-medium">{sample.text}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  语料 #{sampleId}
+                                </p>
+                              </div>
+                            </div>
+                          ) : null;
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {currentTask.machine_response &&
+                    Object.keys(currentTask.machine_response).length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">车机响应</p>
+                        <div className="border rounded-lg p-4 space-y-3">
+                          {Object.entries(currentTask.machine_response).map(
+                            ([sampleId, response]) => (
+                              <div
+                                key={sampleId}
+                                className="flex justify-between items-start border-b pb-2 last:border-0 last:pb-0"
+                              >
+                                <div>
+                                  <p className="font-medium">{response.text}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    语料 #{sampleId}
+                                  </p>
+                                </div>
+                                <div
+                                  className={`px-2 py-1 rounded-full text-xs ${
+                                    response.connected
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-red-100 text-red-800"
+                                  }`}
+                                >
+                                  {response.connected ? "已连接" : "未连接"}
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  {currentTask.test_result &&
+                    Object.keys(currentTask.test_result).length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">测试结果</p>
+                        <div className="border rounded-lg p-4 space-y-3">
+                          {Object.entries(currentTask.test_result).map(
+                            ([sampleId, result]) => (
+                              <div
+                                key={sampleId}
+                                className="border-b pb-2 last:border-0 last:pb-0"
+                              >
+                                <div className="flex justify-between items-center mb-2">
+                                  <p className="font-medium">
+                                    语料 #{sampleId}
+                                  </p>
+                                  <div
+                                    className={`px-2 py-1 rounded-full text-xs ${
+                                      result.assessment.valid
+                                        ? "bg-green-100 text-green-800"
+                                        : "bg-red-100 text-red-800"
+                                    }`}
+                                  >
+                                    {result.assessment.valid
+                                      ? "通过"
+                                      : "未通过"}
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 mb-2">
+                                  <div className="text-center p-2 bg-gray-50 rounded-xl">
+                                    <p className="text-sm text-muted-foreground">
+                                      语义正确性
+                                    </p>
+                                    <p className="font-mono font-bold">
+                                      {result.assessment.semantic_correctness.score.toFixed(
+                                        1
+                                      )}
+                                    </p>
+                                  </div>
+                                  <div className="text-center p-2 bg-gray-50 rounded-xl">
+                                    <p className="text-sm text-muted-foreground">
+                                      状态变更确认
+                                    </p>
+                                    <p className="font-mono font-bold">
+                                      {result.assessment.state_change_confirmation.score.toFixed(
+                                        1
+                                      )}
+                                    </p>
+                                  </div>
+                                  <div className="text-center p-2 bg-gray-50 rounded-xl">
+                                    <p className="text-sm text-muted-foreground">
+                                      表达无歧义
+                                    </p>
+                                    <p className="font-mono font-bold">
+                                      {result.assessment.unambiguous_expression.score.toFixed(
+                                        1
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-center p-2 bg-gray-100 rounded-xl mb-2">
+                                  <p className="text-sm text-muted-foreground">
+                                    总分
+                                  </p>
+                                  <p className="font-mono font-bold text-lg">
+                                    {result.assessment.overall_score.toFixed(1)}
+                                  </p>
+                                </div>
+                                {result.assessment.suggestions.length > 0 && (
+                                  <div>
+                                    <p className="text-sm text-muted-foreground mb-1">
+                                      改进建议:
+                                    </p>
+                                    <ul className="text-sm list-disc list-inside">
+                                      {result.assessment.suggestions.map(
+                                        (suggestion, idx) => (
+                                          <li key={idx}>{suggestion}</li>
+                                        )
+                                      )}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    )}
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardHeader>
-      <CardContent className="p-4 flex-1 flex flex-col min-h-0 max-h-full">
-        <Progress value={detailedProgress.value} className="h-3" />
-        <div className="flex justify-between">
-          <p className="text-sm text-muted-foreground py-1">
-            {detailedProgress.value}%
-          </p>
-          <p className="text-sm text-muted-foreground py-1">
-            {detailedProgress.total > 0
-              ? `正在测试${detailedProgress?.current_sample}，共${samplelength}条`
-              : `已选择${samplelength}条待测试`}
-          </p>
+      <CardContent className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto space-y-4">
+        {/* 唤醒词选择 */}
+        <div className="space-y-2">
+          <Label>选择唤醒词</Label>
+          {isLoadingWakeWords ? (
+            <div className="p-3 bg-gray-50 rounded-md border border-dashed">
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                <p className="text-sm text-gray-500">加载唤醒词中...</p>
+              </div>
+            </div>
+          ) : taskWakeWords.length > 0 ? (
+            <Select value={selectedWakeWordId?.toString()} onValueChange={(value) => setSelectedWakeWordId(Number(value))}>
+              <SelectTrigger>
+                <SelectValue placeholder="请选择唤醒词" />
+              </SelectTrigger>
+              <SelectContent>
+                {taskWakeWords.map((wakeWord) => (
+                  <SelectItem key={wakeWord.id} value={wakeWord.id.toString()}>
+                    {wakeWord.text}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="p-3 bg-gray-50 rounded-md border border-dashed">
+              <p className="text-sm text-gray-500 text-center">
+                {currentTask ? "当前任务没有配置唤醒词" : "请先选择一个任务"}
+              </p>
+            </div>
+          )}
+          {taskWakeWords.length === 0 && currentTask && !isLoadingWakeWords && (
+            <p className="text-xs text-red-500">
+              请在任务管理中为任务添加唤醒词
+            </p>
+          )}
         </div>
-        <div className="flex flex-1 flex-row gap-2">
-          <Button
+
+        {/* 进度显示 */}
+        <div className="space-y-2">
+          <Progress value={detailedProgress.value} className="h-3" />
+          <div className="flex justify-between">
+            <p className="text-sm text-muted-foreground py-1">
+              {detailedProgress.value}%
+            </p>
+            <p className="text-sm text-muted-foreground py-1">
+              {detailedProgress.total > 0
+                ? `正在测试第${detailedProgress?.current_sample}个，共${samplelength}个样本`
+                : `任务包含${samplelength}个样本，将自动依次处理`}
+            </p>
+          </div>
+        </div>
+
+        {/* 车机响应显示区域 */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 justify-between">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm font-medium">车机响应</Label>
+              {/* 小的录音状态图标 */}
+              {asrEvent === "started" && (
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                  <span className="text-xs text-muted-foreground">录音中</span>
+                </div>
+              )}
+            </div>
+            <Badge variant="outline" className="text-xs">
+              {currentSampleText || "等待测试指令..."}
+            </Badge>
+          </div>
+          
+          {/* 显示识别结果 */}
+          <div className="w-full">
+            {backendMessage ? (
+              <div className="p-3 bg-gray-50 rounded-md border">
+                <p className="text-xs text-gray-600 mb-1">识别结果：</p>
+                <p className="text-sm font-medium">{backendMessage}</p>
+              </div>
+            ) : asrEvent === "started" ? (
+              <div className="p-3 bg-blue-50 rounded-md border border-blue-200">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-3 w-3 text-blue-500 animate-spin" />
+                  <p className="text-xs text-blue-600">正在识别语音...</p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 bg-gray-50 rounded-md border border-dashed">
+                <p className="text-xs text-gray-500 text-center">
+                  等待车机响应识别结果...
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 结果判定部分 */}
+        <div className="space-y-2">
+          <span className="font-bold text-primary flex items-center text-sm">
+            <div className="w-1 h-4 bg-primary mr-2 rounded-sm"></div>
+            结果判定
+          </span>
+
+          {loading ? (
+            <div className="flex justify-center items-center py-3">
+              <Skeleton className="h-12 w-24" />
+            </div>
+          ) : error ? (
+            <div className="flex justify-center items-center py-3">
+              <div className="bg-gray-50 px-4 py-2 rounded-lg">
+                <span className="text-muted-foreground text-sm">错误: {error}</span>
+              </div>
+            </div>
+          ) : !result?.assessment ? (
+            <div className="flex justify-center items-center py-3">
+              <div className="bg-gray-50 px-4 py-2 rounded-lg">
+                <span className="text-muted-foreground text-sm">等待分析</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-center items-center py-3">
+              <div
+                className={`bg-card px-4 py-2 rounded-lg border shadow-sm ${
+                  result.assessment.valid
+                    ? "border-green-500 border-opacity-30"
+                    : "border-destructive border-opacity-30"
+                }`}
+              >
+                <div className="flex items-center">
+                  {result.assessment.valid ? (
+                    <CheckCircle className="h-6 w-6 text-green-600 mr-2" />
+                  ) : (
+                    <XCircle className="h-6 w-6 text-destructive mr-2" />
+                  )}
+                  <span
+                    className={`text-2xl font-bold ${
+                      result.assessment.valid
+                        ? "text-green-600"
+                        : "text-destructive"
+                    }`}
+                  >
+                    {result.assessment.valid ? "通过" : "不通过"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 评估详情部分 */}
+        <div className="space-y-2">
+          <span className="font-bold text-primary flex items-center text-sm">
+            <div className="w-1 h-4 bg-primary mr-2 rounded-sm"></div>
+            大模型评估详情
+          </span>
+
+          {loading ? (
+            <div className="space-y-2 bg-muted/30 p-3 rounded-lg shadow-sm border">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-3 w-full" />
+            </div>
+          ) : error || !result ? (
+            <div className="bg-muted/30 p-3 rounded-lg shadow-sm">
+              <div className="flex flex-col items-center justify-center py-4 text-center">
+                <p className="text-muted-foreground text-sm">
+                  请选择测试语料并提交车机响应进行分析
+                </p>
+                {error && <p className="text-destructive mt-1 text-xs">{error}</p>}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-muted/30 p-3 rounded-lg shadow-sm border space-y-2">
+              {/* 语义正确性 */}
+              <ScoreDisplay
+                score={result.assessment.semantic_correctness.score}
+                label={getAssessmentLabel("semantic_correctness")}
+                comment={result.assessment.semantic_correctness.comment}
+              />
+
+              {/* 状态变更确认 */}
+              <ScoreDisplay
+                score={result.assessment.state_change_confirmation.score}
+                label={getAssessmentLabel("state_change_confirmation")}
+                comment={result.assessment.state_change_confirmation.comment}
+              />
+
+              {/* 表达无歧义性 */}
+              <ScoreDisplay
+                score={result.assessment.unambiguous_expression.score}
+                label={getAssessmentLabel("unambiguous_expression")}
+                comment={result.assessment.unambiguous_expression.comment}
+              />
+
+              {/* 总体评分 */}
+              <ScoreDisplay
+                score={result.assessment.overall_score}
+                label={getAssessmentLabel("overall_score")}
+              />
+
+              {/* 改进建议 */}
+              {result.assessment.suggestions &&
+                result.assessment.suggestions.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-border">
+                    <div className="flex items-center text-amber-600 mb-1">
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      <span className="font-medium text-xs">改进建议</span>
+                    </div>
+                    <ul className="list-disc pl-4 space-y-1">
+                      {result.assessment.suggestions.map(
+                        (suggestion, index) => (
+                          <li
+                            key={index}
+                            className="text-xs text-muted-foreground"
+                          >
+                            {suggestion}
+                          </li>
+                        )
+                      )}
+                    </ul>
+                  </div>
+                )}
+            </div>
+          )}
+        </div>
+
+        {/* 控制按钮 */}
+        <div className="flex flex-row gap-2 mt-auto pt-4 border-t">
+          {/* <Button
             variant="outline"
             size="sm"
             onClick={goToPreviousResult}
@@ -175,7 +826,7 @@ export function ProgressBar({
           >
             下一条
             <ChevronRight className="h-4 w-4" />
-          </Button>
+          </Button> */}
 
           <Button
             onClick={() => {
@@ -186,11 +837,11 @@ export function ProgressBar({
                 handleResume();
                 setTestStatus("running");
               } else {
-                onStartAutomatedTest();
+                handleStartTestWithConfig();
                 setTestStatus("running");
               }
             }}
-            disabled={testStatus === "finished" || currentTask === null}
+            disabled={currentTask === null}
             className="col-span-2 col-start-4 gap-2 bg-blue-700 hover:bg-blue-500 w-full"
             variant="default"
           >
@@ -205,6 +856,14 @@ export function ProgressBar({
                 {testStatus === "paused" ? "恢复任务" : "开始任务"}
               </>
             )}
+          </Button>
+          <Button
+            onClick={handleStop}
+            disabled={testStatus === "finished"}
+            className="col-span-2 col-start-4 gap-2 w-full"
+            variant="destructive"
+          >
+            停止任务
           </Button>
         </div>
       </CardContent>
