@@ -534,11 +534,19 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
           clampedWidth,
           clampedHeight
         );
+
+        // 调试信息
+        console.log("OCR ROI截取:", {
+          original: currentOcrRoi,
+          clamped: { x: clampedX, y: clampedY, w: clampedWidth, h: clampedHeight },
+          canvas: { width: canvas.width, height: canvas.height }
+        });
       } else {
         // ROI无效，使用完整画面
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        console.log("OCR使用完整画面，ROI无效");
       }
     } else if (shouldSendForVisual && currentVisualRoi && currentVisualRoi[2] > 0 && currentVisualRoi[3] > 0) {
       // 为视觉检测任务处理ROI - 现在ROI坐标已经是视频原始坐标系
@@ -567,17 +575,26 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
           clampedWidth,
           clampedHeight
         );
+
+        // 调试信息
+        console.log("视觉检测ROI截取:", {
+          original: currentVisualRoi,
+          clamped: { x: clampedX, y: clampedY, w: clampedWidth, h: clampedHeight },
+          canvas: { width: canvas.width, height: canvas.height }
+        });
       } else {
         // ROI无效，使用完整画面
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        console.log("视觉检测使用完整画面，ROI无效");
       }
     } else {
       // 没有ROI或ROI无效，使用完整画面
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      console.log("使用完整画面，无ROI");
     }
 
     try {
@@ -598,23 +615,23 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
       const promises: Promise<any>[] = [];
 
       // 如果正在捕获，推送给OCR
-      if (isCapturing) {
+      if (shouldSendForOCR) {
         promises.push(
-          invoke("push_video_frame", {
-            imageData: encodedImageBytes,
-            timestamp: timestamp,
+          invoke("push_video_frame_ocr", {
+            imageData: Array.from(encodedImageBytes),
+            timestamp,
             width: canvas.width,
             height: canvas.height,
           })
         );
       }
 
-      // 如果视觉检测活跃，推送给视觉检测
-      if (isVisualDetectionActive) {
+      // 如果视觉检测激活，推送给视觉检测
+      if (shouldSendForVisual) {
         promises.push(
           invoke("push_video_frame_visual", {
             imageData: Array.from(encodedImageBytes),
-            timestamp: timestamp,
+            timestamp,
             width: canvas.width,
             height: canvas.height,
           })
@@ -626,26 +643,20 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
 
       const endTime = performance.now();
       setLastInferenceTime((endTime - startTime) / 1000);
+
+      // 更新帧率统计
+      frameRateRef.current.displayFrames++;
+      const now = performance.now();
+      if (now - frameRateRef.current.displayLastFrameTime >= 1000) {
+        const fps = frameRateRef.current.displayFrames;
+        frameRateRef.current.displayFrames = 0;
+        frameRateRef.current.displayLastFrameTime = now;
+        console.log(`当前帧率: ${fps} FPS`);
+      }
     } catch (error) {
-      console.error("视频帧推送失败:", error);
-      
-      // 如果是OCR相关的错误
-      if (String(error).includes("not initialized") && shouldSendForOCR) {
-        toast({
-          title: "OCR 执行失败",
-          description: String(error),
-          variant: "destructive",
-        });
-        setIsCapturing(false);
-      }
-      
-      // 如果是视觉检测相关的错误
-      if ((String(error).includes("视觉检测未启动") || String(error).includes("视觉检测失败")) && shouldSendForVisual) {
-        console.log("视觉检测已停止，停止推送视频帧");
-        setIsVisualDetectionActive(false);
-      }
+      console.error("推送视频帧失败:", error);
     }
-  }, [toast]);
+  }, [canvasToBlob, isCapturing, isVisualDetectionActive]);
 
   // 5. 停止 OCR 会话 (自动关闭引擎)
   const stopCapturing = useCallback(() => {
@@ -864,128 +875,175 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // 获取视频的实际显示尺寸（CSS尺寸）
-    const videoRect = video.getBoundingClientRect();
-    const videoDisplayWidth = videoRect.width;
-    const videoDisplayHeight = videoRect.height;
+    // 获取容器尺寸
+    const containerRect = canvas.parentElement?.getBoundingClientRect();
+    if (!containerRect) return;
 
-    // 只有当视频有实际显示尺寸时才设置Canvas尺寸
-    if (videoDisplayWidth > 0 && videoDisplayHeight > 0) {
-      // 设置Canvas的实际像素尺寸为视频的原始尺寸
-      if (canvas.width !== video.videoWidth) canvas.width = video.videoWidth;
-      if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
+    // 确保canvas尺寸与显示尺寸匹配（与wake-detection-workflow一致）
+    canvas.width = containerRect.width;
+    canvas.height = containerRect.height;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 清除画布
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // 计算缩放比例
-      const scaleX = video.videoWidth / videoDisplayWidth;
-      const scaleY = video.videoHeight / videoDisplayHeight;
+    // 计算视频在容器中的实际显示尺寸（考虑object-fit: contain）
+    const containerAspect = canvas.width / canvas.height;
+    const videoAspect = video.videoWidth / video.videoHeight;
 
-      // 更新调试信息
-      setDebugInfo({
-        videoOriginalSize: { width: video.videoWidth, height: video.videoHeight },
-        videoDisplaySize: { width: videoDisplayWidth, height: videoDisplayHeight },
-        scaleFactors: { x: scaleX, y: scaleY }
-      });
+    let displayWidth, displayHeight, offsetX = 0, offsetY = 0;
 
-      // 设置视频尺寸稳定状态
-      if (!videoSizeStable) {
-        setVideoSizeStable(true);
+    if (containerAspect > videoAspect) {
+      // 容器更宽，以高度为准
+      displayHeight = canvas.height;
+      displayWidth = (video.videoWidth / video.videoHeight) * displayHeight;
+      offsetX = (canvas.width - displayWidth) / 2;
+    } else {
+      // 容器更高，以宽度为准
+      displayWidth = canvas.width;
+      displayHeight = (video.videoHeight / video.videoWidth) * displayWidth;
+      offsetY = (canvas.height - displayHeight) / 2;
+    }
+
+    // 计算缩放比例
+    const scaleX = displayWidth / video.videoWidth;
+    const scaleY = displayHeight / video.videoHeight;
+
+    // 更新调试信息
+    setDebugInfo({
+      videoOriginalSize: { width: video.videoWidth, height: video.videoHeight },
+      videoDisplaySize: { width: displayWidth, height: displayHeight },
+      scaleFactors: { x: scaleX, y: scaleY }
+    });
+
+    // 设置视频尺寸稳定状态
+    if (!videoSizeStable) {
+      setVideoSizeStable(true);
+    }
+
+    // 只有在视频尺寸稳定后才进行绘制
+    if (videoSizeStable) {
+      // 绘制OCR ROI（缩放到显示尺寸）
+      if (ocrRoi) {
+        const displayX = offsetX + (ocrRoi[0] * scaleX);
+        const displayY = offsetY + (ocrRoi[1] * scaleY);
+        const displayWidth = ocrRoi[2] * scaleX;
+        const displayHeight = ocrRoi[3] * scaleY;
+
+        ctx.strokeStyle = "lime";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([]);
+        ctx.strokeRect(displayX, displayY, displayWidth, displayHeight);
+        
+        // 添加OCR ROI标签
+        ctx.fillStyle = "rgba(0, 255, 0, 0.8)";
+        ctx.font = "bold 14px Arial";
+        ctx.fillText("OCR", displayX + 5, displayY + 20);
+
+        // 调试信息
+        console.log("OCR ROI绘制:", {
+          original: ocrRoi,
+          display: { x: displayX, y: displayY, w: displayWidth, h: displayHeight },
+          offset: { x: offsetX, y: offsetY },
+          scale: { x: scaleX, y: scaleY }
+        });
       }
 
-      // 只有在视频尺寸稳定后才进行绘制
-      if (videoSizeStable) {
-        // 绘制OCR ROI
-        if (ocrRoi) {
-          ctx.strokeStyle = "lime";
-          ctx.lineWidth = 3;
-          // 将ROI坐标从显示坐标转换为Canvas坐标
-          const [x, y, w, h] = ocrRoi;
-          ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
-          
-          // 添加OCR ROI标签
-          ctx.fillStyle = "rgba(0, 255, 0, 0.8)";
-          ctx.font = "bold 14px Arial";
-          ctx.fillText("OCR", x * scaleX + 5, y * scaleY + 20);
-        }
+      // 绘制视觉检测 ROI（缩放到显示尺寸）
+      if (visualRoi) {
+        const displayX = offsetX + (visualRoi[0] * scaleX);
+        const displayY = offsetY + (visualRoi[1] * scaleY);
+        const displayWidth = visualRoi[2] * scaleX;
+        const displayHeight = visualRoi[3] * scaleY;
 
-        // 绘制视觉检测 ROI
-        if (visualRoi) {
-          ctx.strokeStyle = "cyan";
-          ctx.lineWidth = 3;
-          // 将ROI坐标从显示坐标转换为Canvas坐标
-          const [x, y, w, h] = visualRoi;
-          ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
-          
-          // 添加视觉检测 ROI标签
-          ctx.fillStyle = "rgba(0, 255, 255, 0.8)";
-          ctx.font = "bold 14px Arial";
-          ctx.fillText("视觉检测", x * scaleX + 5, y * scaleY + 20);
-        }
+        ctx.strokeStyle = "cyan";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([]);
+        ctx.strokeRect(displayX, displayY, displayWidth, displayHeight);
+        
+        // 添加视觉检测 ROI标签
+        ctx.fillStyle = "rgba(0, 255, 255, 0.8)";
+        ctx.font = "bold 14px Arial";
+        ctx.fillText("视觉检测", displayX + 5, displayY + 20);
 
-        // 绘制正在选择的ROI
-        if ((isSelectingOcrROI || isSelectingVisualROI) && roiStartPoint && isDrawingRef.current) {
+        // 调试信息
+        console.log("视觉检测ROI绘制:", {
+          original: visualRoi,
+          display: { x: displayX, y: displayY, w: displayWidth, h: displayHeight },
+          offset: { x: offsetX, y: offsetY },
+          scale: { x: scaleX, y: scaleY }
+        });
+      }
+
+      // 绘制正在选择的ROI（考虑视频实际显示区域）
+      if ((isSelectingOcrROI || isSelectingVisualROI) && roiStartPoint && isDrawingRef.current) {
+        // 将鼠标坐标转换到视频实际显示区域
+        const mouseToVideoX = (x: number) => Math.max(0, Math.min((x - offsetX) / scaleX, video.videoWidth));
+        const mouseToVideoY = (y: number) => Math.max(0, Math.min((y - offsetY) / scaleY, video.videoHeight));
+
+        // 计算ROI的原始坐标
+        const videoX1 = mouseToVideoX(Math.min(roiStartPoint.x, isDrawingRef.current.x));
+        const videoY1 = mouseToVideoY(Math.min(roiStartPoint.y, isDrawingRef.current.y));
+        const videoX2 = mouseToVideoX(Math.max(roiStartPoint.x, isDrawingRef.current.x));
+        const videoY2 = mouseToVideoY(Math.max(roiStartPoint.y, isDrawingRef.current.y));
+
+        const videoWidth = videoX2 - videoX1;
+        const videoHeight = videoY2 - videoY1;
+
+        if (videoWidth > 0 && videoHeight > 0) {
+          const displayX = offsetX + (videoX1 * scaleX);
+          const displayY = offsetY + (videoY1 * scaleY);
+          const displayWidth = videoWidth * scaleX;
+          const displayHeight = videoHeight * scaleY;
+
           ctx.strokeStyle = "yellow";
           ctx.lineWidth = 2;
           ctx.setLineDash([5, 5]);
-          // 将显示坐标转换为Canvas像素坐标
-          const startX = roiStartPoint.x * scaleX;
-          const startY = roiStartPoint.y * scaleY;
-          const endX = isDrawingRef.current.x * scaleX;
-          const endY = isDrawingRef.current.y * scaleY;
-          
-          // 调试信息
-          console.log("ROI drawing coordinates:", {
-            display: {
-              start: { x: roiStartPoint.x, y: roiStartPoint.y },
-              end: { x: isDrawingRef.current.x, y: isDrawingRef.current.y }
-            },
-            canvas: {
-              start: { x: startX, y: startY },
-              end: { x: endX, y: endY }
-            },
-            scale: { x: scaleX, y: scaleY }
-          });
-          
-          ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+          ctx.strokeRect(displayX, displayY, displayWidth, displayHeight);
           ctx.setLineDash([]);
-        }
 
-        if (ocrResults?.length || 0) {
-          ocrResults.forEach((result) => {
-            const { combined_bbox, text } = result;
-            const [x, y, w, h] = combined_bbox;
-
-            // 将OCR结果坐标从视频原始坐标转换为Canvas显示坐标
-            const displayX = x / scaleX;
-            const displayY = y / scaleY;
-            const displayW = w / scaleX;
-            const displayH = h / scaleY;
-
-            ctx.strokeStyle = "red";
-            ctx.lineWidth = 2;
-            ctx.strokeRect(displayX, displayY, displayW, displayH);
-
-            const displayText = `${text}`;
-            ctx.font = "bold 16px Arial";
-            const textMetrics = ctx.measureText(displayText);
-
-            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-            ctx.fillRect(displayX, displayY - 22, textMetrics.width + 10, 20);
-            ctx.fillStyle = "white";
-            ctx.fillText(displayText, displayX + 5, displayY - 7);
+          // 调试信息
+          console.log("正在选择ROI:", {
+            mouse: { start: roiStartPoint, current: isDrawingRef.current },
+            video: { x1: videoX1, y1: videoY1, x2: videoX2, y2: videoY2, w: videoWidth, h: videoHeight },
+            display: { x: displayX, y: displayY, w: displayWidth, h: displayHeight }
           });
         }
+      }
 
-        if (isCapturing) {
-          ctx.fillStyle = "lime";
-          ctx.font = "16px Arial";
-          ctx.fillText(
-            `Rust 推理: ${lastInferenceTime.toFixed(4)}s`,
-            10,
-            canvas.height - 10
-          );
-        }
+      if (ocrResults?.length || 0) {
+        ocrResults.forEach((result) => {
+          const { combined_bbox, text } = result;
+          const [x, y, w, h] = combined_bbox;
+
+          // OCR结果已经是视频原始坐标，转换为显示坐标
+          const displayX = offsetX + (x * scaleX);
+          const displayY = offsetY + (y * scaleY);
+          const displayW = w * scaleX;
+          const displayH = h * scaleY;
+
+          ctx.strokeStyle = "red";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(displayX, displayY, displayW, displayH);
+
+          const displayText = `${text}`;
+          ctx.font = "bold 16px Arial";
+          const textMetrics = ctx.measureText(displayText);
+
+          ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+          ctx.fillRect(displayX, displayY - 22, textMetrics.width + 10, 20);
+          ctx.fillStyle = "white";
+          ctx.fillText(displayText, displayX + 5, displayY - 7);
+        });
+      }
+
+      if (isCapturing) {
+        ctx.fillStyle = "lime";
+        ctx.font = "16px Arial";
+        ctx.fillText(
+          `Rust 推理: ${lastInferenceTime.toFixed(4)}s`,
+          10,
+          canvas.height - 10
+        );
       }
     }
   }, [
@@ -1010,49 +1068,23 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
     return () => cancelAnimationFrame(animationFrameId);
   }, [drawVisuals]);
 
-  // --- 鼠标事件处理 (修改为支持两种ROI选择，使用与wake-detection-workflow相同的坐标系) ---
+  // --- 鼠标事件处理 (修改为与wake-detection-workflow一致的坐标系统) ---
   const getMousePos = useCallback(
     (
       canvasElement: HTMLCanvasElement,
       event: React.MouseEvent<HTMLCanvasElement>
     ) => {
       const canvas = canvasElement;
-      const video = videoRef.current;
-      if (!canvas || !video) return { x: 0, y: 0 };
+      if (!canvas) return { x: 0, y: 0 };
 
-      // 获取容器尺寸
-      const containerRect = canvas.parentElement?.getBoundingClientRect();
-      if (!containerRect) return { x: 0, y: 0 };
-
+      // 获取鼠标在canvas上的显示坐标
       const canvasRect = canvas.getBoundingClientRect();
       const mouseX = event.clientX - canvasRect.left;
       const mouseY = event.clientY - canvasRect.top;
 
-      // 计算视频显示区域（考虑object-fit: contain）
-      const containerAspect = containerRect.width / containerRect.height;
-      const videoAspect = video.videoWidth / video.videoHeight;
-
-      let displayWidth, displayHeight, offsetX = 0, offsetY = 0;
-
-      if (containerAspect > videoAspect) {
-        // 容器更宽，以高度为准
-        displayHeight = containerRect.height;
-        displayWidth = (video.videoWidth / video.videoHeight) * displayHeight;
-        offsetX = (containerRect.width - displayWidth) / 2;
-      } else {
-        // 容器更高，以宽度为准
-        displayWidth = containerRect.width;
-        displayHeight = (video.videoHeight / video.videoWidth) * displayWidth;
-        offsetY = (containerRect.height - displayHeight) / 2;
-      }
-
-      // 将鼠标坐标转换为视频原始坐标系
-      const videoX = Math.max(0, Math.min((mouseX - offsetX) * (video.videoWidth / displayWidth), video.videoWidth));
-      const videoY = Math.max(0, Math.min((mouseY - offsetY) * (video.videoHeight / displayHeight), video.videoHeight));
-
       return {
-        x: videoX,
-        y: videoY,
+        x: mouseX,
+        y: mouseY,
       };
     },
     []
@@ -1107,17 +1139,19 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
       const canvasWidth = containerRect.width;
       const canvasHeight = containerRect.height;
 
-      // 计算视频显示区域（考虑object-fit: contain）
+      // 计算视频显示区域（考虑object-fit: contain）- 使用完整的coordinate transformation logic
       const containerAspect = canvasWidth / canvasHeight;
       const videoAspect = video.videoWidth / video.videoHeight;
 
       let displayWidth, displayHeight, offsetX = 0, offsetY = 0;
 
       if (containerAspect > videoAspect) {
+        // 容器更宽，以高度为准
         displayHeight = canvasHeight;
         displayWidth = (video.videoWidth / video.videoHeight) * displayHeight;
         offsetX = (canvasWidth - displayWidth) / 2;
       } else {
+        // 容器更高，以宽度为准
         displayWidth = canvasWidth;
         displayHeight = (video.videoHeight / video.videoWidth) * displayWidth;
         offsetY = (canvasHeight - displayHeight) / 2;
@@ -1126,53 +1160,74 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
       const scaleX = video.videoWidth / displayWidth;
       const scaleY = video.videoHeight / displayHeight;
 
-      // 获取鼠标在canvas上的坐标
+      // 获取鼠标在canvas上的显示坐标
       const canvasRect = canvas.getBoundingClientRect();
       const mouseX = e.clientX - canvasRect.left;
       const mouseY = e.clientY - canvasRect.top;
 
-      // 计算ROI在视频原始坐标系中的位置
-      const roiX1 = Math.max(0, Math.min((Math.min(roiStartPoint.x, mouseX) - offsetX) * scaleX, video.videoWidth));
-      const roiY1 = Math.max(0, Math.min((Math.min(roiStartPoint.y, mouseY) - offsetY) * scaleY, video.videoHeight));
-      const roiX2 = Math.max(0, Math.min((Math.max(roiStartPoint.x, mouseX) - offsetX) * scaleX, video.videoWidth));
-      const roiY2 = Math.max(0, Math.min((Math.max(roiStartPoint.y, mouseY) - offsetY) * scaleY, video.videoHeight));
+      // 计算ROI在视频原始坐标系中的位置 - 确保使用完整的转换
+      const startX = Math.min(roiStartPoint.x, mouseX);
+      const startY = Math.min(roiStartPoint.y, mouseY);
+      const endX = Math.max(roiStartPoint.x, mouseX);
+      const endY = Math.max(roiStartPoint.y, mouseY);
+
+      // 转换到视频原始坐标并确保边界
+      const roiX1 = Math.max(0, Math.min((startX - offsetX) * scaleX, video.videoWidth));
+      const roiY1 = Math.max(0, Math.min((startY - offsetY) * scaleY, video.videoHeight));
+      const roiX2 = Math.max(0, Math.min((endX - offsetX) * scaleX, video.videoWidth));
+      const roiY2 = Math.max(0, Math.min((endY - offsetY) * scaleY, video.videoHeight));
 
       const roiWidth = roiX2 - roiX1;
       const roiHeight = roiY2 - roiY1;
 
       if (roiWidth < 10 || roiHeight < 10) {
         console.log("ROI 区域太小");
-      } else {
-        // 确保ROI不超出视频边界
-        const clampedX = Math.max(0, Math.min(roiX1, video.videoWidth - 1));
-        const clampedY = Math.max(0, Math.min(roiY1, video.videoHeight - 1));
-        const clampedWidth = Math.min(roiWidth, video.videoWidth - clampedX);
-        const clampedHeight = Math.min(roiHeight, video.videoHeight - clampedY);
+        toast({
+          title: "ROI区域太小",
+          description: "请选择更大的区域",
+          variant: "destructive",
+        });
+        return;
+      }
 
-        if (clampedWidth > 0 && clampedHeight > 0) {
-          // 保存视频原始坐标（与wake-detection-workflow相同的方式）
-          const newRoi: [number, number, number, number] = [
-            Math.round(clampedX),
-            Math.round(clampedY),
-            Math.round(clampedWidth),
-            Math.round(clampedHeight),
-          ];
-          console.log("Setting new ROI:", newRoi);
-          
-          // 根据当前选择模式设置对应的ROI
-          if (isSelectingOcrROI) {
-            setOcrRoi(newRoi);
-            toast({
-              title: "OCR ROI区域已设置",
-              description: `区域大小: ${newRoi[2]}x${newRoi[3]}`,
-            });
-          } else if (isSelectingVisualROI) {
-            setVisualRoi(newRoi);
-            toast({
-              title: "视觉检测ROI区域已设置",
-              description: `区域大小: ${newRoi[2]}x${newRoi[3]}`,
-            });
-          }
+      // 确保ROI不超出视频边界
+      const clampedX = Math.max(0, Math.min(roiX1, video.videoWidth - 1));
+      const clampedY = Math.max(0, Math.min(roiY1, video.videoHeight - 1));
+      const clampedWidth = Math.min(roiWidth, video.videoWidth - clampedX);
+      const clampedHeight = Math.min(roiHeight, video.videoHeight - clampedY);
+
+      if (clampedWidth > 0 && clampedHeight > 0) {
+        // 保存视频原始坐标
+        const newRoi: [number, number, number, number] = [
+          Math.round(clampedX),
+          Math.round(clampedY),
+          Math.round(clampedWidth),
+          Math.round(clampedHeight),
+        ];
+        
+        console.log("Setting new ROI:", newRoi);
+        console.log("ROI计算详情:", {
+          mouse: { x: mouseX, y: mouseY, start: roiStartPoint },
+          display: { width: displayWidth, height: displayHeight, offsetX, offsetY },
+          video: { width: video.videoWidth, height: video.videoHeight },
+          scale: { x: scaleX, y: scaleY },
+          roi: { x: clampedX, y: clampedY, width: clampedWidth, height: clampedHeight }
+        });
+        
+        // 根据当前选择模式设置对应的ROI
+        if (isSelectingOcrROI) {
+          setOcrRoi(newRoi);
+          updateOcrConfig({ roi: newRoi });
+          toast({
+            title: "OCR ROI区域已设置",
+            description: `区域大小: ${newRoi[2]}×${newRoi[3]}`,
+          });
+        } else if (isSelectingVisualROI) {
+          setVisualRoi(newRoi);
+          toast({
+            title: "视觉检测ROI区域已设置", 
+            description: `区域大小: ${newRoi[2]}×${newRoi[3]}`,
+          });
         }
       }
       
@@ -1182,7 +1237,7 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
       setRoiStartPoint(null);
       isDrawingRef.current = null;
     },
-    [isCapturing, isSelectingOcrROI, isSelectingVisualROI, roiStartPoint, toast]
+    [isCapturing, isSelectingOcrROI, isSelectingVisualROI, roiStartPoint, toast, updateOcrConfig]
   );
 
   const formatTimeWithMs = (date: Date | null) => {
@@ -1234,9 +1289,9 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
   }, []);
 
   return (
-    <div className="flex flex-col px-3 py-2 rounded-lg border bg-white space-y-1 h-full overflow-hidden">
-      {/* 控制面板 - 进一步减少高度 */}
-      <div className="flex items-center flex-wrap gap-1 flex-shrink-0 h-12">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* 控制面板 - 固定高度 */}
+      <div className="flex items-center flex-wrap gap-1 flex-shrink-0 p-2 border-b bg-white">
         <Popover>
           <PopoverTrigger asChild>
             <Button variant={"ghost"} size="icon" className="h-8 w-8">
@@ -1456,114 +1511,112 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
         </div>
       </div>
 
-      {/* 视频显示区域 - 最大化高度 */}
-      <div className="flex-1 relative flex justify-center items-center bg-gray-900/50 rounded-lg overflow-hidden min-h-[650px]">
-        <div className="relative flex justify-center items-center">
+      {/* 主要内容区域 - 使用flex布局充分利用空间 */}
+      <div className="flex-1 flex flex-col min-h-0">
+        {/* 视频显示区域 - 占据大部分空间 */}
+        <div className="flex-1 relative bg-gray-900 rounded-lg overflow-hidden m-2">
           <video
             ref={videoRef}
-            className="max-w-full max-h-full"
+            className="w-full h-full object-contain"
             playsInline
             autoPlay
             muted
-            style={{ 
-              maxWidth: '100%',
-              maxHeight: '100%',
-              objectFit: 'contain',
-              objectPosition: 'center'
-            }}
           />
           <canvas
             ref={canvasRef}
-            className="absolute top-0 left-0 w-full h-full"
+            className="absolute top-0 left-0 w-full h-full pointer-events-auto"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
           />
+          {(isSelectingOcrROI || isSelectingVisualROI) && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 p-2 bg-black/70 rounded-md text-yellow-400 text-sm z-10">
+              {isSelectingOcrROI ? "点击并拖动鼠标，选择OCR识别区域" : "点击并拖动鼠标，选择视觉检测区域"}
+            </div>
+          )}
         </div>
-        {(isSelectingOcrROI || isSelectingVisualROI) && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 p-2 bg-black/70 rounded-md text-yellow-400 text-sm z-10">
-            {isSelectingOcrROI ? "点击并拖动鼠标，选择OCR识别区域" : "点击并拖动鼠标，选择视觉检测区域"}
-          </div>
-        )}
-      </div>
 
-      {/* OCR结果显示区域 - 自适应高度，默认1行 */}
-      <div className="flex-shrink-0">
-        {ocrResults?.length || 0 ? (
-          <div className="space-y-1">
-            {ocrResults.map((result, index) => (
-              <div
-                key={index}
-                className="text-sm p-2 rounded bg-gray-50 border hover:bg-gray-100 transition-colors"
-              >
-                <span className="text-gray-800 break-words line-clamp-1">{result.text}</span>
+        {/* 底部信息区域 - 固定高度 */}
+        <div className="flex-shrink-0 p-2 space-y-2">
+          {/* OCR结果显示区域 */}
+          <div className="flex-shrink-0">
+            {ocrResults?.length || 0 ? (
+              <div className="space-y-1 max-h-20 overflow-y-auto">
+                {ocrResults.map((result, index) => (
+                  <div
+                    key={index}
+                    className="text-sm p-2 rounded bg-gray-50 border hover:bg-gray-100 transition-colors"
+                  >
+                    <span className="text-gray-800 break-words line-clamp-1">{result.text}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-sm text-gray-400 italic p-2 text-center">
-            {isCapturing
-              ? "正在识别或未检测到文字..."
-              : "点击开始OCR识别以检测文字"}
-          </div>
-        )}
-      </div>
-
-      {/* 时间信息 - 最小高度 */}
-      <div className="flex flex-row text-xs pr-2 flex-shrink-0" style={{ height: '24px' }}>
-        <div className="flex-1">
-          首次检测: {firstTextDetectedTime ? formatTimeWithMs(firstTextDetectedTime) : '未记录'}
-        </div>
-        <div className="flex-1">
-          文本稳定: {textStabilizedTime ? formatTimeWithMs(textStabilizedTime) : '未记录'}
-        </div>
-      </div>
-
-      {/* 调试信息 - 可折叠 */}
-      {debugInfo && (
-        <details className="text-xs text-gray-500 border-t pt-1 flex-shrink-0">
-          <summary className="cursor-pointer hover:text-gray-700">调试信息</summary>
-          <div className="mt-1 space-y-1">
-            <div>视频原始尺寸: {debugInfo.videoOriginalSize.width} x {debugInfo.videoOriginalSize.height}</div>
-            <div>视频显示尺寸: {debugInfo.videoDisplaySize.width.toFixed(0)} x {debugInfo.videoDisplaySize.height.toFixed(0)}</div>
-            <div>缩放比例: X={debugInfo.scaleFactors.x.toFixed(2)}, Y={debugInfo.scaleFactors.y.toFixed(2)}</div>
-            <div>视频尺寸稳定: {videoSizeStable ? '是' : '否'}</div>
-            {canvasRef.current && (
-              <div>Canvas显示尺寸: {canvasRef.current.getBoundingClientRect().width.toFixed(0)} x {canvasRef.current.getBoundingClientRect().height.toFixed(0)}</div>
-            )}
-            {canvasRef.current && (
-              <div>Canvas样式尺寸: {canvasRef.current.style.width} x {canvasRef.current.style.height}</div>
-            )}
-            {canvasRef.current && (
-              <div>Canvas像素尺寸: {canvasRef.current.width} x {canvasRef.current.height}</div>
-            )}
-            {videoRef.current && canvasRef.current && (
-              <div>
-                视频位置: ({videoRef.current.getBoundingClientRect().left.toFixed(0)}, {videoRef.current.getBoundingClientRect().top.toFixed(0)})
-                Canvas位置: ({canvasRef.current.getBoundingClientRect().left.toFixed(0)}, {canvasRef.current.getBoundingClientRect().top.toFixed(0)})
+            ) : (
+              <div className="text-sm text-gray-400 italic p-2 text-center">
+                {isCapturing
+                  ? "正在识别或未检测到文字..."
+                  : "点击开始OCR识别以检测文字"}
               </div>
             )}
-            {videoRef.current && canvasRef.current && (
-              <div>
-                视频尺寸: {videoRef.current.getBoundingClientRect().width.toFixed(0)} x {videoRef.current.getBoundingClientRect().height.toFixed(0)}
-                Canvas尺寸: {canvasRef.current.getBoundingClientRect().width.toFixed(0)} x {canvasRef.current.getBoundingClientRect().height.toFixed(0)}
-              </div>
-            )}
-            {videoRef.current && (
-              <div>视频宽高比: {(videoRef.current.videoWidth / videoRef.current.videoHeight).toFixed(3)}</div>
-            )}
-            {videoRef.current && (
-              <div>显示宽高比: {(videoRef.current.getBoundingClientRect().width / videoRef.current.getBoundingClientRect().height).toFixed(3)}</div>
-            )}
-            {ocrRoi && (
-              <div>OCR ROI显示坐标: [{ocrRoi[0]}, {ocrRoi[1]}, {ocrRoi[2]}, {ocrRoi[3]}]</div>
-            )}
-            {visualRoi && (
-              <div>视觉检测ROI显示坐标: [{visualRoi[0]}, {visualRoi[1]}, {visualRoi[2]}, {visualRoi[3]}]</div>
-            )}
           </div>
-        </details>
-      )}
+
+          {/* 时间信息 - 固定高度 */}
+          <div className="flex flex-row text-xs gap-4" style={{ height: '20px' }}>
+            <div className="flex-1">
+              首次检测: {firstTextDetectedTime ? formatTimeWithMs(firstTextDetectedTime) : '未记录'}
+            </div>
+            <div className="flex-1">
+              文本稳定: {textStabilizedTime ? formatTimeWithMs(textStabilizedTime) : '未记录'}
+            </div>
+          </div>
+
+          {/* 调试信息 - 可折叠 */}
+          {debugInfo && (
+            <details className="text-xs text-gray-500 border-t pt-1">
+              <summary className="cursor-pointer hover:text-gray-700">调试信息</summary>
+              <div className="mt-1 space-y-1">
+                <div>视频原始尺寸: {debugInfo.videoOriginalSize.width} x {debugInfo.videoOriginalSize.height}</div>
+                <div>视频显示尺寸: {debugInfo.videoDisplaySize.width.toFixed(0)} x {debugInfo.videoDisplaySize.height.toFixed(0)}</div>
+                <div>缩放比例: X={debugInfo.scaleFactors.x.toFixed(2)}, Y={debugInfo.scaleFactors.y.toFixed(2)}</div>
+                <div>视频尺寸稳定: {videoSizeStable ? '是' : '否'}</div>
+                {canvasRef.current && (
+                  <div>Canvas显示尺寸: {canvasRef.current.getBoundingClientRect().width.toFixed(0)} x {canvasRef.current.getBoundingClientRect().height.toFixed(0)}</div>
+                )}
+                {canvasRef.current && (
+                  <div>Canvas样式尺寸: {canvasRef.current.style.width} x {canvasRef.current.style.height}</div>
+                )}
+                {canvasRef.current && (
+                  <div>Canvas像素尺寸: {canvasRef.current.width} x {canvasRef.current.height}</div>
+                )}
+                {videoRef.current && canvasRef.current && (
+                  <div>
+                    视频位置: ({videoRef.current.getBoundingClientRect().left.toFixed(0)}, {videoRef.current.getBoundingClientRect().top.toFixed(0)})
+                    Canvas位置: ({canvasRef.current.getBoundingClientRect().left.toFixed(0)}, {canvasRef.current.getBoundingClientRect().top.toFixed(0)})
+                  </div>
+                )}
+                {videoRef.current && canvasRef.current && (
+                  <div>
+                    视频尺寸: {videoRef.current.getBoundingClientRect().width.toFixed(0)} x {videoRef.current.getBoundingClientRect().height.toFixed(0)}
+                    Canvas尺寸: {canvasRef.current.getBoundingClientRect().width.toFixed(0)} x {canvasRef.current.getBoundingClientRect().height.toFixed(0)}
+                  </div>
+                )}
+                {videoRef.current && (
+                  <div>视频宽高比: {(videoRef.current.videoWidth / videoRef.current.videoHeight).toFixed(3)}</div>
+                )}
+                {videoRef.current && (
+                  <div>显示宽高比: {(videoRef.current.getBoundingClientRect().width / videoRef.current.getBoundingClientRect().height).toFixed(3)}</div>
+                )}
+                {ocrRoi && (
+                  <div>OCR ROI显示坐标: [{ocrRoi[0]}, {ocrRoi[1]}, {ocrRoi[2]}, {ocrRoi[3]}]</div>
+                )}
+                {visualRoi && (
+                  <div>视觉检测ROI显示坐标: [{visualRoi[0]}, {visualRoi[1]}, {visualRoi[2]}, {visualRoi[3]}]</div>
+                )}
+              </div>
+            </details>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

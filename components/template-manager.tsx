@@ -194,21 +194,8 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
 
       // 根据是否有ROI来决定截取区域
       if (roi && roi[2] > 0 && roi[3] > 0) {
-        // 获取视频的实际显示尺寸
-        const videoRect = video.getBoundingClientRect();
-        const videoDisplayWidth = videoRect.width;
-        const videoDisplayHeight = videoRect.height;
-        
-        // 计算缩放比例
-        const scaleX = video.videoWidth / videoDisplayWidth;
-        const scaleY = video.videoHeight / videoDisplayHeight;
-        
-        // 将ROI坐标从显示坐标转换为视频原始坐标
-        const [displayX, displayY, displayW, displayH] = roi;
-        const videoX = Math.round(displayX * scaleX);
-        const videoY = Math.round(displayY * scaleY);
-        const videoW = Math.round(displayW * scaleX);
-        const videoH = Math.round(displayH * scaleY);
+        // ROI坐标已经是视频原始坐标，直接使用
+        const [videoX, videoY, videoW, videoH] = roi;
 
         // 验证ROI边界
         const videoWidth = video.videoWidth;
@@ -220,12 +207,9 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
         const clampedHeight = Math.min(videoH, videoHeight - clampedY);
 
         // 调试信息
-        console.log('ROI坐标转换:', {
-          display: { x: displayX, y: displayY, w: displayW, h: displayH },
-          video: { x: videoX, y: videoY, w: videoW, h: videoH },
-          scale: { x: scaleX, y: scaleY },
+        console.log('ROI坐标使用:', {
+          original: { x: videoX, y: videoY, w: videoW, h: videoH },
           videoSize: { width: video.videoWidth, height: video.videoHeight },
-          displaySize: { width: videoDisplayWidth, height: videoDisplayHeight },
           clamped: { x: clampedX, y: clampedY, w: clampedWidth, h: clampedHeight }
         });
 

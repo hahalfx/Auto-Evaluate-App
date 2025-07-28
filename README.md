@@ -239,15 +239,96 @@ npm run start             # 生产服务器
 - **错误恢复**: 自动重试和优雅降级
 - **资源清理**: 任务完成自动释放资源
 
-## 故障排除
+## 打包部署注意事项
+
+### 平台差异
+
+#### Windows平台
+- **OpenCV**: 使用静态链接，无需额外安装OpenCV运行时
+- **Tesseract**: 静态链接tesseract库，打包时自动包含
+- **依赖**: 所有依赖静态链接到可执行文件中
+- **大小**: 由于静态链接，最终包体积较大（约100-200MB）
+
+#### macOS平台
+- **OpenCV**: 使用系统动态链接，依赖系统安装的OpenCV
+- **Tesseract**: 使用系统动态链接，需要安装tesseract
+- **安装要求**: 
+  ```bash
+  # 安装依赖
+  brew install opencv
+  brew install tesseract
+  ```
+- **包大小**: 由于动态链接，包体积相对较小（约50-80MB）
+
+### 打包配置
+
+#### Windows打包
+```bash
+# 确保Cargo.toml中包含静态链接配置
+# [target.x86_64-pc-windows-msvc.dependencies]
+# opencv = { version = "0.88", features = ["opencv-4", "buildtime-bindgen"] }
+# tesseract-sys = { version = "0.11", features = ["static-link"] }
+
+npm run tauri build
+```
+
+#### macOS打包
+```bash
+# 确保系统已安装依赖
+brew install opencv tesseract
+
+# 打包
+npm run tauri build
+```
+
+### 权限配置
+
+#### macOS权限
+在`src-tauri/tauri.conf.json`中配置权限：
+```json
+{
+  "macOS": {
+    "entitlements": "entitlements.plist"
+  }
+}
+```
+
+创建`src-tauri/entitlements.plist`：
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+</dict>
+</plist>
+```
 
 ### 常见问题
-1. **摄像头权限**: macOS需要授予摄像头访问权限
-2. **音频权限**: 需要麦克风访问权限进行ASR
-3. **模板路径**: 确保模板文件在`public/templates/`目录
-4. **网络连接**: ASR需要稳定的网络连接
+
+#### Windows
+1. **MSVC工具链**: 确保安装Visual Studio Build Tools
+2. **OpenCV版本**: 使用vcpkg或预编译静态库
+3. **运行时错误**: 检查Visual C++ Redistributable
+
+#### macOS
+1. **摄像头权限**: 需要在系统偏好设置中授予权限
+2. **音频权限**: 首次运行时会提示麦克风权限
+3. **OpenCV路径**: 确保`/usr/local/lib/libopencv*.dylib`存在
+4. **Tesseract路径**: 确保`/usr/local/bin/tesseract`可访问
 
 ### 调试工具
 - **控制台日志**: 查看详细操作信息
 - **事件监控**: 监听Tauri事件状态
 - **性能监控**: OCR FPS和错误率实时显示
+- **权限检查**: 
+  ```bash
+  # macOS检查权限
+  tccutil reset Camera
+  tccutil reset Microphone
+  ```
