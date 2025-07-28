@@ -1,7 +1,30 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Task, TestSample, WakeWord, AnalysisResult, MachineResponseData, TaskProgress, TimingData } from '@/types/api';
 
+// 配置数据结构
+export interface ConfigData {
+  xunfei: {
+    appid: string
+    api_key: string
+    api_secret: string
+  }
+  openrouter: {
+    api_key: string
+    base_url: string
+  }
+  app: {
+    log_level: string
+    max_concurrent_tasks: number
+    timeout_seconds: number
+  }
+}
+
 export class TauriApiService {
+  // 配置相关
+  static async getAppConfig(): Promise<ConfigData> {
+    return await invoke('get_app_config');
+  }
+
   // 任务相关
   static async getAllTasks(): Promise<Task[]> {
     return await invoke('get_all_tasks');

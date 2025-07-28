@@ -26,8 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import type { ReactNode } from "react";
 import Image from "next/image";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Label } from "./ui/label";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { useActiveTasks } from "@/lib/contexts/active-tasks-context";
 
 interface NavItem {
@@ -246,8 +245,8 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             )} */}
           </nav>
           {!sidebarCollapsed ? (
-            <Popover>
-              <PopoverTrigger asChild>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <div className="flex flex-row items-center gap-2 rounded-lg bg-card px-2 py-2 text-sm mt-auto hover:bg-slate-50 transition-all duration-300 ease-in-out cursor-pointer">
                   <Avatar className="h-8 w-8">
                     <AvatarImage
@@ -263,16 +262,16 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                     </span>
                   </div>
                 </div>
-              </PopoverTrigger>
-              <PopoverContent className="w-43" side="top">
-                <div className="grid grid-cols-3 items-center">
-                  <Label htmlFor="settings"><Settings size={15} className="rounded-md" /></Label>
-                  <Link href={"/settings"}>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]" align="end">
+                <DropdownMenuItem asChild>
+                  <Link href="/settings" className="flex items-center gap-2">
+                    <Settings size={15} className="rounded-md" />
                     <span className="text-sm">应用设置</span>
                   </Link>
-                </div>
-              </PopoverContent>
-            </Popover>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : (
             <div className="flex flex-row items-center gap-2 rounded-lg bg-card px-2 py-2 text-sm mt-auto">
               <Avatar className="h-8 w-8">

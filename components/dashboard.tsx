@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { 
   Database, 
   FileText, 
@@ -18,18 +19,27 @@ import {
   RefreshCw,
   BarChart3,
   Activity,
-  Loader2
+  Loader2,
+  Settings,
+  AlertTriangle
 } from "lucide-react";
 import { TauriApiService } from '@/services/tauri-api';
 import { useToast } from '@/components/ui/use-toast';
+import { useRouter } from 'next/navigation';
 import type { Task, TestSample, WakeWord, AnalysisResult } from '@/types/api';
+import type { ConfigData as AppConfigData } from '@/services/tauri-api';
 
 export default function DashBoard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [samples, setSamples] = useState<TestSample[]>([]);
   const [wakeWords, setWakeWords] = useState<WakeWord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [mounted, setMounted] = useState(false); // 添加mounted状态
+  const [mounted, setMounted] = useState(false);
+  const [config, setConfig] = useState<AppConfigData | null>(null);
+  const [showConfigAlert, setShowConfigAlert] = useState(false);
+  const [configLoading, setConfigLoading] = useState(true);
+  const router = useRouter();
+  
   const [stats, setStats] = useState({
     totalTasks: 0,
     completedTasks: 0,
@@ -62,6 +72,34 @@ export default function DashBoard() {
 
   // 检查是否在 Tauri 环境中 - 只在客户端执行
   const isTauri = mounted && typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
+
+  // 加载配置
+  const loadConfig = async () => {
+    if (!isTauri) return;
+    
+    try {
+      setConfigLoading(true);
+      const configData = await TauriApiService.getAppConfig();
+      setConfig(configData);
+      
+      // 检查必要的配置是否为空
+      const hasXunfeiConfig = configData.xunfei.appid && configData.xunfei.api_key && configData.xunfei.api_secret;
+      const hasOpenRouterConfig = configData.openrouter.api_key;
+      
+      if (!hasXunfeiConfig || !hasOpenRouterConfig) {
+        setShowConfigAlert(true);
+      } else {
+        // 如果配置完整，关闭AlertDialog
+        setShowConfigAlert(false);
+      }
+    } catch (error) {
+      console.error('加载配置失败:', error);
+      // 如果无法加载配置，也显示提醒
+      setShowConfigAlert(true);
+    } finally {
+      setConfigLoading(false);
+    }
+  };
 
   const loadData = async () => {
     if (!isTauri) return;
@@ -178,9 +216,45 @@ export default function DashBoard() {
 
   useEffect(() => {
     if (isTauri) {
+      loadConfig();
       loadData();
     }
   }, [isTauri]);
+
+  // 监听路由变化，当从配置页面返回时重新加载配置
+  useEffect(() => {
+    const handleRouteChange = () => {
+      if (isTauri && mounted) {
+        loadConfig();
+      }
+    };
+
+    // 监听popstate事件（浏览器后退/前进）
+    window.addEventListener('popstate', handleRouteChange);
+    
+    // 监听focus事件（用户从其他标签页返回）
+    window.addEventListener('focus', handleRouteChange);
+
+    return () => {
+      window.removeEventListener('popstate', handleRouteChange);
+      window.removeEventListener('focus', handleRouteChange);
+    };
+  }, [isTauri, mounted]);
+
+  // 跳转到配置设置页面
+  const handleGoToSettings = () => {
+    setShowConfigAlert(false);
+    router.push('/settings');
+  };
+
+  // 刷新配置
+  const handleRefreshConfig = async () => {
+    await loadConfig();
+    toast({
+      title: "配置已刷新",
+      description: "已重新加载配置信息",
+    });
+  };
 
   // 在组件mount之前，显示loading状态避免hydration错误
   if (!mounted) {
@@ -209,6 +283,37 @@ export default function DashBoard() {
 
   return (
     <div className="w-full">
+      {/* 配置提醒对话框 */}
+      <AlertDialog open={showConfigAlert} onOpenChange={setShowConfigAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              配置提醒
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              检测到应用缺少必要的API配置参数。为了正常使用语音识别和LLM分析功能，请前往配置设置页面完成以下配置：
+              <span className="mt-3 space-y-2 block">
+                <span className="flex items-center gap-2 block">
+                  <Settings className="h-4 w-4" />
+                  <span className="text-sm font-medium">讯飞语音识别配置</span>
+                </span>
+                <span className="flex items-center gap-2 block">
+                  <Settings className="h-4 w-4" />
+                  <span className="text-sm font-medium">OpenRouter API配置</span>
+                </span>
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>稍后配置</AlertDialogCancel>
+            <AlertDialogAction onClick={handleGoToSettings}>
+              前往配置设置
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="min-h-screen bg-background p-6">
         <div className="w-full mx-auto">
           <div className="flex items-center justify-between mb-6">
@@ -223,6 +328,55 @@ export default function DashBoard() {
               刷新数据
             </Button>
           </div>
+
+          {/* 配置状态提示 */}
+          {config && (
+            (() => {
+              const hasXunfeiConfig = config.xunfei.appid && config.xunfei.api_key && config.xunfei.api_secret;
+              const hasOpenRouterConfig = config.openrouter.api_key;
+              const isConfigComplete = hasXunfeiConfig && hasOpenRouterConfig;
+              
+              // 只有当配置不完整时才显示提醒卡片
+              if (!isConfigComplete) {
+                return (
+                  <div className="mb-6">
+                    <Card className="border-orange-200 bg-orange-50">
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-3">
+                          <AlertTriangle className="h-5 w-5 text-orange-500" />
+                          <div className="flex-1">
+                            <h3 className="font-medium text-orange-800">配置状态</h3>
+                            <p className="text-sm text-orange-700">
+                              讯飞配置: {hasXunfeiConfig ? '已配置' : '未配置'} | 
+                              OpenRouter配置: {hasOpenRouterConfig ? '已配置' : '未配置'}
+                            </p>
+                          </div>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={handleRefreshConfig}
+                            disabled={configLoading}
+                          >
+                            <RefreshCw className={`h-4 w-4 mr-2 ${configLoading ? 'animate-spin' : ''}`} />
+                            刷新配置
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => router.push('/settings')}
+                          >
+                            <Settings className="h-4 w-4 mr-2" />
+                            配置设置
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                );
+              }
+              return null;
+            })()
+          )}
 
           {/* 核心指标卡片组 */}
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
