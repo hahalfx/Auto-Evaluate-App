@@ -1,163 +1,253 @@
 # 车机语音LLM自动化评估系统
 
-一个基于 **Tauri** 和 **Next.js** 构建的桌面应用，专注于自动化测试和评估车载语音助手的响应质量。
+一个基于 **Tauri** 和 **Next.js** 构建的桌面自动化测试应用，专注于车载语音助手的唤醒检测、语音识别和响应质量评估。
 
 ## 核心功能
 
-- **任务管理**: 创建、配置和执行测试任务，跟踪任务状态和进度。
-- **用例管理**:
-  - **测试样本**: 管理用于测试的指令文本和关联音频文件。
-  - **唤醒词**: 管理用于激活语音助手的唤醒词和音频。
-- **自动化测试**: 启动后，应用将自动执行预定义的测试流程，包括播放唤醒词、播放测试指令、并准备记录响应。
-- **分析与报告**: (功能待实现) 对车机响应进行分析，并生成多维度评估报告。
-- **本地数据持久化**: 所有任务、样本和配置都安全地存储在本地的 SQLite 数据库中。
+- **任务管理**: 创建、配置和执行完整的测试任务，支持批量自动化测试
+- **唤醒检测**: 视觉唤醒词检测（基于OpenCV模板匹配）和音频唤醒测试
+- **语音识别**: 集成科大讯飞ASR API进行实时语音识别
+- **OCR识别**: 车机显示屏文本识别和稳定性检测
+- **大模型分析**: 基于LLM的响应质量评估
+- **实时工作流**: 支持暂停/恢复的自动化测试流程
+- **模板管理**: 可视化模板管理，支持ROI区域选择
+- **本地数据持久化**: SQLite数据库存储所有测试数据
 
 ## 技术栈
 
 ### 前端
-
 - **框架**: Next.js 15.2.4 (App Router)
 - **UI**: Shadcn UI, Radix UI, Tailwind CSS
 - **状态管理**: Redux Toolkit
-- **表单**: React Hook Form + Zod
-- **图表**: Recharts
-- **表格**: TanStack Table
-- **类型系统**: TypeScript 5
+- **路由**: `/llm-analysis`, `/taskmanage`, `/casemanage`, `/settings`, `/wake-detection-workflow`
 
 ### 后端
-
-- **框架**: Tauri v2
-- **语言**: Rust
+- **框架**: Tauri v2 + Rust
 - **异步运行时**: Tokio
-- **数据库**: SQLx + SQLite
-- **HTTP客户端**: Reqwest
-- **核心库**: Serde, Chrono, Uuid
+- **数据库**: SQLite + SQLx
+- **音频**: Rodio播放, CPAL音频捕获
+- **OCR**: Tesseract引擎池（6并发）
+- **视觉**: OpenCV模板匹配
+- **ASR**: 科大讯飞WebSocket API
 
-## 系统架构
+### 系统架构
 
 ```mermaid
 graph TD
-    subgraph "用户界面 (Frontend - Next.js)"
-        direction LR
+    subgraph "前端界面 (Next.js)"
         Dashboard[仪表盘]
         TaskManagement[任务管理]
-        CaseManagement[用例管理]
+        WakeDetection[唤醒检测]
+        OCR[OCR识别]
+        VisualDetection[视觉检测]
     end
 
-    subgraph "核心 (Tauri Core)"
-        WebView[WebView]
-        CommandBridge[Rust-JS Command Bridge]
+    subgraph "Tauri核心"
+        Commands[Tauri指令]
+        Events[事件系统]
     end
 
-    subgraph "应用后端 (Backend - Rust)"
-        direction LR
-        TauriCommands[Tauri Commands]
-        AnalysisService[分析服务]
-        Database[数据库模块 (SQLx)]
+    subgraph "后端服务 (Rust)"
+        Workflow[工作流引擎]
+        MetaTask[元任务执行器]
+        WakeService[唤醒检测服务]
+        OCRService[OCR服务]
+        ASRService[ASR服务]
+        Database[数据库层]
     end
 
-    subgraph "数据存储"
-        SQLite[SQLite Database]
+    subgraph "外部集成"
+        iFlytek[科大讯飞ASR]
+        OpenCV[OpenCV视觉]
+        Tesseract[Tesseract OCR]
     end
 
-    Dashboard --> CommandBridge
-    TaskManagement --> CommandBridge
-    CaseManagement --> CommandBridge
-
-    CommandBridge -- Invokes --> TauriCommands
-
-    TauriCommands -- Uses --> AnalysisService
-    TauriCommands -- Accesses --> Database
-    AnalysisService -- Accesses --> Database
-
-    Database -- Interacts with --> SQLite
+    Dashboard --> Commands
+    WakeDetection --> Events
+    OCR --> Events
+    
+    Commands --> Workflow
+    Commands --> MetaTask
+    Workflow --> WakeService
+    Workflow --> OCRService
+    Workflow --> ASRService
+    
+    WakeService --> OpenCV
+    OCRService --> Tesseract
+    ASRService --> iFlytek
 ```
+
+## 工作流系统
+
+### 完整测试工作流
+```
+唤醒词播放 → 语音指令播放 → 视觉唤醒检测 → OCR识别 → ASR识别 → LLM分析 → 结果保存
+```
+
+### 唤醒检测工作流
+```
+唤醒词播放 → 视觉唤醒检测 → 结果统计
+```
+
+### 核心组件
+- **工作流引擎**: DAG任务调度，支持暂停/恢复
+- **视觉唤醒检测**: OpenCV多尺度模板匹配，ROI区域支持
+- **OCR服务**: 实时文本识别，稳定性检测，6引擎并发
+- **ASR服务**: 科大讯飞实时语音识别
 
 ## 快速开始
 
 ### 环境要求
-
 - **Node.js**: v18+
 - **Rust**: v1.77+ (with Cargo)
 - **Tauri CLI**: `cargo install tauri-cli`
+- **macOS**: 需要音频录制和文件系统权限
 
 ### 安装与运行
 
-1.  **克隆仓库**
+1. **克隆仓库**
     ```bash
     git clone [仓库地址]
     cd [仓库目录]
     ```
 
-2.  **安装前端依赖**
+2. **安装依赖**
     ```bash
     npm install
     ```
 
-3.  **启动开发环境**
-    此命令会同时启动 Next.js 前端开发服务器和 Tauri 后端应用。
+3. **启动开发环境**
     ```bash
+    # 完整开发环境（推荐）
     npm run tauri dev
+    
+    # 仅前端开发
+    npm run dev
+    ```
+
+4. **构建生产版本**
+    ```bash
+    npm run tauri build
     ```
 
 ## 项目结构
 
 ```
 /LLM Analysis Interface
-├── app/                    # Next.js 应用路由和页面
-├── components/             # React 组件
-├── hooks/                  # 自定义 React Hooks
-├── lib/                    # 工具函数和上下文
-├── public/                 # 静态资源
-├── services/               # Tauri API 调用封装
-├── store/                  # Redux Toolkit 状态管理
-├── types/                  # TypeScript 类型定义
-└── src-tauri/              # Tauri 后端 (Rust)
+├── app/                          # Next.js页面路由
+├── components/                   # React组件
+│   ├── llm-analysis-interface.tsx
+│   ├── wake-detection-workflow.tsx
+│   ├── ocr.tsx
+│   ├── visual-wake-detection.tsx
+│   └── template-manager.tsx
+├── hooks/                        # 自定义Hooks
+├── services/                     # Tauri API封装
+├── store/                        # Redux状态管理
+├── public/templates/             # 视觉检测模板
+└── src-tauri/                    # Tauri后端
     ├── src/
-    │   ├── analysis_service.rs # 自动化测试核心逻辑
-    │   ├── commands.rs     # 暴露给前端的Tauri指令
-    │   ├── database.rs     # 数据库交互模块
-    │   ├── lib.rs          # Rust库入口
-    │   ├── models.rs       # 数据模型定义
-    │   └── state.rs        # 应用状态管理
-    ├── Cargo.toml          # Rust 依赖管理
-    └── tauri.conf.json     # Tauri 应用配置
+    │   ├── commands.rs          # Tauri指令定义
+    │   ├── models.rs            # 数据模型
+    │   ├── services/
+    │   │   ├── meta_task_executor.rs    # 完整工作流
+    │   │   ├── wake_detection_meta_executor.rs  # 唤醒检测工作流
+    │   │   ├── analysis_task.rs         # 分析任务
+    │   │   ├── asr_task.rs              # ASR任务
+    │   │   ├── ocr_task.rs              # OCR任务
+    │   │   └── checkpoint_task.rs       # 检查点任务
+    │   └── db/database.rs       # 数据库操作
 ```
 
-## 后端核心指令 (Tauri Commands)
+## 核心功能详解
 
-应用通过一系列Tauri指令实现前后端通信。以下是部分核心指令：
+### 视觉唤醒检测
+- **实时视频**: WebRTC摄像头访问，1-30 FPS可调
+- **模板匹配**: 多尺度匹配（1.0, 0.8, 0.6, 0.4, 0.3, 0.2）
+- **ROI选择**: 交互式画布区域选择
+- **置信度**: 可配置的检测阈值（默认0.5）
 
-- **任务管理**:
-  - `get_all_tasks`: 获取所有测试任务。
-  - `create_task`: 创建一个新任务。
-  - `delete_task`: 删除一个任务。
-  - `set_current_task`: 设置当前活动任务。
-  - `get_task_progress`: 获取当前任务的执行进度。
-- **样本管理**:
-  - `get_all_samples`: 获取所有测试样本。
-  - `create_sample`: 创建单个测试样本。
-  - `create_samples_batch`: 批量创建测试样本。
-  - `delete_sample`: 删除一个测试样本。
-- **自动化测试**:
-  - `start_automated_test`: 启动自动化测试流程。
-  - `stop_testing`: 停止当前的测试流程。
-  - `submit_analysis`: 提交车机响应以供分析。
+### OCR识别系统
+- **实时处理**: 6个Tesseract引擎并发处理
+- **文本稳定**: 30帧滑动窗口，95%相似度阈值
+- **坐标转换**: 显示坐标到视频坐标的自动转换
+- **错误处理**: 5次连续错误自动终止
+
+### 事件系统
+- **视觉检测**: `visual_wake_event`, `visual_wake_status`
+- **OCR**: `ocr_task_event` (start, ready, data, complete, error)
+- **工作流**: `task_completed`
+
+## Tauri核心指令
+
+### 任务管理
+- `get_all_tasks`: 获取所有测试任务
+- `create_task`: 创建新任务
+- `delete_task`: 删除任务
+- `set_current_task`: 设置当前任务
+- `start_automated_test`: 启动自动化测试
+- `stop_testing`: 停止测试
+
+### 样本管理
+- `get_all_samples`: 获取测试样本
+- `create_sample`: 创建样本
+- `delete_sample`: 删除样本
+- `get_all_wake_words`: 获取唤醒词
+
+### 视觉检测
+- `start_visual_wake_detection_with_data`: 启动视觉检测
+- `push_video_frame_visual`: 推送视频帧
+- `stop_visual_wake_detection`: 停止检测
+- `save_template_image`: 保存模板
+- `get_templates_from_folder`: 获取模板列表
+
+### OCR系统
+- `start_ocr_session`: 启动OCR会话
+- `push_video_frame`: 推送OCR帧
+- `stop_ocr_session`: 停止OCR会话
 
 ## 开发脚本
 
 ```bash
-# 启动Tauri开发环境 (推荐)
-npm run tauri dev
+# 开发环境
+npm run tauri dev          # 完整开发环境
+npm run dev               # 仅前端开发
 
-# 仅启动Next.js前端开发服务器
-npm run dev
+# 构建
+npm run build             # 构建Next.js
+npm run tauri build       # 构建Tauri应用
 
-# 构建生产版本的Tauri应用
-npm run tauri build
+# 代码质量
+npm run lint              # ESLint检查
+npm run start             # 生产服务器
+```
 
-# 启动Next.js生产服务器
-npm run start
+## 数据模型
 
-# 代码风格检查
-npm run lint
+### 核心实体
+- **Task**: 测试任务配置
+- **Sample**: 测试样本（文本/音频）
+- **WakeWord**: 唤醒词配置
+- **AnalysisResult**: 分析结果
+- **WakeDetectionResult**: 唤醒检测结果
+- **TimingData**: 精确时间数据
+
+## 性能优化
+
+- **并发处理**: OCR 6引擎并发，视觉检测实时处理
+- **内存管理**: 100帧缓冲区，自动垃圾回收
+- **错误恢复**: 自动重试和优雅降级
+- **资源清理**: 任务完成自动释放资源
+
+## 故障排除
+
+### 常见问题
+1. **摄像头权限**: macOS需要授予摄像头访问权限
+2. **音频权限**: 需要麦克风访问权限进行ASR
+3. **模板路径**: 确保模板文件在`public/templates/`目录
+4. **网络连接**: ASR需要稳定的网络连接
+
+### 调试工具
+- **控制台日志**: 查看详细操作信息
+- **事件监控**: 监听Tauri事件状态
+- **性能监控**: OCR FPS和错误率实时显示
