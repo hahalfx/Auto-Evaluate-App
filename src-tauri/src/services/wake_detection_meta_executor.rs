@@ -1,12 +1,10 @@
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
-use tauri::AppHandle;
 use tauri::Emitter;
 use tokio::sync::watch;
 
 use crate::models::TaskProgress;
-use crate::models::WakeWord;
 use crate::services::active_task::ActiveTask;
 use crate::services::active_task::VisualWakeConfig;
 use crate::services::asr_task::AsrTask;
@@ -209,6 +207,9 @@ impl Task for wake_detection_meta_executor {
             let mut active_task_is_completed = false;
             let mut asr_result: Option<String> = None;
             let mut test_is_successful = workflow_succeeded;
+            let mut wake_duration = None;
+            let mut asr_duration = None;
+            let mut final_duration_ms = 0;
 
             if let Some(context) = &maybe_context {
                 let context_guard = context.read().await;
@@ -223,8 +224,10 @@ impl Task for wake_detection_meta_executor {
                         {
                             if status == "completed" {
                                 active_task_is_completed = true;
+                                wake_duration = active_task_result.get("duration_ms").and_then(|d| d.as_u64());
                             } else if status == "timeout" {
                                 active_task_is_completed = false; // 明确设置为false
+                                wake_duration = active_task_result.get("duration_ms").and_then(|d| d.as_u64());
                                 println!("[WakeDetectionMetaTask] Active task timed out for wake word '{}'.", wakeword.text);
                             }
                         }
@@ -238,12 +241,23 @@ impl Task for wake_detection_meta_executor {
                         let response = asr_task_output.response.trim();
                         if !response.is_empty() {
                             asr_result = Some(asr_task_output.response.clone());
-                            println!("[WakeDetectionMetaTask] ASR task completed successfully for wake word '{}' with response: '{}'", wakeword.text, asr_task_output.response);
+                            asr_duration = Some(asr_task_output.duration_ms);
+                            println!("[WakeDetectionMetaTask] ASR task completed successfully for wake word '{}' with response: '{}', duration: {}ms", wakeword.text, asr_task_output.response, asr_task_output.duration_ms);
                         } else {
-                            println!("[WakeDetectionMetaTask] ASR task completed but response is empty for wake word '{}'", wakeword.text);
+                            asr_duration = Some(asr_task_output.duration_ms);
+                            println!("[WakeDetectionMetaTask] ASR task completed but response is empty for wake word '{}', duration: {}ms", wakeword.text, asr_task_output.duration_ms);
                         }
                     }
                 }
+                
+                // 根据成功条件确定最终duration
+                final_duration_ms = if active_task_is_completed && wake_duration.is_some() {
+                    wake_duration.unwrap()
+                } else if asr_result.is_some() && asr_duration.is_some() {
+                    asr_duration.unwrap()
+                } else {
+                    0 // 失败情况不记录时间
+                };
                 
                 // 只要有一个任务成功就认为测试成功
                 if active_task_is_completed || asr_result.is_some() {
@@ -268,7 +282,7 @@ impl Task for wake_detection_meta_executor {
                 success: test_is_successful,
                 confidence: None, // 可以从视觉检测结果中获取
                 timestamp: test_end_time,
-                duration_ms,
+                duration_ms: if test_is_successful { final_duration_ms } else { 0 },
             };
 
             all_results.push(test_result.clone());
@@ -322,7 +336,7 @@ impl Task for wake_detection_meta_executor {
                 )
                 .ok();
 
-            // 测试间隔
+            // 测试间隔2秒
             if wake_word_index < wakewords.len() - 1 {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }

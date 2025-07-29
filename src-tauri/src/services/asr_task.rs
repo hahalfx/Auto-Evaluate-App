@@ -346,6 +346,9 @@ async fn send_audio(
 pub struct AsrTaskOutput {
     pub example: String,
     pub response: String,
+    pub duration_ms: u64,
+    pub start_time: i64,
+    pub end_time: i64,
 }
 
 // AsrSession no longer holds the cpal::Stream.
@@ -403,6 +406,7 @@ impl Task for AsrTask {
         app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         println!("开始ASR任务: [{}].", self.id);
+        let start_timestamp = chrono::Utc::now().timestamp_millis();
 
         // 检查active_task的结果，如果超时则直接返回
         let context_reader = context.read().await;
@@ -432,7 +436,7 @@ impl Task for AsrTask {
                 ControlSignal::Running => {
                     if self.session.is_none() {
                         println!("[{}] Initializing ASR session...", self.id);
-
+                    
                         //控制ocr任务同步开始
                         // app_handle.emit("ocr_event", "start".to_string()).ok();
 
@@ -453,7 +457,6 @@ impl Task for AsrTask {
                             }
                         });
                         // ---
-
                         let auth_url = build_auth_url(&api_key, &api_secret)?;
                         let (ws_stream, _) = connect_async(auth_url).await?;
                         let (ws_sender, ws_receiver) = ws_stream.split();
@@ -491,7 +494,14 @@ impl Task for AsrTask {
                                             if data.status == 2 {
                                                 println!("\n[{}] ASR session completed by server.", self.id);
                                                 let final_text = session.decoder.get_full_text();
-                                                let output = AsrTaskOutput { example: self.example.clone(), response: final_text };
+                                                let end_timestamp = chrono::Utc::now().timestamp_millis();
+                                                let output = AsrTaskOutput {
+                                                    example: self.example.clone(),
+                                                    response: final_text,
+                                                    duration_ms: (end_timestamp - start_timestamp) as u64,
+                                                    start_time: start_timestamp,
+                                                    end_time: end_timestamp
+                                                };
                                                 context.write().await.insert(self.id(), Box::new(output));
                                                 self.session = None;
                                                 app_handle.emit("asr_event", "complete".to_string()).ok();

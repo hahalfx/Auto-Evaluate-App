@@ -143,6 +143,7 @@ impl Task for ActiveTask {
                     } else {
                         0
                     };
+                    let end_timestamp = chrono::Utc::now().timestamp_millis();
 
                     // 尝试从检测器获取置信度（如果有的话）
                     let confidence = if let Some(conf) = detection_confidence {
