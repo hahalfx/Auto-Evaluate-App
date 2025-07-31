@@ -49,6 +49,8 @@ interface WakeDetectionResult {
     wake_task_completed: boolean;
     active_task_completed: boolean;
     asr_result?: string;
+    asr_matches_expected?: boolean;
+    expected_responses: string[];
     success: boolean;
     confidence?: number;
     timestamp: number;
@@ -221,6 +223,11 @@ export function WakeDetectionWorkflowComponent() {
     const [showTemplateSelector, setShowTemplateSelector] = useState(false);
     const [availableTemplates, setAvailableTemplates] = useState<string[]>([]);
     const [selectedTemplates, setSelectedTemplates] = useState<Set<string>>(new Set());
+
+    // 预期回复输入相关状态
+    const [expectedResponses, setExpectedResponses] = useState<string[]>([]);
+    const [currentExpectedResponse, setCurrentExpectedResponse] = useState("");
+    const [showExpectedResponsesDialog, setShowExpectedResponsesDialog] = useState(false);
 
     // 结果状态
     const [testResults, setTestResults] = useState<WakeDetectionResult[]>([]);
@@ -1153,7 +1160,8 @@ export function WakeDetectionWorkflowComponent() {
             await invoke('start_wake_detection_workflow', {
                 templateData: templateData,
                 frameRate: selectedFrameRate,
-                threshold: 0.5
+                threshold: 0.5,
+                expectedResponses: expectedResponses
             });
 
             setIsWorkflowRunning(true);
@@ -2024,6 +2032,106 @@ export function WakeDetectionWorkflowComponent() {
                                                     <FileImage className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                                                     <p className="text-sm">尚未选择模板图像</p>
                                                     <p className="text-xs text-gray-400">点击"上传"按钮添加模板</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+
+                            {/* 预期回复设置 */}
+                            <div className="space-y-2">
+                                <Label>预期回复设置</Label>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            className="w-full justify-between"
+                                            disabled={isWorkflowRunning}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <Mic className="h-4 w-4" />
+                                                <span>预期回复 ({expectedResponses.length})</span>
+                                            </div>
+                                            <Badge variant={expectedResponses.length > 0 ? "secondary" : "outline"} className="ml-2">
+                                                {expectedResponses.length > 0 ? "已配置" : "未配置"}
+                                            </Badge>
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-80" align="start">
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="font-medium">预期回复管理</h4>
+                                                {expectedResponses.length > 0 && (
+                                                    <Button
+                                                        onClick={() => setExpectedResponses([])}
+                                                        disabled={isWorkflowRunning}
+                                                        variant="outline"
+                                                        size="sm"
+                                                    >
+                                                        <Trash2 className="h-4 w-4 mr-1" />
+                                                        清空
+                                                    </Button>
+                                                )}
+                                            </div>
+
+                                            <div className="text-xs text-gray-600 p-2 bg-blue-50 rounded-md">
+                                                💡 输入车机预期的回复内容，如“在，嗯，在的等”。只有当ASR结果匹配这些预期回复时，测试才算成功。
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        value={currentExpectedResponse}
+                                                        onChange={(e) => setCurrentExpectedResponse(e.target.value)}
+                                                        placeholder="输入预期回复..."
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' && currentExpectedResponse.trim()) {
+                                                                setExpectedResponses(prev => [...prev, currentExpectedResponse.trim()]);
+                                                                setCurrentExpectedResponse("");
+                                                            }
+                                                        }}
+                                                        className="flex-1"
+                                                        disabled={isWorkflowRunning}
+                                                    />
+                                                    <Button
+                                                        onClick={() => {
+                                                            if (currentExpectedResponse.trim()) {
+                                                                setExpectedResponses(prev => [...prev, currentExpectedResponse.trim()]);
+                                                                setCurrentExpectedResponse("");
+                                                            }
+                                                        }}
+                                                        disabled={!currentExpectedResponse.trim() || isWorkflowRunning}
+                                                        size="sm"
+                                                    >
+                                                        添加
+                                                    </Button>
+                                                </div>
+                                            </div>
+
+                                            {expectedResponses.length > 0 ? (
+                                                <div className="space-y-1 max-h-32 overflow-y-auto">
+                                                    {expectedResponses.map((response, index) => (
+                                                        <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
+                                                            <span className="text-sm truncate" title={response}>
+                                                                {response}
+                                                            </span>
+                                                            <Button
+                                                                onClick={() => setExpectedResponses(prev => prev.filter((_, i) => i !== index))}
+                                                                disabled={isWorkflowRunning}
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="text-red-500 hover:text-red-700 h-6 w-6 p-0"
+                                                            >
+                                                                <Trash2 className="h-3 w-3" />
+                                                            </Button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-2 text-gray-500">
+                                                    <p className="text-xs">尚未设置预期回复</p>
+                                                    <p className="text-xs text-gray-400">留空则使用原有逻辑</p>
                                                 </div>
                                             )}
                                         </div>

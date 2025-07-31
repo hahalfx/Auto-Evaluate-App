@@ -44,22 +44,20 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useState, useEffect, useCallback } from "react"; // Added useCallback
 import { useTauriTasks } from "@/hooks/useTauriTasks"; // New hook
-import { useAppDispatch, useAppSelector } from "@/store/hooks"; // Keep for samplesSlice if still needed
+import { useAppSelector } from "@/store/hooks"; // Keep for samplesSlice if still needed
 // Remove taskSlice imports for tasks, currentTask, status, update, delete
 // Keep for samplesSlice if still needed
 import {
   fetchSamples,
   selectSamplesStatus,
-  setSelectedSamples,
-  selectWakeWords,
-  fetchWakeWords,
 } from "@/store/samplesSlice";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useExportCurrentTask } from "@/hooks/useExportCurrentTask";
+import { useExportTaskReport } from "@/hooks/useExportTaskReport";
+import { useSampleSelection } from "@/lib/contexts/sample-selection-context";
 import { useToast } from "./ui/use-toast";
 import { useActiveTasks } from "@/lib/contexts/active-tasks-context";
 import CreateTask from "@/components/create-task";
@@ -123,26 +121,20 @@ export default function TaskManage() {
     deleteTask,
     setCurrentTask,
   } = useTauriTasks();
-  const dispatch = useAppDispatch(); // Keep for samplesSlice
   const samplesStatus = useAppSelector(selectSamplesStatus);
   const { playMatchedAudio } = useAudioPlayer();
   const router = useRouter();
-  const { exportCurrentTask: exportTaskHook } = useExportCurrentTask(); // Renamed to avoid conflict
+  const { exportReport, isExporting } = useExportTaskReport();
   const { toast } = useToast();
   const { addActiveTask, isTaskActive } = useActiveTasks();
   const { wakewords } = useTauriWakewords();
   const { samples } = useTauriSamples();
+  const { setSelectedIds } = useSampleSelection();
   const { timingData } = useTimingData(currentTask?.id);
   const { results: wakeDetectionResults, stats: wakeDetectionStats, isLoading: wakeDetectionLoading } = useWakeDetectionResults(currentTask?.id);
 
-  const handleExportReport = () => {
-    currentTask
-      ? exportTaskHook() // Use renamed hook
-      : toast({
-          variant: "destructive",
-          title: "无当前任务",
-          description: "请先选择一个任务再导出报告。",
-        });
+  const handleExportReport = async () => {
+    await exportReport(currentTask, samples, wakewords);
   };
 
   // 处理开始任务 (now uses updateTaskStatus from useTauriTasks)
@@ -150,7 +142,7 @@ export default function TaskManage() {
     setIsDetailDialogOpen(false);
     // setSelectedSamples might still be relevant if it's for UI state not directly tied to task data
     if (currentTask) {
-      dispatch(setSelectedSamples(currentTask.test_samples_ids || []));
+      setSelectedIds(currentTask.test_samples_ids || []);
       await updateTaskStatus(taskId, "in_progress");
     }
     router.push("/llm-analysis/" + taskId);
@@ -788,7 +780,7 @@ export default function TaskManage() {
                                       </p>
                                       <div className="flex items-center space-x-4 text-xs text-muted-foreground mt-1">
                                         <span>置信度: {result.confidence?.toFixed(3) || 'N/A'}</span>
-                                        <span>耗时: {result.duration_ms}ms</span>
+                                        <span>耗时: {result.success ? result.duration_ms : 'N/A'}ms</span>
                                         <span>时间: {new Date(result.timestamp).toLocaleString()}</span>
                                       </div>
                                       {/* 显示识别成功的判定依据 */}
@@ -799,13 +791,9 @@ export default function TaskManage() {
                                             <span className="text-green-600 dark:text-green-400">
                                               ASR识别成功 - "{result.asr_result}"
                                             </span>
-                                          ) : result.active_task_completed ? (
-                                            <span className="text-blue-600 dark:text-blue-400">
-                                              视觉检测成功
-                                            </span>
                                           ) : (
                                             <span className="text-gray-600 dark:text-gray-400">
-                                              未知成功原因
+                                              视觉检测成功
                                             </span>
                                           )}
                                         </div>
@@ -1144,8 +1132,12 @@ export default function TaskManage() {
                     删除任务
                   </Button>
 
-                  <Button variant="secondary" onClick={handleExportReport}>
-                    导出报告
+                  <Button 
+                    variant="secondary" 
+                    onClick={handleExportReport}
+                    disabled={isExporting || !currentTask}
+                  >
+                    {isExporting ? "导出中..." : "导出报告"}
                   </Button>
 
                   {currentTask.task_status === "pending" && (

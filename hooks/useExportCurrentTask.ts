@@ -1,43 +1,42 @@
-import { useAppSelector } from "@/store/hooks";
-import { selectAllSamples, selectWakeWords } from "@/store/samplesSlice";
-import { selectCurrentTask } from "@/store/taskSlice";
+import type { Task } from "@/types/api";
+import { useTauriSamples } from "@/hooks/useTauriSamples";
+import { useTauriWakewords } from "@/hooks/useTauriWakewords";
 import generateASRTestReport, {
   ASRTestReport,
 } from "@/utils/generateASRTestReport";
 
-export function useExportCurrentTask() {
-    const Task = useAppSelector(selectCurrentTask);
-    const samples = useAppSelector(selectAllSamples);
-    const wakeWords = useAppSelector(selectWakeWords);
+export function useExportCurrentTask(currentTask: Task | null) {
+    const { samples } = useTauriSamples();
+    const { wakewords: wakeWords } = useTauriWakewords();
   const exportCurrentTask = () => {
     
-    if (Task) {
+    if (currentTask) {
       // 使用类型断言避免类型错误
       const TaskReport = {
-        taskName: Task.name,
-        date: Task.created_at,
-        audioType: Task.audioType || "",
-        audioFile: Task.wake_word_ids.length > 0 ? wakeWords[Task.wake_word_ids[0]-1]?.text || "" : "",
-        audioDuration: Task.audioDuration || "",
-        audioCategory: Task.audioCategory || "",
-        testCollection: Task.testCollection || "",
-        testDuration: Task.testDuration || "",
-        sentenceAccuracy: Task.sentenceAccuracy || null,
-        wordAccuracy: Task.wordAccuracy || null,
-        characterErrorRate: Task.characterErrorRate || null,
-        recognitionSuccessRate: Task.recognitionSuccessRate || null,
-        totalWords: Task.totalWords || null,
-        insertionErrors: Task.insertionErrors || null,
-        deletionErrors: Task.deletionErrors || null,
-        substitutionErrors: Task.substitutionErrors || null,
-        fastestRecognitionTime: Task.fastestRecognitionTime || null,
-        slowestRecognitionTime: Task.slowestRecognitionTime || null,
-        averageRecognitionTime: Task.averageRecognitionTime || null,
-        completedSamples: Task.test_result ? Object.keys(Task.test_result).length : 0,
-        items: Task.test_result && samples
-          ? Object.entries(Task.test_result).map(([id, item]) => {
+        taskName: currentTask.name,
+        date: currentTask.created_at,
+        audioType: currentTask.audioType || "",
+        audioFile: currentTask.wake_word_ids.length > 0 ? (wakeWords.find(w => w.id === currentTask.wake_word_ids[0])?.text || "") : "",
+        audioDuration: currentTask.audioDuration || "",
+        audioCategory: currentTask.audioCategory || "",
+        testCollection: currentTask.testCollection || "",
+        testDuration: currentTask.testDuration || "",
+        sentenceAccuracy: currentTask.sentenceAccuracy || null,
+        wordAccuracy: currentTask.wordAccuracy || null,
+        characterErrorRate: currentTask.characterErrorRate || null,
+        recognitionSuccessRate: currentTask.recognitionSuccessRate || null,
+        totalWords: currentTask.totalWords || null,
+        insertionErrors: currentTask.insertionErrors || null,
+        deletionErrors: currentTask.deletionErrors || null,
+        substitutionErrors: currentTask.substitutionErrors || null,
+        fastestRecognitionTime: currentTask.fastestRecognitionTime || null,
+        slowestRecognitionTime: currentTask.slowestRecognitionTime || null,
+        averageRecognitionTime: currentTask.averageRecognitionTime || null,
+        completedSamples: currentTask.test_result ? Object.keys(currentTask.test_result).length : 0,
+        items: currentTask.test_result && samples
+          ? Object.entries(currentTask.test_result).map(([id, item]) => {
               return {
-                audioFile: wakeWords[Task.wake_word_id-1]?.text || "",
+                audioFile: wakeWords.find(w => w.id === currentTask.wake_word_ids[0])?.text || "",
                 recognitionFile: item.recognitionFile || "",
                 device: item.device || "科大讯飞ASRAPI",
                 recognitionResult: item.recognitionResult || "成功",
@@ -55,12 +54,12 @@ export function useExportCurrentTask() {
                     ? item.substitutionErrors
                     : null,
                 totalWords: item.totalWords || null,
-                referenceText: samples[Number(id)-1]?.text || "",
+                referenceText: samples.find(s => s.id === Number(id))?.text || "",
                 recognizedText: item.recognizedText || "",
                 resultStatus: item.resultStatus || "",
                 recognitionTime: item.recognitionTime || null,
-                machineResponse: Task.machine_response
-                  ? Task.machine_response[Number(id)]?.text
+                machineResponse: currentTask.machine_response
+                  ? currentTask.machine_response[Number(id)]?.text
                   : "",
                 responseTime: item.responseTime || null,
                 LLMAnalysisResult: item.assessment ? String(item.assessment.valid) : "",
@@ -77,7 +76,7 @@ export function useExportCurrentTask() {
           : [],
       };
       // 使用类型断言将TaskReport转换为ASRTestReport类型
-      generateASRTestReport(TaskReport as ASRTestReport, `${Task.name}.xlsx`);
+      generateASRTestReport(TaskReport as ASRTestReport, `${currentTask.name}.xlsx`);
     }
   };
   return { exportCurrentTask };

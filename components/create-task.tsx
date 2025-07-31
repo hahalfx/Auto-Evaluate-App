@@ -19,15 +19,12 @@ import {
 import { SidebarTrigger } from "./ui/sidebar";
 import { useEffect, useState } from "react";
 import { WakeWord } from "@/types/api"; // Task might not be needed directly here anymore
-import { useAppSelector, useAppDispatch } from "@/store/hooks";
-// import { createTaskAsync } from "@/store/taskSlice"; // Will be replaced
 import { useTauriTasks } from "@/hooks/useTauriTasks"; // Import the new hook
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/components/ui/use-toast";
 import { Input } from "./ui/input";
-// Removed Redux imports for wake words
-import { setSelectedSamples } from "@/store/samplesSlice"; // Keep for selected samples if needed
+import { useSampleSelection } from "@/lib/contexts/sample-selection-context";
 import { TauriApiService } from "@/services/tauri-api"; // Import TauriApiService for wake words
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { open } from '@tauri-apps/plugin-dialog';
@@ -72,10 +69,9 @@ export default function CreateTask({ onTaskCreated, isDialogOpen }: CreateTaskPr
     }
   }, [isDialogOpen]);
 
-  const dispatch = useAppDispatch(); // Still needed for setSelectedSamples
   const router = useRouter();
   const { createTask: createTaskWithTauri, isLoading: isCreatingTask, fetchAllTasks } = useTauriTasks(); // Get createTask from hook
-  const selectedIds = useAppSelector((state) => state.samples.selectedIds);
+  const { selectedIds } = useSampleSelection();
   // const wakewords = useAppSelector(selectWakeWords); // Replaced with local state
 
   useEffect(() => {

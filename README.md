@@ -270,6 +270,11 @@ npm run start             # 生产服务器
 # tesseract-sys = { version = "0.11", features = ["static-link"] }
 
 npm run tauri build
+$env:VCPKG_ROOT = "D:\Code\Auto-Evalution-App\depends\vcpkg-master"
+配置libclang环境变量
+$env:LIBCLANG_PATH = "D:\Code\Auto-Evalution-App\depends\clang+llvm-18.1.8-x86_64-pc-windows-msvc\bin"
+Opencv需要Clang二进制文件来生成绑定，需要将clang的bin目录添加到PATH中
+$env:PATH += "D:\Code\Auto-Evalution-App\depends\clang+llvm-18.1.8-x86_64-pc-windows-msvc\bin"
 ```
 
 #### macOS打包

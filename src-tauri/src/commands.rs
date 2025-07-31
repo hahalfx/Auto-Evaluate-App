@@ -751,6 +751,7 @@ pub async fn start_wake_detection_workflow(
     template_data: Vec<(String, String)>,
     frame_rate: u32,
     threshold: f64,
+    expected_responses: Vec<String>,
 ) -> Result<(), String> {
     // 1. 获取当前任务ID
     let task_id = state.current_task_id.read().await.ok_or("没有设置当前任务ID")?;
@@ -782,6 +783,7 @@ pub async fn start_wake_detection_workflow(
         task_id,
         visual_config,
         state.inner().clone(),
+        expected_responses,
     );
 
     // 6. 将元任务添加到主工作流

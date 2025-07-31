@@ -29,6 +29,8 @@ pub struct WakeDetectionResult {
     pub timestamp: i64,
     pub duration_ms: u64,
     pub asr_result: Option<String>,
+    pub asr_matches_expected: Option<bool>,
+    pub expected_responses: Vec<String>,
 }
 
 /// 唤醒检测元任务 - 执行多个唤醒词的测试
@@ -37,6 +39,7 @@ pub struct wake_detection_meta_executor {
     task_id: i64,
     visual_config: VisualWakeConfig,
     state_snapshot: Arc<AppState>,
+    expected_responses: Vec<String>, // 用户输入的预期回复
 }
 
 impl wake_detection_meta_executor {
@@ -45,13 +48,49 @@ impl wake_detection_meta_executor {
         task_id: i64,
         visual_config: VisualWakeConfig,
         state: Arc<AppState>,
+        expected_responses: Vec<String>,
     ) -> Self {
         Self {
             id: id.to_string(),
             task_id,
             visual_config,
             state_snapshot: state,
+            expected_responses,
         }
+    }
+
+    /// 检查ASR结果是否匹配用户输入的预期回复
+    fn check_asr_response(&self, asr_result: &str) -> bool {
+        let response = asr_result.trim().to_lowercase();
+        
+        // 如果没有预期回复，保持原有逻辑（只要ASR有结果就算成功）
+        if self.expected_responses.is_empty() {
+            return !response.is_empty();
+        }
+        
+        // 检查ASR结果是否匹配任何一个预期回复
+        for expected in &self.expected_responses {
+            let expected_lower = expected.trim().to_lowercase();
+            
+            // 完全匹配
+            if response == expected_lower {
+                return true;
+            }
+            
+            // 包含匹配（允许部分匹配）
+            if response.contains(&expected_lower) || expected_lower.contains(&response) {
+                return true;
+            }
+            
+            // 去除标点符号后的匹配
+            let response_clean = response.replace(|c: char| !c.is_alphanumeric(), "");
+            let expected_clean = expected_lower.replace(|c: char| !c.is_alphanumeric(), "");
+            if response_clean == expected_clean {
+                return true;
+            }
+        }
+        
+        false
     }
 }
 
@@ -259,11 +298,45 @@ impl Task for wake_detection_meta_executor {
                     0 // 失败情况不记录时间
                 };
                 
-                // 只要有一个任务成功就认为测试成功
-                if active_task_is_completed || asr_result.is_some() {
+                // 根据预期回复验证ASR结果
+                let mut asr_matches_expected = false;
+                if let Some(ref asr_text) = asr_result {
+                    asr_matches_expected = self.check_asr_response(asr_text);
+                    println!(
+                        "[WakeDetectionMetaTask] ASR result validation: '{}' matches expected: {}", 
+                        asr_text, asr_matches_expected
+                    );
+                }
+
+                // 更新成功条件：
+                // 1. 如果视觉检测成功，则任务成功
+                // 2. 如果ASR结果存在且匹配预期回复，则任务成功
+                // 3. 否则任务失败
+                if active_task_is_completed {
                     test_is_successful = true;
+                    println!(
+                        "[WakeDetectionMetaTask] Visual wake detection succeeded for wake word '{}'", 
+                        wakeword.text
+                    );
+                } else if let Some(ref asr_text) = asr_result {
+                    test_is_successful = asr_matches_expected;
+                    if asr_matches_expected {
+                        println!(
+                            "[WakeDetectionMetaTask] ASR validation passed for wake word '{}' with response: '{}'", 
+                            wakeword.text, asr_text
+                        );
+                    } else {
+                        println!(
+                            "[WakeDetectionMetaTask] ASR validation failed for wake word '{}', response '{}' does not match expected responses", 
+                            wakeword.text, asr_text
+                        );
+                    }
                 } else {
                     test_is_successful = false;
+                    println!(
+                        "[WakeDetectionMetaTask] Both visual detection and ASR failed for wake word '{}'", 
+                        wakeword.text
+                    );
                 }
             } else {
                 test_is_successful = false;
@@ -283,6 +356,8 @@ impl Task for wake_detection_meta_executor {
                 confidence: None, // 可以从视觉检测结果中获取
                 timestamp: test_end_time,
                 duration_ms: if test_is_successful { final_duration_ms } else { 0 },
+                asr_matches_expected: None,
+                expected_responses: self.expected_responses.clone(),
             };
 
             all_results.push(test_result.clone());

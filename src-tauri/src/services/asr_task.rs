@@ -206,15 +206,39 @@ fn find_best_f32_input_config(
     let supported_configs = device
         .supported_input_configs()
         .map_err(|e| Box::new(AudioError::DeviceError(e.to_string())))?;
-    let best_supported_config = supported_configs
-        .filter(|c| c.channels() == 1 && c.sample_format() == SampleFormat::F32)
-        .max_by_key(|c| c.max_sample_rate())
-        .ok_or_else(|| Box::new(AudioError::UnsupportedConfig) as Box<dyn Error + Send + Sync>)?
-        .with_max_sample_rate();
-    let sample_format = best_supported_config.sample_format();
-    let config: cpal::StreamConfig = best_supported_config.into();
-    Ok((config, sample_format))
+    
+    // 收集所有支持的配置
+    let configs: Vec<_> = supported_configs.collect();
+    
+    // 尝试多种配置组合，按优先级排序
+    let config_priorities: [fn(&cpal::SupportedStreamConfigRange) -> bool; 4] = [
+        // 优先：单声道 + F32
+        |c: &cpal::SupportedStreamConfigRange| c.channels() == 1 && c.sample_format() == SampleFormat::F32,
+        // 备选：立体声 + F32  
+        |c: &cpal::SupportedStreamConfigRange| c.channels() == 2 && c.sample_format() == SampleFormat::F32,
+        // 备选：单声道 + I16
+        |c: &cpal::SupportedStreamConfigRange| c.channels() == 1 && c.sample_format() == SampleFormat::I16,
+        // 最后：立体声 + I16
+        |c: &cpal::SupportedStreamConfigRange| c.channels() == 2 && c.sample_format() == SampleFormat::I16,
+    ];
+    
+    for priority_filter in &config_priorities {
+        if let Some(config) = configs
+            .iter()
+            .filter(|c| priority_filter(c))
+            .max_by_key(|c| c.max_sample_rate())
+        {
+            let config = config.with_max_sample_rate();
+            let sample_format = config.sample_format();
+            let stream_config: cpal::StreamConfig = config.into();
+            return Ok((stream_config, sample_format));
+        }
+    }
+    
+    Err(Box::new(AudioError::UnsupportedConfig))
 }
+
+
 fn create_resampler(input_rate: u32) -> Result<SincFixedIn<f32>, Box<dyn Error + Send + Sync>> {
     let params = SincInterpolationParameters {
         sinc_len: 256,
@@ -248,8 +272,16 @@ fn audio_capture_thread(
     let device = host
         .default_input_device()
         .ok_or(AudioError::NoInputDevice)?;
-    let (config, _sample_format) = find_best_f32_input_config(&device)?;
+    
+    println!("[Audio] Device: {:?}", device.name());
+    
+    let (config, sample_format) = find_best_f32_input_config(&device)?;
     let input_rate = config.sample_rate.0;
+    let input_channels = config.channels;
+    
+    println!("[Audio] Config: rate={}, channels={}, format={:?}", 
+             input_rate, input_channels, sample_format);
+    
     let resampler = if input_rate != 16000 {
         Some(RefCell::new(create_resampler(input_rate)?))
     } else {
@@ -262,7 +294,24 @@ fn audio_capture_thread(
     let stream = device.build_input_stream(
         &config,
         move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            pre_resampling_buffer.extend_from_slice(data);
+            // 处理立体声到单声道的转换
+            let mono_data = if input_channels == 2 {
+                // 将立体声转换为单声道（取平均值）
+                let mut mono = Vec::with_capacity(data.len() / 2);
+                for i in (0..data.len()).step_by(2) {
+                    if i + 1 < data.len() {
+                        let left = data[i];
+                        let right = data[i + 1];
+                        mono.push((left + right) / 2.0);
+                    }
+                }
+                mono
+            } else {
+                data.to_vec()
+            };
+            
+            pre_resampling_buffer.extend_from_slice(&mono_data);
+            
             if let Some(resampler_cell) = &resampler {
                 let mut resampler = resampler_cell.borrow_mut();
                 while pre_resampling_buffer.len() >= resampler.input_frames_next() {
@@ -278,14 +327,19 @@ fn audio_capture_thread(
                 post_resampling_buffer.extend_from_slice(&pre_resampling_buffer);
                 pre_resampling_buffer.clear();
             }
+            
             while post_resampling_buffer.len() >= SAMPLES_PER_FRAME {
                 let frame_to_send = post_resampling_buffer
                     .drain(..SAMPLES_PER_FRAME)
                     .collect::<Vec<f32>>();
-                // Use blocking send as we are in a dedicated thread.
-                // If the receiver is dropped, this will error out and help terminate the thread.
+                
+                // 添加音频质量检查
+                let max_amplitude = frame_to_send.iter().map(|&x| x.abs()).fold(0.0, f32::max);
+                if max_amplitude > 0.01 { // 只记录有声音的帧
+                    println!("[Audio] Frame amplitude: {:.4}, samples: {}", max_amplitude, frame_to_send.len());
+                }
+                
                 if audio_sender.blocking_send(frame_to_send).is_err() {
-                    // Stop processing if receiver is gone
                     return;
                 }
             }
@@ -295,7 +349,6 @@ fn audio_capture_thread(
     )?;
     stream.play()?;
 
-    // Keep the thread alive while the stream is running
     while !stop_signal.load(Ordering::SeqCst) {
         thread::sleep(Duration::from_millis(50));
     }

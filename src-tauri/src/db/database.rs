@@ -1335,6 +1335,8 @@ impl DatabaseService {
                 timestamp: row.timestamp,
                 duration_ms: row.duration_ms as u64,
                 asr_result: row.asr_result,
+                asr_matches_expected: None,
+                expected_responses: Vec::new(),
             })
             .collect();
 
