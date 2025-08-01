@@ -31,7 +31,6 @@
       "icons/Shapr3D_TestFlight.icns",
       "icons/icon.ico"
     ],
-    "resources": ["tessdata"],
     "macOS": {
       "entitlements": "../Entitlements.plist"
     }
