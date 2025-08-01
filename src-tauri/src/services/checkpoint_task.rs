@@ -10,6 +10,8 @@ pub struct checkpoint_task {
     pub active_task_id: String,
     pub asr_task_id: String,
     pub expected_responses: Vec<String>,
+    pub sample_index: Option<u32>, // 添加样本索引
+    pub wake_word_text: Option<String>, // 添加唤醒词文本
 }
 
 impl checkpoint_task {
@@ -24,6 +26,26 @@ impl checkpoint_task {
             active_task_id,
             asr_task_id,
             expected_responses,
+            sample_index: None,
+            wake_word_text: None,
+        }
+    }
+
+    pub fn new_with_sample_info(
+        id: String,
+        active_task_id: String,
+        asr_task_id: String,
+        expected_responses: Vec<String>,
+        sample_index: u32,
+        wake_word_text: String,
+    ) -> Self {
+        Self {
+            id,
+            active_task_id,
+            asr_task_id,
+            expected_responses,
+            sample_index: Some(sample_index),
+            wake_word_text: Some(wake_word_text),
         }
     }
 
@@ -62,10 +84,12 @@ impl checkpoint_task {
     }
 
     /// 判断唤醒检测是否成功
-    async fn check_wake_detection_success(&self, context: &WorkflowContext) -> bool {
+    async fn check_wake_detection_success(&self, context: &WorkflowContext) -> (bool, Option<u64>) {
         let context_guard = context.read().await;
         let mut active_task_completed = false;
         let mut asr_result: Option<String> = None;
+        let mut wake_duration: Option<u64> = None;
+        let mut asr_duration: Option<u64> = None;
         
         // 检查 Active 任务结果
         if let Some(active_task_result_any) = context_guard.get(&self.active_task_id) {
@@ -74,6 +98,11 @@ impl checkpoint_task {
                     if status == "completed" {
                         active_task_completed = true;
                     }
+                }
+                
+                // 获取active_task的duration
+                if let Some(duration) = active_task_result.get("duration_ms").and_then(|d| d.as_u64()) {
+                    wake_duration = Some(duration);
                 }
             }
         }
@@ -85,6 +114,9 @@ impl checkpoint_task {
                 if !response.is_empty() {
                     asr_result = Some(asr_task_output.response.clone());
                 }
+                
+                // 获取asr_task的duration
+                asr_duration = Some(asr_task_output.duration_ms);
             }
         }
         
@@ -92,15 +124,24 @@ impl checkpoint_task {
         // 1. 如果视觉检测成功，则唤醒成功
         // 2. 如果ASR结果存在且匹配预期回复，则唤醒成功
         // 3. 否则唤醒失败
-        if active_task_completed {
-            return true;
-        }
+        let wake_success = if active_task_completed {
+            true
+        } else if let Some(ref asr_text) = asr_result {
+            self.check_asr_response(asr_text)
+        } else {
+            false
+        };
         
-        if let Some(ref asr_text) = asr_result {
-            return self.check_asr_response(asr_text);
-        }
+        // 根据成功条件确定最终duration（模仿wake_detection_meta_executor的逻辑）
+        let final_duration_ms = if active_task_completed && wake_duration.is_some() {
+            wake_duration.unwrap()
+        } else if asr_result.is_some() && asr_duration.is_some() {
+            asr_duration.unwrap()
+        } else {
+            0 // 失败情况不记录时间
+        };
         
-        false
+        (wake_success, Some(final_duration_ms))
     }
 }
 
@@ -120,8 +161,8 @@ impl Task for checkpoint_task {
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         println!("[CheckpointTask '{}'] Starting wake detection success check", self.id);
 
-        // 判断唤醒检测是否成功
-        let wake_success = self.check_wake_detection_success(&context).await;
+        // 判断唤醒检测是否成功并获取duration
+        let (wake_success, final_duration_ms) = self.check_wake_detection_success(&context).await;
         
         // 在 context 中设置唤醒检测结果
         {
@@ -143,13 +184,17 @@ impl Task for checkpoint_task {
             }
         }
 
-        // 发送唤醒检测结果到前端
+        // 发送唤醒检测结果到前端（包含duration）
         app_handle
             .emit(
                 "wake_detection_result",
                 serde_json::json!({
                     "success": wake_success,
-                    "task_id": self.id
+                    "task_id": self.id,
+                    "duration_ms": final_duration_ms.unwrap_or(0),
+                    "test_index": self.sample_index.unwrap_or(1), // 使用样本索引
+                    "wake_word_text": self.wake_word_text.as_deref().unwrap_or("唤醒检测"), // 使用唤醒词文本
+                    "wake_word_id": 0 // 通用ID
                 }),
             )
             .ok();

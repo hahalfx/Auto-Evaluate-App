@@ -148,11 +148,13 @@ impl Task for MetaTaskExecutor {
             sub_workflow.add_task(AsrTask::new(wake_asr_task_id.clone(), self.wakeword.text.clone()));
 
             // 添加检查点任务（判断唤醒检测是否成功）
-            sub_workflow.add_task(checkpoint_task::new(
+            sub_workflow.add_task(checkpoint_task::new_with_sample_info(
                 checkpoint_task_id.clone(),
                 active_task_id.clone(),
                 wake_asr_task_id.clone(),
                 Vec::new(), // 预期回复为空，使用默认逻辑
+                (index + 1) as u32, // 样本索引
+                self.wakeword.text.clone(), // 唤醒词文本
             ));
 
             // 添加语音指令播放任务（仅在唤醒成功后执行）

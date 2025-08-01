@@ -38,7 +38,6 @@ export function LLMAnalysisInterface() {
     frameRate: 10,
     threshold: 0.5,
     maxDetectionTime: 5,
-    maxDetectionTimeSecs: 5,
   });
 
   useEffect(() => {

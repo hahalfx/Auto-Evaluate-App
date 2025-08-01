@@ -45,7 +45,6 @@ export interface VisualWakeConfig {
   threshold: number;
   maxDetectionTime: number;
   templateData: Array<[string, string]>; // [name, base64_data]
-  maxDetectionTimeSecs: number;
 }
 
 // OCR配置接口
@@ -142,9 +141,8 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
   const [visualConfig, setVisualConfig] = useState<VisualWakeConfig>({
     frameRate: 10,
     threshold: 0.5,
-    maxDetectionTime: 30,
+    maxDetectionTime: 5,
     templateData: [],
-    maxDetectionTimeSecs: 5,
   });
 
   // OCR配置状态
@@ -1572,7 +1570,7 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
             </div>
           </div>
 
-          {/* 调试信息 - 可折叠 */}
+          {/* 调试信息 - 可折叠
           {debugInfo && (
             <details className="text-xs text-gray-500 border-t pt-1">
               <summary className="cursor-pointer hover:text-gray-700">调试信息</summary>
@@ -1616,7 +1614,7 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
                 )}
               </div>
             </details>
-          )}
+          )} */}
         </div>
       </div>
     </div>
