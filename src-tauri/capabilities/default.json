@@ -8,6 +8,33 @@
   "permissions": [
     "core:default",
     "dialog:default",
-    "dialog:default"
+    "dialog:allow-save",
+    "fs:default",
+    "fs:allow-write-file",
+    "fs:allow-write",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        {
+          "path": "$DOWNLOAD"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$DOCUMENT"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DESKTOP"
+        },
+        {
+          "path": "$DESKTOP/**"
+        }
+      ]
+    },
+    "fs:default"
   ]
 }

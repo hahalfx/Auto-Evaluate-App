@@ -127,7 +127,7 @@ impl Task for meta_task_executor {
             let audio_task_id = format!("audio_task_{}", sample_id);
             let active_task_id = format!("active_task_{}", sample_id); //视觉检测任务，替换audio_ocr_task
             let middle_task_id = format!("middle_task_{}", sample_id);
-            let ocr_task_id = format!("ocr_task_{}", sample_id);
+            // let ocr_task_id = format!("ocr_task_{}", sample_id);
             let asr_task_id = format!("asr_task_{}", sample_id);
             let analysis_task_id = format!("analysis_task_{}", sample_id);
             let finish_task_id = format!("finish_task_{}", sample_id);
@@ -158,10 +158,10 @@ impl Task for meta_task_executor {
                 active_task_id: Some(active_task_id.clone()),
             });
 
-            // 添加OCR任务
-            sub_workflow.add_task(ocr_task {
-                id: ocr_task_id.clone(),
-            });
+            // // 添加OCR任务
+            // sub_workflow.add_task(ocr_task {
+            //     id: ocr_task_id.clone(),
+            // });
 
             // 添加ASR任务
             sub_workflow.add_task(AsrTask::new(
@@ -184,7 +184,8 @@ impl Task for meta_task_executor {
                 asr_task_id.clone(),
                 analysis_task_id.clone(),
                 active_task_id.clone(), // 传递active_task_id用于超时检查
-                ocr_task_id.clone(),
+                None,
+                // ocr_task_id.clone(),
                 audio_task_id.clone(),
                 self.state_snapshot.db.clone(),
             ));
@@ -195,8 +196,8 @@ impl Task for meta_task_executor {
             sub_workflow.add_dependency(&middle_task_id, &audio_task_id);
             sub_workflow.add_dependency(&middle_task_id, &active_task_id); // 等待active_task完成
             sub_workflow.add_dependency(&asr_task_id, &middle_task_id);
-            sub_workflow.add_dependency(&ocr_task_id, &middle_task_id);
-            sub_workflow.add_dependency(&analysis_task_id, &ocr_task_id);
+            // sub_workflow.add_dependency(&ocr_task_id, &middle_task_id);
+            // sub_workflow.add_dependency(&analysis_task_id, &ocr_task_id);
             sub_workflow.add_dependency(&analysis_task_id, &asr_task_id);
             sub_workflow.add_dependency(&finish_task_id, &analysis_task_id);
 

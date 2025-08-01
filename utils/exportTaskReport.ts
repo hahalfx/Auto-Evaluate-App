@@ -1,5 +1,7 @@
 import * as XLSX from "xlsx";
 import type { Task, TestSample, WakeWord, AnalysisResult } from "@/types/api";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeFile } from "@tauri-apps/plugin-fs";
 
 interface ExportData {
   task: Task;
@@ -94,7 +96,7 @@ export async function exportTaskReport(
  * 生成 Excel 文件
  */
 async function generateExcelFile(data: any, fileName: string) {
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<void>(async (resolve, reject) => {
     try {
       const wb = XLSX.utils.book_new();
 
@@ -176,8 +178,33 @@ async function generateExcelFile(data: any, fileName: string) {
         XLSX.utils.book_append_sheet(wb, detailWs, "详细结果");
       }
 
-      // 写入文件
-      XLSX.writeFile(wb, fileName);
+      // 将 Excel 文件转换为二进制数据
+      const excelData = XLSX.write(wb, { bookType: 'xlsx', type: 'binary' });
+      
+      // 转换为 Uint8Array
+      const buffer = new Uint8Array(excelData.length);
+      for (let i = 0; i < excelData.length; i++) {
+        buffer[i] = excelData.charCodeAt(i) & 0xFF;
+      }
+      
+      // 弹出保存对话框
+      const filePath = await save({
+        defaultPath: fileName,
+        filters: [
+          {
+            name: 'Excel 文件',
+            extensions: ['xlsx']
+          }
+        ]
+      });
+      
+      if (!filePath) {
+        reject(new Error('用户取消了保存操作'));
+        return;
+      }
+      
+      // 保存文件
+      await writeFile(filePath, buffer);
       resolve();
     } catch (error) {
       reject(error);

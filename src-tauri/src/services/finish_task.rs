@@ -17,7 +17,7 @@ pub struct finish_task {
     pub asr_dependency_id: String,
     pub analysis_dependency_id: String,
     pub audio_ocr_dependency_id: String, // 新增：audio_ocr_task的ID
-    pub ocr_dependency_id: String,       // 新增：ocr_task的ID
+    pub ocr_dependency_id: Option<String>,       // 新增：ocr_task的ID
     pub audio_task_id: String,           // 新增：audio_task的ID
     // 唤醒检测相关字段
     pub active_task_id: Option<String>, // 用于唤醒检测的active_task_id
@@ -35,7 +35,6 @@ impl finish_task {
         asr_dependency_id: String,
         analysis_dependency_id: String,
         audio_ocr_dependency_id: String,
-        ocr_dependency_id: String,
         audio_task_id: String,
         db: Arc<DatabaseService>,
     ) -> Self {
@@ -46,7 +45,7 @@ impl finish_task {
             asr_dependency_id,
             analysis_dependency_id,
             audio_ocr_dependency_id,
-            ocr_dependency_id,
+            ocr_dependency_id: None,
             audio_task_id,
             active_task_id: None, // 初始化为None
             wake_word_id: None,   // 初始化为None
@@ -62,7 +61,7 @@ impl finish_task {
         asr_dependency_id: String,
         analysis_dependency_id: String,
         audio_ocr_dependency_id: String,
-        ocr_dependency_id: String,
+        ocr_dependency_id: Option<String>,
         audio_task_id: String,
         db: Arc<DatabaseService>,
     ) -> Self {
@@ -96,7 +95,7 @@ impl finish_task {
             asr_dependency_id: String::new(),
             analysis_dependency_id: String::new(),
             audio_ocr_dependency_id: String::new(),
-            ocr_dependency_id: String::new(),
+            ocr_dependency_id: Some(String::new()),
             audio_task_id: String::new(),
             active_task_id: Some(active_task_id),
             wake_word_id: Some(wake_word_id),
@@ -112,7 +111,7 @@ impl finish_task {
         asr_dependency_id: String,
         analysis_dependency_id: String,
         active_task_id: String, // 使用active_task而不是audio_ocr_task
-        ocr_dependency_id: String,
+        ocr_dependency_id: Option<String>,
         audio_task_id: String,
         db: Arc<DatabaseService>,
     ) -> Self {
@@ -330,20 +329,20 @@ impl finish_task {
                 None
             };
 
-        // 4. 从audio_ocr_task获取首字上屏时间和文本稳定时间
-        let audio_ocr_result = if let Some(data) = context_reader.get(&self.audio_ocr_dependency_id)
-        {
-            data.downcast_ref::<OcrSessionResult>().cloned()
-        } else {
-            None
-        };
+        // // 4. 从audio_ocr_task获取首字上屏时间和文本稳定时间
+        // let audio_ocr_result = if let Some(data) = context_reader.get(&self.audio_ocr_dependency_id)
+        // {
+        //     data.downcast_ref::<OcrSessionResult>().cloned()
+        // } else {
+        //     None
+        // };
 
-        // 5. 从ocr_task获取动作开始时间
-        let ocr_result = if let Some(data) = context_reader.get(&self.ocr_dependency_id) {
-            data.downcast_ref::<OcrSessionResult>().cloned()
-        } else {
-            None
-        };
+        // // 5. 从ocr_task获取动作开始时间
+        // let ocr_result = if let Some(data) = context_reader.get(&self.ocr_dependency_id) {
+        //     data.downcast_ref::<OcrSessionResult>().cloned()
+        // } else {
+        //     None
+        // };
 
         // 6. 构建完整的TimingData
         let mut timing_data = TimingData::new();
@@ -354,25 +353,25 @@ impl finish_task {
             timing_data.voice_command_end_time = audio_timing.voice_command_end_time;
         }
 
-        // 从audio_ocr_task获取首字上屏时间和文本稳定时间
-        if let Some(audio_ocr) = &audio_ocr_result {
-            if let Some(first_time) = audio_ocr.first_text_detected_time {
-                timing_data.first_char_appear_time =
-                    chrono::DateTime::from_timestamp_millis(first_time as i64);
-            }
-            if let Some(stable_time) = audio_ocr.text_stabilized_time {
-                timing_data.full_text_appear_time =
-                    chrono::DateTime::from_timestamp_millis(stable_time as i64);
-            }
-        }
+        // // 从audio_ocr_task获取首字上屏时间和文本稳定时间
+        // if let Some(audio_ocr) = &audio_ocr_result {
+        //     if let Some(first_time) = audio_ocr.first_text_detected_time {
+        //         timing_data.first_char_appear_time =
+        //             chrono::DateTime::from_timestamp_millis(first_time as i64);
+        //     }
+        //     if let Some(stable_time) = audio_ocr.text_stabilized_time {
+        //         timing_data.full_text_appear_time =
+        //             chrono::DateTime::from_timestamp_millis(stable_time as i64);
+        //     }
+        // }
 
-        // 从ocr_task获取动作开始时间（暂时使用first_text_detected_time）
-        if let Some(ocr) = &ocr_result {
-            if let Some(action_time) = ocr.first_text_detected_time {
-                timing_data.action_start_time =
-                    chrono::DateTime::from_timestamp_millis(action_time as i64);
-            }
-        }
+        // // 从ocr_task获取动作开始时间（暂时使用first_text_detected_time）
+        // if let Some(ocr) = &ocr_result {
+        //     if let Some(action_time) = ocr.first_text_detected_time {
+        //         timing_data.action_start_time =
+        //             chrono::DateTime::from_timestamp_millis(action_time as i64);
+        //     }
+        // }
 
         // tts_first_frame_time暂时留空
         timing_data.tts_first_frame_time = None;

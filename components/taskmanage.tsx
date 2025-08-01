@@ -57,6 +57,7 @@ import { Badge } from "./ui/badge";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useExportTaskReport } from "@/hooks/useExportTaskReport";
+import { useExportWakeDetectionResults } from "@/hooks/useExportWakeDetectionResults";
 import { useSampleSelection } from "@/lib/contexts/sample-selection-context";
 import { useToast } from "./ui/use-toast";
 import { useActiveTasks } from "@/lib/contexts/active-tasks-context";
@@ -125,6 +126,7 @@ export default function TaskManage() {
   const { playMatchedAudio } = useAudioPlayer();
   const router = useRouter();
   const { exportReport, isExporting } = useExportTaskReport();
+  const { exportWakeDetectionResults, isExporting: isExportingWakeDetection } = useExportWakeDetectionResults();
   const { toast } = useToast();
   const { addActiveTask, isTaskActive } = useActiveTasks();
   const { wakewords } = useTauriWakewords();
@@ -135,6 +137,12 @@ export default function TaskManage() {
 
   const handleExportReport = async () => {
     await exportReport(currentTask, samples, wakewords);
+  };
+
+  const handleExportWakeDetectionResults = async () => {
+    if (currentTask) {
+      await exportWakeDetectionResults(currentTask.name, wakeDetectionResults, wakewords);
+    }
   };
 
   // 处理开始任务 (now uses updateTaskStatus from useTauriTasks)
@@ -739,7 +747,19 @@ export default function TaskManage() {
 
                 {/* ================= Wake Detection Results ================= */}
                 <div className="space-y-2">
-                  <p className="text-sm font-medium">唤醒检测结果</p>
+                  <div className="flex justify-between items-center">
+                    <p className="text-sm font-medium">唤醒检测结果</p>
+                    {wakeDetectionResults.length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleExportWakeDetectionResults}
+                        disabled={isExportingWakeDetection}
+                      >
+                        {isExportingWakeDetection ? "导出中..." : "导出唤醒结果"}
+                      </Button>
+                    )}
+                  </div>
                   {wakeDetectionLoading ? (
                     <div className="flex justify-center items-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin text-primary" />

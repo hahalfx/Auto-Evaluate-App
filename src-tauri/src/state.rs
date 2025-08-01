@@ -55,9 +55,6 @@ impl AppState {
     pub async fn new(database_url: &str) -> anyhow::Result<Self> {
         let db = Arc::new(DatabaseService::new(database_url).await?);
 
-        // 初始化默认数据
-        db.initialize_default_data().await?;
-
         let (audio_controller, _audio_task_handle) = AudioController::new();
 
         Ok(Self {
