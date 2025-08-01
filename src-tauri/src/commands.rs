@@ -1,6 +1,6 @@
 use crate::models::*;
 use crate::services::active_task::VisualWakeConfig;
-use crate::services::meta_task_executor::meta_task_executor;
+use crate::services::meta_task_executor::MetaTaskExecutor;
 use crate::services::wake_detection_meta_executor::wake_detection_meta_executor;
 use crate::services::workflow::Workflow;
 use crate::services::visual_wake_detection::get_or_create_detector;
@@ -710,7 +710,7 @@ pub async fn new_meta_workflow(
     let (mut main_workflow, _) = Workflow::new();
 
     // 6. 创建元任务，传入视觉配置
-    let multi_sample_executor = meta_task_executor::new(
+    let multi_sample_executor = MetaTaskExecutor::new(
         &format!("multi_sample_task_{}", task_id),
         task_id,
         task_samples,

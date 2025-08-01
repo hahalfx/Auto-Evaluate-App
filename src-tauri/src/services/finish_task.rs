@@ -143,6 +143,108 @@ impl finish_task {
             self.sample_id
         );
 
+        // 检查是否为唤醒失败的情况
+        let context_reader = context.read().await;
+        let wake_detection_failed = if let Some(success_flag) = context_reader.get("wake_detection_success") {
+            if let Some(success) = success_flag.downcast_ref::<bool>() {
+                !success
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        drop(context_reader);
+
+        // 如果唤醒失败且不是唤醒检测专用任务，则保存唤醒失败的结果
+        if wake_detection_failed && self.wake_word_id.is_none() && self.sample_id > 0 {
+            log::info!("[{}] 唤醒检测失败，保存唤醒失败结果", self.id);
+            
+            // 创建唤醒失败的分析结果
+            let failed_analysis_result = AnalysisResult {
+                assessment: crate::models::Assessment {
+                    semantic_correctness: crate::models::AssessmentItem {
+                        score: 0.0,
+                        comment: "唤醒检测失败，无法进行语义正确性评估".to_string(),
+                    },
+                    state_change_confirmation: crate::models::AssessmentItem {
+                        score: 0.0,
+                        comment: "唤醒检测失败，无法进行状态变化确认评估".to_string(),
+                    },
+                    unambiguous_expression: crate::models::AssessmentItem {
+                        score: 0.0,
+                        comment: "唤醒检测失败，无法进行表达明确性评估".to_string(),
+                    },
+                    overall_score: 0.0,
+                    valid: false,
+                    suggestions: vec![
+                        "检查唤醒词配置".to_string(),
+                        "检查视觉检测配置".to_string(),
+                        "确保车机系统处于可唤醒状态".to_string(),
+                    ],
+                },
+                llm_analysis: Some(crate::models::LlmAnalysis {
+                    title: "唤醒失败".to_string(),
+                    content: "语音唤醒检测失败，车机系统未能成功响应唤醒词".to_string(),
+                    context: false,
+                    multi_round: false,
+                }),
+                test_time: Some(chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()),
+                audio_file: None,
+                recognition_file: None,
+                device: None,
+                recognition_result: None,
+                insertion_errors: None,
+                deletion_errors: None,
+                substitution_errors: None,
+                total_words: None,
+                reference_text: None,
+                recognized_text: None,
+                result_status: Some("wake_failed".to_string()),
+                recognition_time: None,
+                response_time: None,
+            };
+
+            // 创建唤醒失败的机器响应数据
+            let failed_response_data = MachineResponseData {
+                text: "唤醒检测失败".to_string(),
+                connected: false,
+            };
+
+            // 创建空的时间数据
+            let empty_timing_data = TimingData::new();
+
+            // 保存到数据库
+            self.db
+                .save_machine_response(self.task_id, self.sample_id as i64, &failed_response_data)
+                .await
+                .map_err(|e| format!("[{}] 保存唤醒失败机器响应失败: {}", self.id, e))?;
+
+            self.db
+                .save_analysis_result(self.task_id, self.sample_id as i64, &failed_analysis_result)
+                .await
+                .map_err(|e| format!("[{}] 保存唤醒失败分析结果失败: {}", self.id, e))?;
+
+            self.db
+                .save_timing_data(self.task_id, self.sample_id as i64, &empty_timing_data)
+                .await
+                .map_err(|e| format!("[{}] 保存唤醒失败时间数据失败: {}", self.id, e))?;
+
+            // 发送唤醒失败事件到前端
+            let event_data = serde_json::json!({
+                "task_id": self.task_id,
+                "sample_id": self.sample_id,
+                "response": "唤醒检测失败",
+                "analysis_score": 0.0,
+                "status": "wake_failed"
+            });
+
+            app_handle.emit("finish_task_complete", event_data)?;
+
+            log::info!("[{}] 唤醒失败结果保存完成", self.id);
+            return Ok(());
+        }
+
         // 如果是唤醒检测任务，从上下文中获取active_task和asr_task结果
         if let Some(active_task_id) = &self.active_task_id {
             if let Some(wake_word_id) = &self.wake_word_id {

@@ -25,6 +25,20 @@ impl Task for audio_task {
         context: WorkflowContext,
         app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        // 检查是否应该跳过此任务（仅对语音指令播放任务，不是唤醒词播放任务）
+        // 通过任务ID判断：wakeword_task_开头的任务是唤醒词播放任务，其他的是语音指令播放任务
+        if !self.id.starts_with("wakeword_task_") { // 语音指令播放任务
+            let context_reader = context.read().await;
+            if let Some(should_skip) = context_reader.get("should_skip_task") {
+                if let Some(flag) = should_skip.downcast_ref::<bool>() {
+                    if *flag {
+                        println!("[AudioTask '{}'] Wake detection failed, skipping audio task", self.id);
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        
         println!("开始播放音频文件 {} .", self.keyword);
         
         // 主控制循环 - 持续检查控制信号

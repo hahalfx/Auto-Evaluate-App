@@ -458,6 +458,19 @@ impl Task for AsrTask {
         context: WorkflowContext,
         app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        // 检查是否应该跳过此任务
+        {
+            let context_reader = context.read().await;
+            if let Some(should_skip) = context_reader.get("should_skip_task") {
+                if let Some(flag) = should_skip.downcast_ref::<bool>() {
+                    if *flag {
+                        println!("[ASRTask '{}'] Wake detection failed, skipping ASR task", self.id);
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        
         println!("开始ASR任务: [{}].", self.id);
         let start_timestamp = chrono::Utc::now().timestamp_millis();
 

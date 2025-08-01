@@ -56,7 +56,7 @@ impl Task for ActiveTask {
         let mut detection_confidence: Option<f64> = None; // 检测置信度
         let max_detection_time = config.max_detection_time_secs
             .map(|secs| Duration::from_secs(secs))
-            .unwrap_or(Duration::from_secs(30)); // 默认30秒超时
+            .unwrap_or(Duration::from_secs(5)); // 默认30秒超时
 
         loop {
             let signal = control_rx.borrow().clone();

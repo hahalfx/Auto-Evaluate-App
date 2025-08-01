@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
-use tauri::AppHandle;
 use tauri::Emitter;
 use tokio::sync::watch;
 
@@ -14,7 +13,6 @@ use crate::services::asr_task::AsrTask;
 use crate::services::audio_task::audio_task;
 use crate::services::finish_task::finish_task;
 use crate::services::checkpoint_task::checkpoint_task;
-use crate::services::ocr_task::ocr_task;
 use crate::services::workflow::ControlSignal;
 use crate::services::workflow::Task;
 use crate::services::workflow::Workflow;
@@ -22,7 +20,7 @@ use crate::services::workflow::WorkflowContext;
 use crate::state::AppState;
 
 /// 这个任务是所有样本测试的"总指挥"，现在支持视觉唤醒检测
-pub struct meta_task_executor {
+pub struct MetaTaskExecutor {
     id: String,
     task_id: i64,
     samples: Vec<TestSample>,
@@ -31,7 +29,7 @@ pub struct meta_task_executor {
     state_snapshot: Arc<AppState>,
 }
 
-impl meta_task_executor {
+impl MetaTaskExecutor {
     pub fn new(
         id: &str,
         task_id: i64,
@@ -52,7 +50,7 @@ impl meta_task_executor {
 }
 
 #[async_trait]
-impl Task for meta_task_executor {
+impl Task for MetaTaskExecutor {
     fn id(&self) -> String {
         self.id.clone()
     }
@@ -123,10 +121,12 @@ impl Task for meta_task_executor {
             let keyword = sample.text.clone();
 
             // 2. 添加所有子任务，确保ID唯一
+            let wake_word_index = 0; // 因为只有一个唤醒词，所以索引为0
             let wakeword_task_id = format!("wakeword_task_{}", sample_id);
             let audio_task_id = format!("audio_task_{}", sample_id);
             let active_task_id = format!("active_task_{}", sample_id); //视觉检测任务，替换audio_ocr_task
-            let middle_task_id = format!("middle_task_{}", sample_id);
+            let wake_asr_task_id = format!("wake_asr_task_{}_{}", self.wakeword.id, wake_word_index);
+            let checkpoint_task_id = format!("checkpoint_task_{}", sample_id);
             // let ocr_task_id = format!("ocr_task_{}", sample_id);
             let asr_task_id = format!("asr_task_{}", sample_id);
             let analysis_task_id = format!("analysis_task_{}", sample_id);
@@ -139,23 +139,27 @@ impl Task for meta_task_executor {
                 url: self.wakeword.audio_file.clone(), // 使用选定唤醒词的音频文件
             });
             
-            // 添加语音指令播放任务
-            sub_workflow.add_task(audio_task {
-                id: audio_task_id.clone(),
-                keyword: keyword.clone(),
-                url: None,
-            });
-            
             // 添加视觉检测任务（替换audio_ocr_task）
             sub_workflow.add_task(ActiveTask::new(
                 active_task_id.clone(),
                 self.visual_config.clone(),
             ));
 
-            // 添加中间任务（等待唤醒和语音指令完成）
-            sub_workflow.add_task(checkpoint_task {
-                id: middle_task_id.clone(),
-                active_task_id: Some(active_task_id.clone()),
+            sub_workflow.add_task(AsrTask::new(wake_asr_task_id.clone(), self.wakeword.text.clone()));
+
+            // 添加检查点任务（判断唤醒检测是否成功）
+            sub_workflow.add_task(checkpoint_task::new(
+                checkpoint_task_id.clone(),
+                active_task_id.clone(),
+                wake_asr_task_id.clone(),
+                Vec::new(), // 预期回复为空，使用默认逻辑
+            ));
+
+            // 添加语音指令播放任务（仅在唤醒成功后执行）
+            sub_workflow.add_task(audio_task {
+                id: audio_task_id.clone(),
+                keyword: keyword.clone(),
+                url: sample.audio_file.clone(), // 使用样本的音频文件
             });
 
             // // 添加OCR任务
@@ -191,15 +195,18 @@ impl Task for meta_task_executor {
             ));
 
             // 3. 设置依赖关系
-            sub_workflow.add_dependency(&audio_task_id, &wakeword_task_id);
             sub_workflow.add_dependency(&active_task_id, &wakeword_task_id); // active_task在唤醒词播放后开始
-            sub_workflow.add_dependency(&middle_task_id, &audio_task_id);
-            sub_workflow.add_dependency(&middle_task_id, &active_task_id); // 等待active_task完成
-            sub_workflow.add_dependency(&asr_task_id, &middle_task_id);
+            sub_workflow.add_dependency(&wake_asr_task_id, &wakeword_task_id); // wake_asr_task在唤醒词播放后开始
+            sub_workflow.add_dependency(&checkpoint_task_id, &active_task_id); // checkpoint_task等待active_task完成
+            sub_workflow.add_dependency(&checkpoint_task_id, &wake_asr_task_id); // checkpoint_task等待wake_asr_task完成
+            sub_workflow.add_dependency(&audio_task_id, &checkpoint_task_id); // 语音指令播放仅在唤醒成功后执行
+            sub_workflow.add_dependency(&asr_task_id, &audio_task_id); // ASR任务在语音指令播放后执行
             // sub_workflow.add_dependency(&ocr_task_id, &middle_task_id);
             // sub_workflow.add_dependency(&analysis_task_id, &ocr_task_id);
             sub_workflow.add_dependency(&analysis_task_id, &asr_task_id);
             sub_workflow.add_dependency(&finish_task_id, &analysis_task_id);
+            // 确保 finish_task 总是执行（即使唤醒失败也要执行）
+            sub_workflow.add_dependency(&finish_task_id, &checkpoint_task_id);
 
             // 4. 执行并等待子工作流完成
             let result = sub_workflow

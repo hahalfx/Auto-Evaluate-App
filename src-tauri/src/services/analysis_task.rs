@@ -183,6 +183,19 @@ impl Task for analysis_task {
         context: WorkflowContext,
         app_handle: tauri::AppHandle,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        // 检查是否应该跳过此任务
+        {
+            let context_reader = context.read().await;
+            if let Some(should_skip) = context_reader.get("should_skip_task") {
+                if let Some(flag) = should_skip.downcast_ref::<bool>() {
+                    if *flag {
+                        println!("[AnalysisTask '{}'] Wake detection failed, skipping analysis task", self.id);
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        
         log::info!(
             "[{}] Execute method started. Waiting for 'Running' signal.",
             self.id

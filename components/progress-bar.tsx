@@ -28,7 +28,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
-import { useExportCurrentTask } from "@/hooks/useExportCurrentTask";
 import { VisualWakeConfig } from "./ocr";
 
 interface ProgressBarProps {
@@ -81,7 +80,6 @@ export function ProgressBar({
   const currentTask = useAppSelector(selectCurrentTask);
   const wakeWords = useAppSelector(selectWakeWords);
   const samples = useAppSelector(selectAllSamples);
-  const { exportCurrentTask } = useExportCurrentTask();
   const [testStatus, setTestStatus] = useState<
     "idle" | "running" | "paused" | "finished"
   >("idle");
@@ -327,13 +325,7 @@ export function ProgressBar({
     // 获取OCR组件中的视觉检测模板数据
     // 这里我们需要从OCR组件获取模板数据
     // 由于OCR组件在同一个页面，我们可以通过window或某种状态管理获取
-    onStartAutomatedTest(selectedWakeWordId, visualWakeConfig.templateData, visualWakeConfig.frameRate, visualWakeConfig.threshold, visualWakeConfig.maxDetectionTime);
-  };
-
-  const handleExportReport = () => {
-    if (currentTask) {
-      exportCurrentTask();
-    }
+    onStartAutomatedTest(selectedWakeWordId, visualWakeConfig.templateData, visualWakeConfig.frameRate, visualWakeConfig.threshold, visualWakeConfig.maxDetectionTimeSecs);
   };
 
   // 将评估项目名称转换为可读标签
@@ -370,7 +362,7 @@ export function ProgressBar({
               <DialogTitle>导出结果</DialogTitle>
               <div className="col-start-8 space-x-2 !mt-0">
                 <Button
-                  onClick={handleExportReport}
+                  onClick={() => {}}
                   disabled={!currentTask}
                   className="bg-blue-700 hover:bg-blue-600"
                 >

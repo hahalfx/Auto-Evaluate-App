@@ -45,6 +45,7 @@ export interface VisualWakeConfig {
   threshold: number;
   maxDetectionTime: number;
   templateData: Array<[string, string]>; // [name, base64_data]
+  maxDetectionTimeSecs: number;
 }
 
 // OCR配置接口
@@ -143,6 +144,7 @@ export function OCRVideoComponent({ setVisualWakeConfig }: { setVisualWakeConfig
     threshold: 0.5,
     maxDetectionTime: 30,
     templateData: [],
+    maxDetectionTimeSecs: 5,
   });
 
   // OCR配置状态
