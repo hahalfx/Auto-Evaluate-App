@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Task, TestSample, WakeWord, AnalysisResult } from "@/types/api";
+import type { WakeDetectionResult } from "@/hooks/useWakeDetectionResults";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 
@@ -7,6 +8,7 @@ interface ExportData {
   task: Task;
   samples: TestSample[];
   wakeWords: WakeWord[];
+  wakeDetectionResults?: WakeDetectionResult[]; // 新增唤醒检测结果
 }
 
 /**
@@ -21,7 +23,7 @@ export async function exportTaskReport(
   onError?: (error: Error) => void
 ) {
   try {
-    const { task, samples, wakeWords } = data;
+    const { task, samples, wakeWords, wakeDetectionResults } = data;
 
     // 验证数据完整性
     if (!task.test_result || Object.keys(task.test_result).length === 0) {
@@ -44,16 +46,38 @@ export async function exportTaskReport(
       wordAccuracy: task.wordAccuracy || null,
       characterErrorRate: task.characterErrorRate || null,
       recognitionSuccessRate: task.recognitionSuccessRate || null,
-      totalWords: task.totalWords || null,
-      insertionErrors: task.insertionErrors || null,
-      deletionErrors: task.deletionErrors || null,
-      substitutionErrors: task.substitutionErrors || null,
       fastestRecognitionTime: task.fastestRecognitionTime || null,
       slowestRecognitionTime: task.slowestRecognitionTime || null,
       averageRecognitionTime: task.averageRecognitionTime || null,
       completedSamples: Object.keys(task.test_result).length,
       items: Object.entries(task.test_result).map(([id, item]) => {
         const sample = samples.find(s => s.id === Number(id));
+        
+        // 获取对应的唤醒检测结果
+        const wakeResult = wakeDetectionResults?.find(r => r.test_index === Number(id));
+        
+        // 计算唤醒结果和判断依据
+        let wakeResultStatus = "";
+        let wakeJudgmentBasis = "";
+        let slidingDetailedResult = "";
+        
+        if (wakeResult) {
+          wakeResultStatus = wakeResult.success ? "成功" : "失败";
+          
+          if (wakeResult.success) {
+            if (wakeResult.asr_result) {
+              wakeJudgmentBasis = "语音识别";
+              slidingDetailedResult = `语音识别结果：${wakeResult.asr_result}`;
+            } else {
+              wakeJudgmentBasis = "图像识别";
+              slidingDetailedResult = "图像识别：与真值图片匹配成功";
+            }
+          } else {
+            wakeJudgmentBasis = "无";
+            slidingDetailedResult = "唤醒失败";
+          }
+        }
+        
         return {
           audioFile: task.wake_word_ids.length > 0 
             ? wakeWords.find(w => w.id === task.wake_word_ids[0])?.text || "" 
@@ -61,10 +85,6 @@ export async function exportTaskReport(
           recognitionFile: item.recognitionFile || "",
           device: item.device || "科大讯飞ASRAPI",
           recognitionResult: item.recognitionResult || "成功",
-          insertionErrors: item.insertionErrors !== undefined ? item.insertionErrors : null,
-          deletionErrors: item.deletionErrors !== undefined ? item.deletionErrors : null,
-          substitutionErrors: item.substitutionErrors !== undefined ? item.substitutionErrors : null,
-          totalWords: item.totalWords || null,
           referenceText: sample?.text || "",
           recognizedText: item.recognizedText || "",
           resultStatus: item.resultStatus || "",
@@ -77,6 +97,10 @@ export async function exportTaskReport(
           state_change_confirmation: item.assessment?.state_change_confirmation?.score || null,
           unambiguous_expression: item.assessment?.unambiguous_expression?.score || null,
           testTime: item.test_time || "",
+          // 新增字段
+          wakeResult: wakeResultStatus,
+          wakeJudgmentBasis: wakeJudgmentBasis,
+          slidingDetailedResult: slidingDetailedResult,
         };
       }),
     };
@@ -117,10 +141,6 @@ async function generateExcelFile(data: any, fileName: string) {
         ["字正确率", data.wordAccuracy ? data.wordAccuracy.toFixed(4) : ""],
         ["字错误率", data.characterErrorRate ? data.characterErrorRate.toFixed(3) : ""],
         ["唤醒成功率", data.recognitionSuccessRate || ""],
-        ["总字数", data.totalWords || ""],
-        ["插入错误", data.insertionErrors || ""],
-        ["删除错误", data.deletionErrors || ""],
-        ["替换错误", data.substitutionErrors || ""],
         ["平均识别时间(ms)", data.averageRecognitionTime || ""],
         ["最快识别时间(ms)", data.fastestRecognitionTime || ""],
         ["最慢识别时间(ms)", data.slowestRecognitionTime || ""],
@@ -139,10 +159,6 @@ async function generateExcelFile(data: any, fileName: string) {
           "识别文本",
           "识别结果",
           "识别时间(ms)",
-          "插入错误",
-          "删除错误",
-          "替换错误",
-          "总字数",
           "机器响应",
           "响应时间(ms)",
           "LLM评估",
@@ -151,6 +167,9 @@ async function generateExcelFile(data: any, fileName: string) {
           "状态确认",
           "表达明确性",
           "测试时间",
+          "唤醒结果",
+          "唤醒判断依据",
+          "滑行详细结果",
         ];
 
         const rows = data.items.map((item: any, index: number) => [
@@ -160,10 +179,6 @@ async function generateExcelFile(data: any, fileName: string) {
           item.recognizedText,
           item.recognitionResult,
           item.recognitionTime,
-          item.insertionErrors,
-          item.deletionErrors,
-          item.substitutionErrors,
-          item.totalWords,
           item.machineResponse,
           item.responseTime,
           item.LLMAnalysisResult,
@@ -172,6 +187,9 @@ async function generateExcelFile(data: any, fileName: string) {
           item.state_change_confirmation,
           item.unambiguous_expression,
           item.testTime,
+          item.wakeResult,
+          item.wakeJudgmentBasis,
+          item.slidingDetailedResult,
         ]);
 
         const detailWs = XLSX.utils.aoa_to_sheet([headers, ...rows]);
@@ -216,7 +234,7 @@ async function generateExcelFile(data: any, fileName: string) {
  * 导出为 CSV 格式（可选）
  */
 export function exportTaskReportCSV(data: ExportData): string {
-  const { task, samples, wakeWords } = data;
+  const { task, samples, wakeWords, wakeDetectionResults } = data;
   
   if (!task.test_result) {
     throw new Error("任务没有测试结果数据");
@@ -233,10 +251,39 @@ export function exportTaskReportCSV(data: ExportData): string {
     "LLM评估",
     "总分",
     "测试时间",
+    "唤醒结果",
+    "唤醒判断依据",
+    "滑行详细结果",
   ];
 
   const rows = Object.entries(task.test_result).map(([id, item]) => {
     const sample = samples.find(s => s.id === Number(id));
+    
+    // 获取对应的唤醒检测结果
+    const wakeResult = wakeDetectionResults?.find(r => r.test_index === Number(id));
+    
+    // 计算唤醒结果和判断依据
+    let wakeResultStatus = "";
+    let wakeJudgmentBasis = "";
+    let slidingDetailedResult = "";
+    
+    if (wakeResult) {
+      wakeResultStatus = wakeResult.success ? "成功" : "失败";
+      
+      if (wakeResult.success) {
+        if (wakeResult.asr_result) {
+          wakeJudgmentBasis = "语音识别";
+          slidingDetailedResult = `语音识别结果：${wakeResult.asr_result}`;
+        } else {
+          wakeJudgmentBasis = "图像识别";
+          slidingDetailedResult = "图像识别：与真值图片匹配成功";
+        }
+      } else {
+        wakeJudgmentBasis = "无";
+        slidingDetailedResult = "唤醒失败";
+      }
+    }
+    
     return [
       id,
       task.wake_word_ids.length > 0 ? wakeWords.find(w => w.id === task.wake_word_ids[0])?.text || "" : "",
@@ -248,6 +295,9 @@ export function exportTaskReportCSV(data: ExportData): string {
       item.assessment ? String(item.assessment.valid) : "",
       item.assessment?.overall_score || "",
       item.test_time || "",
+      wakeResultStatus,
+      wakeJudgmentBasis,
+      slidingDetailedResult,
     ];
   });
 

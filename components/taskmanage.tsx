@@ -127,7 +127,7 @@ export default function TaskManage() {
   const router = useRouter();
   const { exportReport, isExporting } = useExportTaskReport();
   const { exportWakeDetectionResults, isExporting: isExportingWakeDetection } = useExportWakeDetectionResults();
-  const { toast } = useToast();
+    const { toast } = useToast();
   const { addActiveTask, isTaskActive } = useActiveTasks();
   const { wakewords } = useTauriWakewords();
   const { samples } = useTauriSamples();
@@ -136,7 +136,7 @@ export default function TaskManage() {
   const { results: wakeDetectionResults, stats: wakeDetectionStats, isLoading: wakeDetectionLoading } = useWakeDetectionResults(currentTask?.id);
 
   const handleExportReport = async () => {
-    await exportReport(currentTask, samples, wakewords);
+    await exportReport(currentTask, samples, wakewords, wakeDetectionResults);
   };
 
   const handleExportWakeDetectionResults = async () => {
@@ -144,7 +144,7 @@ export default function TaskManage() {
       await exportWakeDetectionResults(currentTask.name, wakeDetectionResults, wakewords);
     }
   };
-
+  
   // 处理开始任务 (now uses updateTaskStatus from useTauriTasks)
   const handleStartTask = async (taskId: number) => {
     setIsDetailDialogOpen(false);
@@ -1159,7 +1159,8 @@ export default function TaskManage() {
                   >
                     {isExporting ? "导出中..." : "导出报告"}
                   </Button>
-
+                  
+                  
                   {currentTask.task_status === "pending" && (
                     <Button
                       variant="default"

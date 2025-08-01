@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { exportTaskReport, exportTaskReportCSV } from "@/utils/exportTaskReport";
 import type { Task, TestSample, WakeWord } from "@/types/api";
+import type { WakeDetectionResult } from "@/hooks/useWakeDetectionResults";
 import { useToast } from "@/components/ui/use-toast";
 
 interface UseExportTaskReportOptions {
@@ -15,7 +16,8 @@ export function useExportTaskReport(options: UseExportTaskReportOptions = {}) {
   const exportReport = async (
     task: Task | null,
     samples: TestSample[],
-    wakeWords: WakeWord[]
+    wakeWords: WakeWord[],
+    wakeDetectionResults?: WakeDetectionResult[]
   ) => {
     if (!task) {
       toast({
@@ -40,7 +42,7 @@ export function useExportTaskReport(options: UseExportTaskReportOptions = {}) {
       }
 
       if (format === "csv") {
-        const csvContent = exportTaskReportCSV({ task, samples, wakeWords });
+        const csvContent = exportTaskReportCSV({ task, samples, wakeWords, wakeDetectionResults });
         // 创建并下载 CSV 文件
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const link = document.createElement("a");
@@ -50,7 +52,7 @@ export function useExportTaskReport(options: UseExportTaskReportOptions = {}) {
         URL.revokeObjectURL(link.href);
       } else {
         await exportTaskReport(
-          { task, samples, wakeWords },
+          { task, samples, wakeWords, wakeDetectionResults },
           (fileName) => {
             toast({
               title: "导出成功",

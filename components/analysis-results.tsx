@@ -41,7 +41,7 @@ export function AnalysisResults({
   const currentTask = useAppSelector(selectCurrentTask);
   const samples = useAppSelector(selectAllSamples);
   const playMatchedAudio = useAudioPlayer();
-  const  {exportCurrentTask}  = useExportCurrentTask();
+  const  {exportCurrentTask}  = useExportCurrentTask(currentTask);
   const [loading, setLoading] = useState(false);
 
   //设置tauri后端监听

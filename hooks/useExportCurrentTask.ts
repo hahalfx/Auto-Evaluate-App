@@ -25,10 +25,6 @@ export function useExportCurrentTask(currentTask: Task | null) {
         wordAccuracy: currentTask.wordAccuracy || null,
         characterErrorRate: currentTask.characterErrorRate || null,
         recognitionSuccessRate: currentTask.recognitionSuccessRate || null,
-        totalWords: currentTask.totalWords || null,
-        insertionErrors: currentTask.insertionErrors || null,
-        deletionErrors: currentTask.deletionErrors || null,
-        substitutionErrors: currentTask.substitutionErrors || null,
         fastestRecognitionTime: currentTask.fastestRecognitionTime || null,
         slowestRecognitionTime: currentTask.slowestRecognitionTime || null,
         averageRecognitionTime: currentTask.averageRecognitionTime || null,
@@ -40,20 +36,6 @@ export function useExportCurrentTask(currentTask: Task | null) {
                 recognitionFile: item.recognitionFile || "",
                 device: item.device || "科大讯飞ASRAPI",
                 recognitionResult: item.recognitionResult || "成功",
-                insertionErrors:
-                  item.insertionErrors !== undefined
-                    ? item.insertionErrors
-                    : null,
-                deletionErrors:
-                  item.deletionErrors !==
-                  undefined
-                    ? item.deletionErrors
-                    : null,
-                substitutionErrors:
-                  item.substitutionErrors !== undefined
-                    ? item.substitutionErrors
-                    : null,
-                totalWords: item.totalWords || null,
                 referenceText: samples.find(s => s.id === Number(id))?.text || "",
                 recognizedText: item.recognizedText || "",
                 resultStatus: item.resultStatus || "",
@@ -71,6 +53,10 @@ export function useExportCurrentTask(currentTask: Task | null) {
                 unambiguous_expression:
                   item.assessment?.unambiguous_expression?.score || null,
                 testTime: item.test_time || "",
+                // 新增字段 - 这里需要根据实际的唤醒检测结果来填充
+                wakeResult: "", // 需要从唤醒检测结果中获取
+                wakeJudgmentBasis: "", // 需要从唤醒检测结果中获取
+                slidingDetailedResult: "", // 需要从唤醒检测结果中获取
               };
             })
           : [],

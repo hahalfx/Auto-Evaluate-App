@@ -5,10 +5,6 @@ interface ASRTestItem {
   recognitionFile: string;
   device: string;
   recognitionResult: string;
-  insertionErrors: number | null;
-  deletionErrors: number | null;
-  substitutionErrors: number | null;
-  totalWords: number | null;
   referenceText: string;
   recognizedText: string;
   resultStatus: string;
@@ -21,6 +17,10 @@ interface ASRTestItem {
   state_change_confirmation: number | null;
   unambiguous_expression: number | null;
   testTime: string;
+  // 新增字段
+  wakeResult: string;
+  wakeJudgmentBasis: string;
+  slidingDetailedResult: string;
 }
 
 export interface ASRTestReport {
@@ -36,10 +36,6 @@ export interface ASRTestReport {
   wordAccuracy: number | null;
   characterErrorRate: number | null;
   recognitionSuccessRate: number | null;
-  totalWords: number | null;
-  insertionErrors: number | null;
-  deletionErrors: number | null;
-  substitutionErrors: number | null;
   fastestRecognitionTime: number | null;
   slowestRecognitionTime: number | null;
   averageRecognitionTime: number | null;
@@ -120,31 +116,14 @@ export function generateASRTestReport(
       reportData.recognitionSuccessRate,
       "",
       "",
-      "总字数",
-      reportData.totalWords,
-      "",
-      "",
-      "插入错误数",
-      reportData.insertionErrors,
-    ],
-    [
-      "",
-      "删除错误数",
-      reportData.deletionErrors,
-      "",
-      "",
-      "替换错误数",
-      reportData.substitutionErrors,
-      "",
-      "",
       "平均识别时间(ms)",
       reportData.averageRecognitionTime,
-    ],
-    [
+      "",
       "",
       "最快识别时间(ms)",
       reportData.fastestRecognitionTime,
-      "",
+    ],
+    [
       "",
       "最慢识别时间(ms)",
       reportData.slowestRecognitionTime,
@@ -152,6 +131,10 @@ export function generateASRTestReport(
       "",
       "已执行用例数",
       reportData.completedSamples,
+      "",
+      "",
+      "",
+      "",
     ],
     ["测试记录"],
     [
@@ -159,10 +142,6 @@ export function generateASRTestReport(
       "识别音频",
       "识别设备",
       "唤醒结果",
-      "插入错误",
-      "删除错误",
-      "替换错误",
-      "总字数",
       "标注文本",
       "识别文本",
       "识别结果",
@@ -175,6 +154,9 @@ export function generateASRTestReport(
       "状态变更确认",
       "表达无歧义",
       "测试时间",
+      "唤醒结果",
+      "唤醒判断依据",
+      "滑行详细结果",
     ],
   ];
 
@@ -184,10 +166,6 @@ export function generateASRTestReport(
     item.recognitionFile,
     item.device,
     item.recognitionResult,
-    item.insertionErrors,
-    item.deletionErrors,
-    item.substitutionErrors,
-    item.totalWords,
     item.referenceText,
     item.recognizedText,
     item.resultStatus,
@@ -200,6 +178,9 @@ export function generateASRTestReport(
     item.state_change_confirmation,
     item.unambiguous_expression,
     item.testTime,
+    item.wakeResult,
+    item.wakeJudgmentBasis,
+    item.slidingDetailedResult,
   ]);
 
   // Combine header and items data
@@ -212,62 +193,30 @@ export function generateASRTestReport(
   const colWidths = [
     { wch: 15 }, // 唤醒音频
     { wch: 12 }, // 识别音频
-    { wch: 10 }, // 识别设备
+    { wch: 12 }, // 识别设备
     { wch: 10 }, // 唤醒结果
-    { wch: 8 }, // 插入错误
-    { wch: 15 }, // 删除错误
-    { wch: 8 }, // 替换错误
-    { wch: 8 }, // 总字数
-    { wch: 15 }, // 标注文本
-    { wch: 15 }, // 识别文本
+    { wch: 20 }, // 标注文本
+    { wch: 20 }, // 识别文本
     { wch: 10 }, // 识别结果
-    { wch: 12 }, // 识别时间
-    { wch: 60 },// 车机响应
-    { wch: 10 },// 车机响应间隔时长
-    { wch: 10 },
-    { wch: 10 },
-    { wch: 10 },
-    { wch: 10 },
-    { wch: 30 }, // 测试时间
+    { wch: 15 }, // 识别时间(ms)
+    { wch: 20 }, // 车机响应
+    { wch: 15 }, // 车机响应间隔时长
+    { wch: 15 }, // 大模型测试结果
+    { wch: 10 }, // 总分
+    { wch: 12 }, // 语义正确性
+    { wch: 15 }, // 状态变更确认
+    { wch: 12 }, // 表达无歧义
+    { wch: 15 }, // 测试时间
+    { wch: 10 }, // 唤醒结果
+    { wch: 12 }, // 唤醒判断依据
+    { wch: 30 }, // 滑行详细结果
   ];
-  ws["!cols"] = colWidths;
+  ws['!cols'] = colWidths;
 
-  // Set merge cells for the header
-  ws["!merges"] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 19 } }, // ASR测试报告
-    { s: { r: 1, c: 0 }, e: { r: 7, c: 0 } }, // 任务详情
-    { s: { r: 1, c: 2 }, e: { r: 1, c: 4 } },
-    { s: { r: 1, c: 6 }, e: { r: 1, c: 8 } },
-    { s: { r: 1, c: 10 }, e: { r: 1, c: 19 } },
-    { s: { r: 2, c: 2 }, e: { r: 2, c: 4 } },
-    { s: { r: 2, c: 6 }, e: { r: 2, c: 8 } },
-    { s: { r: 2, c: 10 }, e: { r: 2, c: 19 } },
-    { s: { r: 3, c: 2 }, e: { r: 3, c: 4 } },
-    { s: { r: 3, c: 6 }, e: { r: 3, c: 8 } },
-    { s: { r: 3, c: 10 }, e: { r: 3, c: 19 } },
-    { s: { r: 4, c: 2 }, e: { r: 4, c: 4 } },
-    { s: { r: 4, c: 6 }, e: { r: 4, c: 8 } },
-    { s: { r: 4, c: 10 }, e: { r: 4, c: 19 } },
-    { s: { r: 5, c: 2 }, e: { r: 5, c: 4 } },
-    { s: { r: 5, c: 6 }, e: { r: 5, c: 8 } },
-    { s: { r: 5, c: 10 }, e: { r: 5, c: 19 } },
-    { s: { r: 6, c: 2 }, e: { r: 6, c: 4 } },
-    { s: { r: 6, c: 6 }, e: { r: 6, c: 8 } },
-    { s: { r: 6, c: 10 }, e: { r: 6, c: 19 } },
-    { s: { r: 7, c: 2 }, e: { r: 7, c: 4 } },
-    { s: { r: 7, c: 6 }, e: { r: 7, c: 8 } },
-    { s: { r: 7, c: 10 }, e: { r: 7, c: 19 } },
-    { s: { r: 8, c: 0 }, e: { r: 8, c: 19 } }, // 测试记录
-  ];
+  // Add worksheet to workbook
+  XLSX.utils.book_append_sheet(wb, ws, "测试报告");
 
-  // Set cell styles
-  // Note: This is a simplified approach. For more complex styling,
-  // you might need to use a different library or more complex XLSX options
-
-  // Add the worksheet to the workbook
-  XLSX.utils.book_append_sheet(wb, ws, "ASR测试报告");
-
-  // Write the workbook to a file (in browser, this will trigger a download)
+  // Write to file
   XLSX.writeFile(wb, fileName);
 }
 
@@ -278,24 +227,19 @@ export function example() {
   // Sample test report data
   const sampleReport: ASRTestReport = {
     taskName: "L1-1-S32-识别-东北男",
-    date: "2025-02-25 09:17:22",
-    audioType: "",
-    audioFile: "D:\\唤醒词\\你好纳米\\你好纳米.txt",
-    audioDuration: "00:00:00",
-    audioCategory: "",
-    testCollection:
-      "\\话料库\\一汽北京\\1、纯音\\1、东北普通话\\ADCV001\\语音指令、导航",
-    testDuration: "02:02:38",
-    sentenceAccuracy: 0.7128,
-    wordAccuracy: 0.8891,
-    characterErrorRate: 0.112,
-    recognitionSuccessRate: 1,
-    totalWords: 6564,
-    insertionErrors: 7,
-    deletionErrors: 587,
-    substitutionErrors: 141,
-    fastestRecognitionTime: -1004, // Negative value in the sample data
-    slowestRecognitionTime: 1821,
+    date: "2025-02-25",
+    audioType: "噪音",
+    audioFile: "你好纳米.wav",
+    audioDuration: "30s",
+    audioCategory: "车机噪音",
+    testCollection: "验证集",
+    testDuration: "5分钟",
+    sentenceAccuracy: 0.85,
+    wordAccuracy: 0.92,
+    characterErrorRate: 0.08,
+    recognitionSuccessRate: 0.95,
+    fastestRecognitionTime: 1200,
+    slowestRecognitionTime: 2000,
     averageRecognitionTime: 1711,
     completedSamples: 999,
     items: [
@@ -304,10 +248,6 @@ export function example() {
         recognitionFile: "B0001.wav",
         device: "USB设备",
         recognitionResult: "Success",
-        insertionErrors: 1,
-        deletionErrors: 0,
-        substitutionErrors: 0,
-        totalWords: 3,
         referenceText: "我在哪",
         recognizedText: "我在哪儿",
         resultStatus: "Fail",
@@ -319,18 +259,16 @@ export function example() {
         semantic_correctness: null,
         state_change_confirmation: null,
         unambiguous_expression: null,
-
         testTime: "25-02-25 09:17:37",
+        wakeResult: "成功",
+        wakeJudgmentBasis: "语音识别",
+        slidingDetailedResult: "语音识别结果：我在哪儿",
       },
       {
         audioFile: "你好纳米.wav",
         recognitionFile: "B0003.wav",
         device: "USB设备",
         recognitionResult: "Success",
-        insertionErrors: 0,
-        deletionErrors: 0,
-        substitutionErrors: 0,
-        totalWords: 6,
         referenceText: "定位当前位置",
         recognizedText: "定位当前位置",
         resultStatus: "Success",
@@ -343,6 +281,9 @@ export function example() {
         state_change_confirmation: null,
         unambiguous_expression: null,
         testTime: "25-02-25 09:17:44",
+        wakeResult: "成功",
+        wakeJudgmentBasis: "语音识别",
+        slidingDetailedResult: "语音识别结果：定位当前位置",
       },
     ],
   };
@@ -350,7 +291,6 @@ export function example() {
   // Generate the Excel file
   generateASRTestReport(sampleReport);
 }
-
 
 // Call the example function if you want to test it
 // example();
